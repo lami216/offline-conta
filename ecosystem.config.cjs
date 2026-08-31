@@ -1,0 +1,1 @@
+module.exports = { apps: [{ name: "Conta", script: "scripts/start.mjs", cwd: __dirname, instances: 1, autorestart: true, env: { NODE_ENV: "production" }, env_file: ".env.production.local", time: true }] };

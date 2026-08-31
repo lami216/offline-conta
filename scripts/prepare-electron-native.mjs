@@ -1,4 +1,4 @@
-import {access, cp, realpath, rm} from 'node:fs/promises';
+import {access, cp, lstat, realpath, rm} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import path from 'node:path';
 import {rebuild} from '@electron/rebuild';
@@ -17,6 +17,9 @@ await access(nativeModule);
 // Restore the installed package into the staged tree so this copy can be rebuilt in place.
 await rm(nativeModule, {recursive: true, force: true});
 await cp(sourceModule, nativeModule, {recursive: true, dereference: true});
+if ((await lstat(nativeModule)).isSymbolicLink()) {
+  throw new Error(`Staged better-sqlite3 must be a physical copy, not a link: ${nativeModule}`);
+}
 
 console.log(
   `Rebuilding staged better-sqlite3 for Electron ${electronVersion} (${process.platform}, x64)`,
@@ -33,9 +36,13 @@ await rebuild({
 });
 
 await access(nativeBinary);
+if ((await lstat(nativeModule)).isSymbolicLink()) {
+  throw new Error(`Electron rebuild converted staged better-sqlite3 into a link: ${nativeModule}`);
+}
 for (const candidate of [nativeModule, nativeBinary]) {
   const physical = await realpath(candidate);
-  if (physical !== stagedApp && !physical.startsWith(`${stagedApp}${path.sep}`)) {
+  const relative = path.relative(stagedApp, physical);
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error(`Rebuilt native path escapes the staged app: ${candidate} -> ${physical}`);
   }
   console.log(`Staged physical path after rebuild: ${physical}`);

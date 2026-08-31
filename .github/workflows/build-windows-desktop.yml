@@ -33,7 +33,18 @@ jobs:
       - name: Verify Windows artifacts
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist/AlKarna-Setup-x64.exe" -PathType Leaf)) { throw "Missing NSIS installer" }
-          if (-not (Test-Path "dist/AlKarna-Portable-x64.exe" -PathType Leaf)) { throw "Missing portable executable" }
+          $artifacts = @("dist/AlKarna-Setup-x64.exe", "dist/AlKarna-Portable-x64.exe")
+          foreach ($artifact in $artifacts) {
+            if (-not (Test-Path $artifact -PathType Leaf)) { throw "Missing Windows artifact: $artifact" }
+            $file = Get-Item $artifact
+            if ($file.Length -le 1MB) { throw "Windows artifact is truncated (must exceed 1 MiB): $artifact ($($file.Length) bytes)" }
+            $hash = (Get-FileHash $artifact -Algorithm SHA256).Hash
+            Write-Host "$($file.Name) size=$($file.Length) SHA-256=$hash"
+          }
       - uses: actions/upload-artifact@v7
-        with: {name: AlKarna-Windows-x64, path: dist/*.exe}
+        with:
+          name: AlKarna-Windows-x64
+          path: |
+            dist/AlKarna-Setup-x64.exe
+            dist/AlKarna-Portable-x64.exe
+          if-no-files-found: error

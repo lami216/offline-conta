@@ -123,7 +123,7 @@ export interface Movement {
   occurredAt: string;
 }
 export interface BootstrapData {
-  principal: { principalType: "owner" | "user"; name: string; permissions: string[] };
+  principal: { principalType: "local" | "owner" | "user"; name: string; permissions: string[] };
   branding: InvoiceBrandingSettings;
   /** Informational only; product.create allocates the authoritative value atomically. */
   nextProductCode: number;

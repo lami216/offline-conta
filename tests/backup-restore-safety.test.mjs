@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { BACKUP_COLLECTIONS, parseAndValidateBackup, restoreNativeBackup, stringifyBackup } from "../lib/backup.ts";
 import { nextDocumentSequence } from "../lib/document-sequences.ts";
-import { verifyPasswordHash } from "../lib/password.ts";
 import { sqliteHarness } from "./sqlite-harness.mjs";
 
 function legacyBackup(overrides={}) {
@@ -22,11 +21,10 @@ function legacyBackup(overrides={}) {
   return {format:"conta-backup",schemaVersion:1,createdAt:new Date().toISOString(),appVersion:"legacy",encoding:"mongodb-extended-json-v2",collections,counts:Object.fromEntries(BACKUP_COLLECTIONS.map(name=>[name,collections[name].length]))};
 }
 
-test("restore guarantees at least one active login user without resurrecting owner",async t=>{
+test("restore preserves an empty user collection without resurrecting a default owner",async t=>{
   const h=await sqliteHarness();t.after(()=>h.close());
   await h.db.transaction(session=>restoreNativeBackup(h.db,legacyBackup({users:[]}),session));
-  const owner=await h.db.collection("users").findOne({id:"owner"});
-  assert.equal(owner.isActive,true);assert.equal(verifyPasswordHash("12345678",owner.passwordHash),true);
+  assert.equal(await h.db.collection("users").countDocuments(),0);
   await h.db.transaction(session=>restoreNativeBackup(h.db,legacyBackup({users:[{id:"active-user",username:"active",usernameNormalized:"active",passwordHash:"unused",isActive:true}]}),session));
   assert.equal(await h.db.collection("users").findOne({id:"owner"}),null);
   assert.ok(await h.db.collection("users").findOne({id:"active-user",isActive:true}));
@@ -46,7 +44,7 @@ test("failed restore rolls back all replaced collections and strict EJSON values
   const broken=legacyBackup({users:[{id:"u1",usernameNormalized:"duplicate"},{id:"u2",usernameNormalized:"duplicate"}]});
   await assert.rejects(h.db.transaction(session=>restoreNativeBackup(h.db,broken,session)),/duplicate/i);
   assert.equal((await h.db.collection("products").findOne({id:"database-a"})).name,"Original");
-  assert.ok(await h.db.collection("users").findOne({id:"owner"}));
+  assert.equal(await h.db.collection("users").findOne({id:"owner"}),null);
 
   const backup=legacyBackup();backup.collections.products[0].cost=2147483648;backup.collections.products[0].createdAt=new Date("2024-01-02T03:04:05Z");
   const parsed=parseAndValidateBackup(stringifyBackup(backup));

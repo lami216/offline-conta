@@ -2,7 +2,6 @@ import type { SqliteSession as ClientSession, SqliteDatabase as Db, DbDocument a
 import { ensureDatabaseSchema } from "./sqlite.ts";
 import { rebuildDocumentSequenceCounters } from "./document-sequences.ts";
 import { EJSON } from "bson";
-import { hashPassword } from "./password.ts";
 import { resolvePartyType } from "../app/domain.ts";
 
 export const BACKUP_SCHEMA_VERSION = 1;
@@ -49,16 +48,9 @@ export async function restoreNativeBackup(db: Db, backup: ContaBackup, session: 
     const rows = backup.collections[name];
     if (rows.length) await collection.insertMany(rows, { session, ordered: true });
   }
-  await ensureAtLeastOneLoginUser(db, session);
   await ensureLegacyCompatibility(db, session);
   await rebuildCounters(db, session);
   validateInvariants(await createNativeBackup(db));
-}
-export async function ensureAtLeastOneLoginUser(db: Db, session?: ClientSession) {
-  if (await db.collection("users").findOne({ isActive:true }, { session })) return;
-  const now = new Date();
-  await db.collection("users").deleteOne({id:"owner"},{session});
-  await db.collection("users").insertOne({ id:"owner", username:"المالك", usernameNormalized:"المالك", name:"المالك", passwordHash:hashPassword("12345678"), isActive:true, owner:true, createdAt:now, updatedAt:now }, { session });
 }
 export async function ensureLegacyCompatibility(db: Db, session?: ClientSession) {
   const parties=await db.collection("parties").find({}, {session}).toArray();

@@ -3,7 +3,6 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getDatabase } from "./sqlite.ts";
 export { hashPassword, verifyPasswordHash } from "./password.ts";
-import { verifyPasswordHash } from "./password.ts";
 
 export const SESSION_COOKIE = "conta_session";
 const MAX_AGE = 60 * 60 * 12;
@@ -14,7 +13,7 @@ export const CAPABILITIES = [
   "expenses.view","expenses.create","expenses.edit","expenses.delete","reports.view","settings.view","settings.branding.manage","settings.backup.manage","settings.legacy.import","settings.users.manage",
 ] as const;
 export type Capability = typeof CAPABILITIES[number];
-export type Principal = { principalType:"owner"; name:string; permissions:Capability[] } | { principalType:"user"; userId:string; name:string; username:string; permissions:Capability[] };
+export type Principal = { principalType:"local"; name:string; permissions:Capability[] } | { principalType:"owner"; name:string; permissions:Capability[] } | { principalType:"user"; userId:string; name:string; username:string; permissions:Capability[] };
 type SessionPayload = { exp:number; principalType:"owner"|"user"; userId?:string };
 let cachedSecret:string|undefined;
 function secret(){if(cachedSecret)return cachedSecret;const file=join(process.env.ALKARNA_USER_DATA??join(process.cwd(),".dev-data"),"config","session-secret");try{cachedSecret=readFileSync(file,"utf8").trim()}catch{mkdirSync(dirname(file),{recursive:true});cachedSecret=randomBytes(48).toString("base64url");writeFileSync(file,cachedSecret,{mode:0o600})}return cachedSecret}
@@ -24,10 +23,9 @@ function parseSession(token?:string|null,now=Date.now()):SessionPayload|null{if(
 export function verifySession(token?:string|null,now=Date.now()){return parseSession(token,now)!==null}
 function tokenFromRequest(request:Request){const cookie=request.headers.get("cookie")??"";return cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length+1)}
 export function sessionFromRequest(request:Request){return parseSession(tokenFromRequest(request))}
-export async function getPrincipalFromRequest(request:Request):Promise<Principal|null>{const session=sessionFromRequest(request);if(!session)return null;const users=(await getDatabase()).collection("users");if(session.principalType==="owner"){const owner=await users.findOne({id:"owner",isActive:true});return owner?{principalType:"owner",name:String(owner.name??"المالك"),permissions:[...CAPABILITIES]}:null}if(!session.userId)return null;const user=await users.findOne({id:session.userId,isActive:true});if(!user)return null;return {principalType:"user",userId:String(user.id),name:String(user.name),username:String(user.username),permissions:(Array.isArray(user.permissions)?user.permissions:[]).filter((p):p is Capability=>CAPABILITIES.includes(p as Capability))}}
-export function hasCapability(principal:Principal|null,capability:Capability){return principal?.principalType==="owner"||principal?.permissions.includes(capability)===true}
-export async function requireCapability(request:Request,capability:Capability){const session=sessionFromRequest(request);if(!session)return Response.json({error:"غير مصرح"},{status:401});const principal=await getPrincipalFromRequest(request);if(!principal)return Response.json({error:"انتهت صلاحية المستخدم أو تم تعطيله"},{status:401});if(!hasCapability(principal,capability))return Response.json({error:"ليس لديك صلاحية تنفيذ هذه العملية"},{status:403});return null}
-export async function verifyPassword(password:string){const owner=await getDatabase().collection("users").findOne({id:"owner",isActive:true});return Boolean(owner&&verifyPasswordHash(password,String(owner.passwordHash??"")))}
+export async function getPrincipalFromRequest(request:Request):Promise<Principal|null>{const users=(await getDatabase()).collection("users"),session=sessionFromRequest(request);if(!session){if(await users.countDocuments()===0)return {principalType:"local",name:"دخول مباشر",permissions:[...CAPABILITIES]};return null}if(session.principalType==="owner"){const owner=await users.findOne({id:"owner",isActive:true});return owner?{principalType:"owner",name:String(owner.name??owner.username),permissions:[...CAPABILITIES]}:null}if(!session.userId)return null;const user=await users.findOne({id:session.userId,isActive:true});if(!user)return null;return {principalType:"user",userId:String(user.id),name:String(user.name),username:String(user.username),permissions:(Array.isArray(user.permissions)?user.permissions:[]).filter((p):p is Capability=>CAPABILITIES.includes(p as Capability))}}
+export function hasCapability(principal:Principal|null,capability:Capability){return principal?.principalType==="local"||principal?.principalType==="owner"||principal?.permissions.includes(capability)===true}
+export async function requireCapability(request:Request,capability:Capability){const principal=await getPrincipalFromRequest(request);if(!principal)return Response.json({error:"غير مصرح أو انتهت صلاحية المستخدم"},{status:401});if(!hasCapability(principal,capability))return Response.json({error:"ليس لديك صلاحية تنفيذ هذه العملية"},{status:403});return null}
 export function normalizeUsername(value:string){return value.trim().toLocaleLowerCase("en-US")}
 export function validSameOrigin(request:Request){const origin=request.headers.get("origin"),host=request.headers.get("x-forwarded-host")??request.headers.get("host");if(!origin||!host)return false;try{const parsed=new URL(origin);if(process.env.ALKARNA_DESKTOP==="1")return parsed.protocol==="http:"&&parsed.hostname==="127.0.0.1"&&parsed.host===host;const proto=request.headers.get("x-forwarded-proto")??(process.env.NODE_ENV==="production"?"https":"http");return parsed.origin===`${proto}://${host}`}catch{return false}}
 export const sessionCookieOptions=`Path=/; HttpOnly; SameSite=Strict; Max-Age=${MAX_AGE}`;

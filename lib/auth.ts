@@ -1,0 +1,30 @@
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { getMongo } from "./mongodb.ts";
+
+export const SESSION_COOKIE = "conta_session";
+const MAX_AGE = 60 * 60 * 12;
+export const CAPABILITIES = [
+  "pos.view","pos.create","pos.edit","pos.delete","purchases.view","purchases.create","purchases.edit","purchases.delete","records.view",
+  "products.view","products.create","products.edit","products.delete","customers.view","customers.create","customers.edit","customers.collect","suppliers.view","suppliers.create","suppliers.edit","suppliers.pay",
+  "warehouses.view","warehouses.create","warehouses.edit","warehouses.delete","warehouses.inventory.view","warehouses.transfer","warehouses.adjust","banks.view","banks.create","banks.edit","banks.delete","banks.movements.view","banks.transfer","banks.deposit_withdraw","banks.balance_correct",
+  "expenses.view","expenses.create","expenses.edit","expenses.delete","reports.view","settings.view","settings.branding.manage","settings.backup.manage","settings.legacy.import","settings.users.manage",
+] as const;
+export type Capability = typeof CAPABILITIES[number];
+export type Principal = { principalType:"owner"; name:string; permissions:Capability[] } | { principalType:"user"; userId:string; name:string; username:string; permissions:Capability[] };
+type SessionPayload = { exp:number; principalType:"owner"|"user"; userId?:string };
+function secret(){const value=process.env.SESSION_SECRET;if(!value||value.length<32)throw new Error("SESSION_SECRET must contain at least 32 characters");return value}
+function digest(value:string){return createHmac("sha256",secret()).update(value).digest("base64url")}
+export function createSession(principal:{principalType:"owner"|"user";userId?:string}={principalType:"owner"},now=Date.now()){const payload=Buffer.from(JSON.stringify({...principal,exp:Math.floor(now/1000)+MAX_AGE})).toString("base64url");return `${payload}.${digest(payload)}`}
+function parseSession(token?:string|null,now=Date.now()):SessionPayload|null{if(!token)return null;const [payload,signature,extra]=token.split(".");if(!payload||!signature||extra)return null;const expected=digest(payload);if(signature.length!==expected.length||!timingSafeEqual(Buffer.from(signature),Buffer.from(expected)))return null;try{const value=JSON.parse(Buffer.from(payload,"base64url").toString()) as Partial<SessionPayload>;if(typeof value.exp!=="number"||value.exp<=Math.floor(now/1000))return null;/* Old owner cookies remain valid. */return {exp:value.exp,principalType:value.principalType==="user"?"user":"owner",userId:value.userId}}catch{return null}}
+export function verifySession(token?:string|null,now=Date.now()){return parseSession(token,now)!==null}
+function tokenFromRequest(request:Request){const cookie=request.headers.get("cookie")??"";return cookie.split(";").map(v=>v.trim()).find(v=>v.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length+1)}
+export function sessionFromRequest(request:Request){return parseSession(tokenFromRequest(request))}
+export async function getPrincipalFromRequest(request:Request):Promise<Principal|null>{const session=sessionFromRequest(request);if(!session)return null;if(session.principalType==="owner")return {principalType:"owner",name:"المالك",permissions:[...CAPABILITIES]};if(!session.userId)return null;const user=await (await getMongo()).collection("users").findOne({id:session.userId,isActive:true});if(!user)return null;return {principalType:"user",userId:String(user.id),name:String(user.name),username:String(user.username),permissions:(Array.isArray(user.permissions)?user.permissions:[]).filter((p):p is Capability=>CAPABILITIES.includes(p as Capability))}}
+export function hasCapability(principal:Principal|null,capability:Capability){return principal?.principalType==="owner"||principal?.permissions.includes(capability)===true}
+export async function requireCapability(request:Request,capability:Capability){const session=sessionFromRequest(request);if(!session)return Response.json({error:"غير مصرح"},{status:401});const principal=await getPrincipalFromRequest(request);if(!principal)return Response.json({error:"انتهت صلاحية المستخدم أو تم تعطيله"},{status:401});if(!hasCapability(principal,capability))return Response.json({error:"ليس لديك صلاحية تنفيذ هذه العملية"},{status:403});return null}
+export function hashPassword(password:string){if(password.length<8)throw new Error("يجب ألا تقل كلمة المرور عن 8 أحرف");const salt=randomBytes(16).toString("hex");return `${salt}:${scryptSync(password,salt,64).toString("hex")}`}
+export function verifyPasswordHash(password:string,configured:string){const [salt,hash,extra]=configured.split(":");if(!salt||!hash||extra)return false;const actual=scryptSync(password,salt,64).toString("hex");return actual.length===hash.length&&timingSafeEqual(Buffer.from(actual),Buffer.from(hash))}
+export function verifyPassword(password:string){return verifyPasswordHash(password,process.env.OWNER_PASSWORD_HASH??"")}
+export function normalizeUsername(value:string){return value.trim().toLocaleLowerCase("en-US")}
+export function validSameOrigin(request:Request){const origin=request.headers.get("origin");if(!origin)return false;const host=request.headers.get("x-forwarded-host")??request.headers.get("host");const proto=request.headers.get("x-forwarded-proto")??(process.env.NODE_ENV==="production"?"https":"http");try{return new URL(origin).origin===`${proto}://${host}`}catch{return false}}
+export const sessionCookieOptions=`Path=/; HttpOnly; SameSite=Strict; Max-Age=${MAX_AGE}${process.env.NODE_ENV==="production"?"; Secure":""}`;

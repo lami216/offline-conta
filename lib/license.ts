@@ -44,7 +44,8 @@ export async function getDeviceId() {
 }
 
 export function getLicensePath(){return join(process.env.ALKARNA_USER_DATA??join(process.cwd(),".dev-data"),"config",LICENSE_FILENAME)}
-function strictBase64Url(value:string){
+function strictBase64Url(value:unknown){
+  if(typeof value!=="string")throw new LicenseError("تعذر التحقق من توقيع الترخيص");
   if(!/^[A-Za-z0-9_-]+$/.test(value)||value.length%4===1)throw new LicenseError("تعذر التحقق من توقيع الترخيص");
   const bytes=Buffer.from(value,"base64url");
   if(bytes.length!==64||bytes.toString("base64url")!==value)throw new LicenseError("تعذر التحقق من توقيع الترخيص");
@@ -66,8 +67,15 @@ export async function verifyLicenseFile(content:string|Uint8Array,currentDeviceI
   if(doc.schema!=="alkarna-license"||doc.version!==1||doc.algorithm!==LICENSE_ALGORITHM||doc.keyId!==LICENSE_KEY_ID||!keys[doc.keyId])throw new LicenseError("ملف الترخيص غير مدعوم");
   if(!p||typeof p!=="object"||![p.licenseId,p.storeId,p.customerName,p.storeName,p.deviceId,p.edition,p.type,p.issuedAt].every(required)||typeof p.notes!=="string"||p.edition!=="desktop"||p.type!=="perpetual"||!validIsoTimestamp(p.issuedAt))throw new LicenseError("هذا الترخيص غير صالح");
   const signature=strictBase64Url(doc.signature);
-  const key=await webcrypto.subtle.importKey("jwk",keys[doc.keyId],{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
-  const valid=await webcrypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},key,signature,new TextEncoder().encode(canonicalLicensePayload(p)));
+  let valid=false;
+  try{
+    const key=await webcrypto.subtle.importKey("jwk",keys[doc.keyId],{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
+    valid=await webcrypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},key,signature,new TextEncoder().encode(canonicalLicensePayload(p)));
+  }catch(error){
+    // Key/signature parsing failures are intentionally reduced to a safe,
+    // user-facing error. Never expose WebCrypto internals in the local UI.
+    log("info","license.install.invalid",{reason:error instanceof Error?error.name:"crypto-error"});
+  }
   if(!valid){log("info","license.install.invalid");throw new LicenseError("تعذر التحقق من توقيع الترخيص")}
   if(p.deviceId!==currentDeviceId){log("info","license.device-mismatch");throw new LicenseError("هذا الترخيص مخصص لجهاز آخر")}
   return doc;

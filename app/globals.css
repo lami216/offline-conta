@@ -2272,3 +2272,15 @@ input[type="date"]{height:34px;min-height:34px;font-size:10px}.expense-form inpu
   white-space:nowrap;
 }
 .workspace-checkout .payment-label{display:block;color:#3f504d;font-size:11px;font-weight:800;line-height:1.4}
+
+/* One consistent, high-contrast keyboard focus treatment without changing layout. */
+:is(button, input, textarea, select, a[href], [role="combobox"], [tabindex="0"]):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent, #0b6d67) 55%, white);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #fff;
+}
+.combobox-results [role="option"].highlighted,
+.picker-results [role="option"][aria-selected="true"] {
+  color: #fff;
+  background: var(--accent, #0b6d67);
+}

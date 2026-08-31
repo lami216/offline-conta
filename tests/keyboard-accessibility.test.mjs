@@ -23,9 +23,8 @@ test("shared searchable select has standard combobox keyboard semantics", () => 
 });
 
 test("POS and purchase workspaces expose safe shortcuts and focus-after-add", () => {
-  assert.equal((source.match(/event\.key === "F2"/g) ?? []).length, 2);
-  assert.equal((source.match(/event\.key === "F4"/g) ?? []).length, 2);
-  assert.equal((source.match(/isModifiedEnter\(event\.nativeEvent\)/g) ?? []).length, 2);
+  assert.equal((source.match(/invoiceShortcutAction\(event\.nativeEvent/g) ?? []).length, 2);
+  assert.match(keyboard, /isModifiedEnter/);
   assert.equal((source.match(/submittingRef\.current\) return/g) ?? []).length, 2);
   assert.equal((source.match(/productSearchRef\.current\?\.focus\(\)/g) ?? []).length >= 4, true);
   assert.match(source, /<SearchProducts inputRef=\{productSearchRef\}/);
@@ -42,4 +41,36 @@ test("document dialog and quick-create popovers restore focus on Escape", () => 
 test("important controls have a visible focus-visible treatment", () => {
   assert.match(css, /:is\(button, input, textarea, select, a\[href\]/);
   assert.match(css, /:focus-visible[\s\S]{0,180}outline: 3px solid/);
+});
+
+const shortcutRegistry = await readFile(new URL("../app/invoice-keyboard.ts", import.meta.url), "utf8");
+
+test("invoice help and behavior share one conflict-free shortcut registry", () => {
+  const entries = [...shortcutRegistry.matchAll(/\{ id: "([^"]+)", keys: \[([^\]]+)\][^}]+scope: \[([^\]]+)\][^}]+action: "([^"]+)"/g)];
+  assert.equal(entries.length, 3);
+  for (const scope of ["sale", "purchase"]) {
+    const scoped = entries.filter(entry => entry[3].includes(`"${scope}"`));
+    assert.equal(new Set(scoped.map(entry => entry[1])).size, scoped.length);
+    assert.deepEqual(new Set(scoped.map(entry => entry[4])), new Set(["focus-product", "focus-payment", "submit"]));
+  }
+  assert.match(source, /invoiceShortcutAction\(event\.nativeEvent, "sale"\)/);
+  assert.match(source, /invoiceShortcutAction\(event\.nativeEvent, "purchase"\)/);
+  assert.match(source, /shortcutsForInvoice\(scope\)/);
+});
+
+test("visual keyboard help is anchored, dismissible, and blocks invoice shortcuts", () => {
+  assert.equal((source.match(/data-keyboard-help="product-search"/g) ?? []).length, 2);
+  assert.equal((source.match(/data-keyboard-help="payment"/g) ?? []).length, 2);
+  assert.equal((source.match(/data-keyboard-help="submit"/g) ?? []).length, 2);
+  assert.match(source, /role="dialog" aria-modal="true" aria-label="خريطة اختصارات الفاتورة"/);
+  assert.equal((source.match(/if \(!keyboardHelpOpen\) return; event\.preventDefault\(\); event\.stopPropagation\(\)/g) ?? []).length, 2);
+  assert.match(source, /if \(event\.key === "Escape"\) \{ setKeyboardHelpOpen\(false\)/);
+  assert.match(source, /aria-pressed=\{open\} onClick=\{onToggle\}/);
+});
+
+test("sale and purchase keep party add and native payment controls in bounded rows", () => {
+  assert.match(source, /aria-label="إضافة العميل"[\s\S]{0,150}<span>إضافة العميل<\/span>/);
+  assert.match(source, /aria-label="إضافة المورد"[\s\S]{0,150}<span>إضافة المورد<\/span>/);
+  assert.equal((source.match(/<CompactPaymentSelector selectRef=\{paymentRef\}/g) ?? []).length, 2);
+  assert.match(css, /\.pos-payment-row,[\s\S]{0,120}grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\) auto/);
 });

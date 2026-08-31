@@ -14,9 +14,11 @@
     "lint": "eslint . --ignore-pattern .next --ignore-pattern .next-candidate",
     "hash-password": "node scripts/hash-password.mjs",
     "desktop:dev": "electron .",
-    "desktop:prepare": "npm run build && node scripts/generate-icon.mjs && node scripts/desktop-prepare.mjs",
-    "desktop:build": "npm run desktop:prepare",
-    "desktop:dist": "npm run desktop:prepare && electron-builder",
+    "desktop:prepare": "node scripts/generate-icon.mjs && node scripts/desktop-prepare.mjs",
+    "desktop:rebuild-native": "node scripts/prepare-electron-native.mjs",
+    "desktop:test-native": "node scripts/test-electron-sqlite.cjs",
+    "desktop:build": "npm run build && npm run desktop:prepare",
+    "desktop:dist": "npm run desktop:build && npm run desktop:rebuild-native && npm run desktop:test-native && electron-builder",
     "desktop:dist:win": "electron-builder --win --x64"
   },
   "dependencies": {
@@ -28,6 +30,7 @@
     "sql.js": "^1.13.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7.0",
     "@tailwindcss/postcss": "4.2.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "22.19.19",
@@ -96,6 +99,6 @@
     "portable": {
       "artifactName": "AlKarna-Portable-x64.exe"
     },
-    "npmRebuild": true
+    "npmRebuild": false
   }
 }

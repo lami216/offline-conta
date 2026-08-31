@@ -4,15 +4,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const {createRequire} = require('node:module');
+const {isPathInside} = require('./path-containment.cjs');
 
 const root = fs.realpathSync(process.argv[2]);
 const label = process.argv[3] || 'RUNTIME';
 const runtimeRequire = createRequire(path.join(root, 'server.js'));
 const packagePath = fs.realpathSync(runtimeRequire.resolve('better-sqlite3'));
 const nativePath = fs.realpathSync(runtimeRequire.resolve('better-sqlite3/build/Release/better_sqlite3.node'));
-const inside = (candidate) => candidate === root || candidate.startsWith(`${root}${path.sep}`);
-assert.ok(inside(packagePath), `${label} package escaped runtime: ${packagePath}`);
-assert.ok(inside(nativePath), `${label} native binary escaped runtime: ${nativePath}`);
+assert.ok(isPathInside(root, packagePath), `${label} package escaped runtime: ${packagePath}`);
+assert.ok(isPathInside(root, nativePath), `${label} native binary escaped runtime: ${nativePath}`);
 console.log(`${label} Electron version: ${process.versions.electron}`);
 console.log(`${label} Electron module ABI: ${process.versions.modules}`);
 console.log(`${label} resolved better-sqlite3 package path: ${packagePath}`);

@@ -1,12 +1,13 @@
 import {spawn, spawnSync} from 'node:child_process';
-import {access, cp, lstat, mkdtemp, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
+import {access, copyFile, cp, lstat, mkdtemp, readFile, readdir, realpath, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {basename, isAbsolute, join, relative, sep} from 'node:path';
+import {basename, join} from 'node:path';
 import {createRequire} from 'node:module';
 import net from 'node:net';
 import process from 'node:process';
 
 const require = createRequire(import.meta.url);
+const {isPathInside} = require('./path-containment.cjs');
 const repositoryRoot = await realpath(process.cwd());
 const packaged = process.argv.includes('--packaged');
 const RUNTIME_DIRECTORY = 'alkarna-runtime';
@@ -19,8 +20,7 @@ async function packagedRuntime() {
   if (preferred.length !== 1) throw new Error(`Expected electron-builder win-unpacked tree, found: ${trees.map((x) => x.name).join(', ') || 'none'}`);
   const tree = join(dist, preferred[0].name);
   relocatedPackageDirectory = await mkdtemp(join(tmpdir(), 'alkarna-win-unpacked-'));
-  const relocationFromRepository = relative(repositoryRoot, relocatedPackageDirectory);
-  if (relocationFromRepository === '' || (!relocationFromRepository.startsWith(`..${sep}`) && relocationFromRepository !== '..')) {
+  if (isPathInside(repositoryRoot, relocatedPackageDirectory)) {
     throw new Error(`Packaged relocation must be outside the repository: ${relocatedPackageDirectory}`);
   }
   const relocatedTree = join(relocatedPackageDirectory, preferred[0].name);
@@ -47,7 +47,6 @@ const runtime = packaged
   : {root: process.argv[2] ?? join(repositoryRoot, 'desktop-dist', 'app'), electronExecutable: require('electron')};
 const root = await realpath(runtime.root);
 const entry = join(root, 'server.js');
-const inside = (candidate) => { const value = relative(root, candidate); return value === '' || (value !== '..' && !value.startsWith(`..${sep}`) && !isAbsolute(value)); };
 const runtimeRequire = createRequire(entry);
 const requiredLocalFiles = [
   'node_modules/better-sqlite3/package.json',
@@ -64,11 +63,11 @@ console.log(`${packaged ? 'PACKAGED' : 'STAGED'} local dependency existence: pas
 const resolvedDependencies = new Map();
 for (const specifier of ['better-sqlite3', 'better-sqlite3/build/Release/better_sqlite3.node', 'sql.js']) {
   const resolved = await realpath(runtimeRequire.resolve(specifier));
-  if (!inside(resolved)) throw new Error(`${packaged ? 'Packaged' : 'Staged'} resolution escaped runtime: ${specifier} -> ${resolved}`);
+  if (!isPathInside(root, resolved)) throw new Error(`${packaged ? 'Packaged' : 'Staged'} resolution escaped runtime: ${specifier} -> ${resolved}`);
   resolvedDependencies.set(specifier, resolved);
 }
 const wasm = await realpath(join(root, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'));
-if (!inside(wasm)) throw new Error(`${packaged ? 'Packaged' : 'Staged'} sql.js WASM escaped runtime: ${wasm}`);
+if (!isPathInside(root, wasm)) throw new Error(`${packaged ? 'Packaged' : 'Staged'} sql.js WASM escaped runtime: ${wasm}`);
 
 // Build paths serialized in Next-generated configuration are metadata, not proof
 // of a runtime dependency. Inspect actual filesystem links instead: every link in
@@ -79,7 +78,7 @@ async function auditLinks(directory) {
     const metadata = await lstat(file);
     if (metadata.isSymbolicLink()) {
       const target = await realpath(file);
-      if (!inside(target)) throw new Error(`${packaged ? 'Packaged' : 'Staged'} link escaped runtime: ${file} -> ${target}`);
+      if (!isPathInside(root, target)) throw new Error(`${packaged ? 'Packaged' : 'Staged'} link escaped runtime: ${file} -> ${target}`);
     } else if (metadata.isDirectory()) {
       await auditLinks(file);
     }
@@ -125,7 +124,8 @@ console.log(`${label} runtime size: ${((await treeSize(root)) / 1024 / 1024).toF
 let probeScript = join(repositoryRoot, 'scripts', 'electron-runtime-probe.cjs');
 if (packaged) {
   probeScript = join(relocatedPackageDirectory, 'electron-runtime-probe.cjs');
-  await writeFile(probeScript, `const assert=require('node:assert/strict');const fs=require('node:fs');const os=require('node:os');const path=require('node:path');const {createRequire}=require('node:module');const root=fs.realpathSync(process.argv[2]);const runtimeRequire=createRequire(path.join(root,'server.js'));const packagePath=fs.realpathSync(runtimeRequire.resolve('better-sqlite3'));const nativePath=fs.realpathSync(runtimeRequire.resolve('better-sqlite3/build/Release/better_sqlite3.node'));const inside=p=>p===root||p.startsWith(root+path.sep);assert.ok(inside(packagePath),'package escaped runtime: '+packagePath);assert.ok(inside(nativePath),'native escaped runtime: '+nativePath);console.log('PACKAGED Electron version: '+process.versions.electron);console.log('PACKAGED Electron module ABI: '+process.versions.modules);console.log('PACKAGED resolved better-sqlite3 package path: '+packagePath);console.log('PACKAGED better_sqlite3.node realpath: '+nativePath);const temporaryDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'alkarna-runtime-probe-'));const database=new (runtimeRequire('better-sqlite3'))(path.join(temporaryDirectory,'probe.sqlite'));try{database.exec('CREATE TABLE probe (value TEXT NOT NULL)');database.prepare('INSERT INTO probe VALUES (?)').run('ok');assert.equal(database.prepare('SELECT value FROM probe').get().value,'ok');console.log('PACKAGED native SQLite CREATE/INSERT/SELECT: passed')}finally{database.close();fs.rmSync(temporaryDirectory,{recursive:true,force:true})}`);
+  await copyFile(join(repositoryRoot, 'scripts', 'path-containment.cjs'), join(relocatedPackageDirectory, 'path-containment.cjs'));
+  await writeFile(probeScript, `const assert=require('node:assert/strict');const fs=require('node:fs');const os=require('node:os');const path=require('node:path');const {createRequire}=require('node:module');const {isPathInside}=require('./path-containment.cjs');const root=fs.realpathSync(process.argv[2]);const runtimeRequire=createRequire(path.join(root,'server.js'));const packagePath=fs.realpathSync(runtimeRequire.resolve('better-sqlite3'));const nativePath=fs.realpathSync(runtimeRequire.resolve('better-sqlite3/build/Release/better_sqlite3.node'));assert.ok(isPathInside(root,packagePath),'package escaped runtime: '+packagePath);assert.ok(isPathInside(root,nativePath),'native escaped runtime: '+nativePath);console.log('PACKAGED Electron version: '+process.versions.electron);console.log('PACKAGED Electron module ABI: '+process.versions.modules);console.log('PACKAGED resolved better-sqlite3 package path: '+packagePath);console.log('PACKAGED better_sqlite3.node realpath: '+nativePath);const temporaryDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'alkarna-runtime-probe-'));const database=new (runtimeRequire('better-sqlite3'))(path.join(temporaryDirectory,'probe.sqlite'));try{database.exec('CREATE TABLE probe (value TEXT NOT NULL)');database.prepare('INSERT INTO probe VALUES (?)').run('ok');assert.equal(database.prepare('SELECT value FROM probe').get().value,'ok');console.log('PACKAGED native SQLite CREATE/INSERT/SELECT: passed')}finally{database.close();fs.rmSync(temporaryDirectory,{recursive:true,force:true})}`);
 }
 const probe = spawnSync(runtime.electronExecutable, [probeScript, root, packaged ? 'PACKAGED' : 'STAGED'], {
   cwd: root,

@@ -143,9 +143,14 @@ test("product opening stock is validated, auditable, and barcode is unique", asy
   await assert.rejects(command({ type: "product.update", id: otherId, name: "Other", barcode: "123" }), /هذا الباركود مستخدم/);
 });
 
-test("payment-account policy consistently controls every new outflow", async t => {
+test("purchase overdraft is allowed while configured account policy still controls other outflows", async t => {
   await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:100,allowNegativeBalance:true}});
-  await assert.rejects(command({type:"purchase.post",warehouseId:"wh-main",partyId:"supplier",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:2,unitPrice:100}]}),/الرصيد غير كاف/);
+  const purchaseId=await command({type:"purchase.post",warehouseId:"wh-main",partyId:"supplier",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:2,unitPrice:100}]});
+  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-100);
+  assert.deepEqual(await db.collection("documents").findOne({id:purchaseId},{projection:{_id:0,kind:1,total:1,paidTotal:1,dueTotal:1}}),{kind:"purchase",total:200,paidTotal:200,dueTotal:0});
+  assert.deepEqual(await db.collection("financialMovements").findOne({documentId:purchaseId},{projection:{_id:0,type:1,direction:1,amount:1}}),{type:"purchase",direction:"out",amount:200});
+  assert.equal((await db.collection("products").findOne({id:"p1"})).stocks["wh-main"],2);
+  assert.equal((await db.collection("parties").findOne({id:"supplier"})).payable,0);
   const bank=await command({type:"payment-account.create",name:"Overdraft",allowNegativeBalance:true});
   await command({type:"account-adjustment.post",accountId:bank,direction:"withdrawal",amount:150});
   assert.equal((await db.collection("paymentAccounts").findOne({id:bank})).balance,-150);
@@ -159,6 +164,46 @@ test("payment-account policy consistently controls every new outflow", async t =
   await assert.rejects(command({type:"account-balance-correction.post",accountId:"cash-id",newBalance:-1,reason:"audit"}),/غير صالح/);
   await command({type:"payment-account.update",id:"cash-id",name:"Cash",isActive:true,allowNegativeBalance:true});
   assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).allowNegativeBalance,false);
+});
+
+test("cash expense posts its document and movement from a zero balance",async()=>{
+  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:false}});
+  const expenseId=await command({type:"expense.post",title:"Rent",amount:500,occurredAt:"2026-08-15",paymentMethod:"cash-id"});
+  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-500);
+  assert.deepEqual(await db.collection("documents").findOne({id:expenseId},{projection:{_id:0,kind:1,total:1,paidTotal:1}}),{kind:"expense",total:500,paidTotal:500});
+  assert.deepEqual(await db.collection("financialMovements").findOne({documentId:expenseId},{projection:{_id:0,type:1,direction:1,amount:1}}),{type:"expense",direction:"out",amount:500});
+});
+
+test("recurring expense materializes once and may make cash negative",async()=>{
+  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:false}});
+  const recurringId=await command({type:"expense.post",title:"Monthly rent",amount:500,occurredAt:"2026-08-01",frequency:"monthly"});
+  const expenseId=await command({type:"expense.materialize",recurringId,dueDate:"2026-08-31",paymentMethod:"cash-id"});
+  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-500);
+  assert.equal(await db.collection("documents").countDocuments({recurringId,occurrenceKey:"2026-08"}),1);
+  assert.equal(await db.collection("financialMovements").countDocuments({documentId:expenseId,type:"expense",direction:"out",amount:500}),1);
+  await assert.rejects(command({type:"expense.materialize",recurringId,dueDate:"2026-08-15",paymentMethod:"cash-id"}),/مسبقًا/);
+  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-500);
+});
+
+test("paid purchase update atomically replaces its payment even when the result is negative",async()=>{
+  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:300,allowNegativeBalance:false}});
+  const purchaseId=await command({type:"purchase.post",warehouseId:"wh-main",partyId:"supplier",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:1,unitPrice:100}]});
+  await command({type:"purchase.update",documentId:purchaseId,warehouseId:"wh-main",partyId:"supplier",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:5,unitPrice:100}]});
+  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-200);
+  assert.equal((await db.collection("products").findOne({id:"p1"})).stocks["wh-main"],5);
+  assert.deepEqual(await db.collection("documents").findOne({id:purchaseId},{projection:{_id:0,total:1,revision:1}}),{total:500,revision:1});
+  assert.equal(await db.collection("financialMovements").countDocuments({documentId:purchaseId,type:"purchase",direction:"out",amount:500}),1);
+});
+
+test("cash manual withdrawal, transfer, and party payment retain insufficient-balance protection",async()=>{
+  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:false}});
+  const bank=await command({type:"payment-account.create",name:"Destination"});
+  await db.collection("parties").updateOne({id:"supplier"},{$set:{payable:100,net:-100}});
+  await assert.rejects(command({type:"account-adjustment.post",accountId:"cash-id",direction:"withdrawal",amount:1}),/الرصيد غير كاف/);
+  await assert.rejects(command({type:"account-transfer.post",fromAccountId:"cash-id",toAccountId:bank,amount:1}),/الرصيد غير كاف/);
+  await assert.rejects(command({type:"payment.post",partyId:"supplier",side:"payable",amount:1,paymentMethod:"cash-id"}),/الرصيد غير كاف/);
+  assert.equal((await db.collection("paymentAccounts").findOne({id:bank})).balance,0);
+  assert.equal((await db.collection("parties").findOne({id:"supplier"})).payable,100);
 });
 
 test("invoice reversal bypasses normal overdraft policy",async t=>{
@@ -316,7 +361,7 @@ test("warehouse safe deletion archives history and blocks stock/default", async 
   await command({type:"warehouse.delete",id:"empty"}); assert.equal(await db.collection("warehouses").findOne({_id:"empty"}),null);
   await command({type:"warehouse.delete",id:"historic"}); assert.equal((await db.collection("warehouses").findOne({_id:"historic"})).isArchived,true); assert.ok(await db.collection("documents").findOne({warehouseId:"historic"}));
   await assert.rejects(command({type:"warehouse.delete",id:"stocked"}),/يحتوي على مخزون/);
-  await assert.rejects(command({type:"warehouse.delete",id:"wh-main"}),/افتراضي/);
+  await assert.rejects(command({type:"warehouse.delete",id:"wh-main"}),/مخزنًا آخر للبيع/);
 });
 
 test("editing product may add audited opening stock but zero adds nothing", async t => {

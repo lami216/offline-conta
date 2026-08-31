@@ -69,8 +69,11 @@ async function financialMovement(db: Db, session: ClientSession, document: Recor
   if (!amount) return;
   const account = await paymentAccount(db, session, document.paymentMethod);
   const delta = direction === "in" ? amount : -amount;
+  const businessOutflowCanOverdraw = direction === "out" && (type === "purchase" || type === "expense");
+  const configuredOverdraftAllowed = account.code !== "cash" && account.allowNegativeBalance === true;
+  const negativeBalanceAllowed = businessOutflowCanOverdraw || configuredOverdraftAllowed;
   const result = await db.collection("paymentAccounts").updateOne(
-    { id: account.id, ...(direction === "out" && !(account.code !== "cash" && account.allowNegativeBalance === true) ? { balance: { $gte: amount } } : {}) },
+    { id: account.id, ...(direction === "out" && !negativeBalanceAllowed ? { balance: { $gte: amount } } : {}) },
     { $inc: { balance: delta } }, { session },
   );
   if (!result.matchedCount) throw new CommandError(`الرصيد غير كافٍ في ${account.name}`);
@@ -180,7 +183,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   if (type === "warehouse.default") { const warehouseId = text(body.warehouseId); if (!await warehouses(db).findOne({ _id: warehouseId, isArchived: { $ne: true } }, { session })) throw new CommandError("المخزن غير موجود", 404); await warehouses(db).updateMany({}, { $set: { isSalesDefault: false } }, { session }); await warehouses(db).updateOne({ _id: warehouseId }, { $set: { isSalesDefault: true } }, { session }); return warehouseId; }
   if (type === "warehouse.delete") {
     const warehouseId=text(body.id), warehouse=await warehouses(db).findOne({_id:warehouseId},{session}); if(!warehouse)throw new CommandError("المخزن غير موجود",404);
-    if(warehouse.isSalesDefault)throw new CommandError("عيّن مخزن بيع افتراضيًا آخر قبل حذف هذا المخزن",409);
+    if(warehouse.isSalesDefault)throw new CommandError("عيّن مخزنًا آخر للبيع قبل حذف هذا المخزن",409);
     if(await db.collection("products").findOne({[`stocks.${warehouseId}`]:{$exists:true,$ne:0}},{session}))throw new CommandError("لا يمكن حذف مخزن يحتوي على مخزون",409);
     const referenced=await db.collection("documents").findOne({$or:[{warehouseId},{destinationWarehouseId:warehouseId}]},{session})||await db.collection("stockMovements").findOne({warehouseId},{session});
     if(referenced)await warehouses(db).updateOne({_id:warehouseId},{$set:{isArchived:true,archivedAt:new Date(),isSalesDefault:false}},{session});else await warehouses(db).deleteOne({_id:warehouseId},{session}); return warehouseId;

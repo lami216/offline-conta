@@ -20,7 +20,7 @@ test("party list and account summaries share one four-item metric strip", () => 
 });
 
 test("visible product branding uses the shared Arabic identity and logo path", () => {
-  assert.match(brand, /APP_NAME = "الكرنة"/);
+  assert.match(brand, /APP_NAME = "الكرنه"/);
   assert.match(brand, /APP_LOGO_PATH = "\/alkarna-logo\.png"/);
   assert.match(app, /className="brand-logo"><img src=\{APP_LOGO_PATH\}/);
   assert.match(login, /<img src=\{APP_LOGO_PATH\}/);

@@ -11,7 +11,7 @@
     "start": "node scripts/start.mjs",
     "test": "node scripts/test.mjs",
     "test:production-legacy": "node tests/production-legacy-smoke.mjs",
-    "lint": "eslint . --ignore-pattern .next --ignore-pattern .next-candidate",
+    "lint": "eslint . --ignore-pattern .next --ignore-pattern .next-candidate --ignore-pattern desktop-dist --ignore-pattern dist",
     "hash-password": "node scripts/hash-password.mjs",
     "desktop:dev": "electron .",
     "desktop:prepare": "node scripts/generate-icon.mjs && node scripts/desktop-prepare.mjs",
@@ -52,11 +52,11 @@
     "wait-on": "^8.0.4"
   },
   "type": "module",
-  "displayName": "الكرنة",
+  "displayName": "الكرنه",
   "main": "desktop/main.cjs",
   "build": {
     "appId": "mr.alkarna.desktop",
-    "productName": "الكرنة",
+    "productName": "الكرنه",
     "asar": true,
     "asarUnpack": [
       "**/*.node"
@@ -96,7 +96,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "الكرنة",
+      "shortcutName": "الكرنه",
       "artifactName": "AlKarna-Setup-x64.exe"
     },
     "portable": {

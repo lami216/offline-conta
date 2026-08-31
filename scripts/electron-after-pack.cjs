@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- electron-builder loads hooks as CommonJS. */
 const {createHash} = require('node:crypto');
 const {cp, lstat, mkdir, readFile, realpath, rm} = require('node:fs/promises');
-const {isAbsolute, join, relative, sep} = require('node:path');
+const {join} = require('node:path');
+const {isPathInside} = require('./path-containment.cjs');
 
 const RUNTIME_DIRECTORY = 'alkarna-runtime';
 const requiredFiles = [
@@ -55,10 +56,6 @@ module.exports = async function afterPack(context) {
   }
 
   const packagedRoot = await realpath(destination);
-  const inside = (candidate) => {
-    const value = relative(packagedRoot, candidate);
-    return value === '' || (value !== '..' && !value.startsWith(`..${sep}`) && !isAbsolute(value));
-  };
   for (const item of [
     'node_modules/better-sqlite3',
     'node_modules/better-sqlite3/build/Release/better_sqlite3.node',
@@ -66,7 +63,7 @@ module.exports = async function afterPack(context) {
     'node_modules/sql.js/dist/sql-wasm.wasm',
   ]) {
     const physicalPath = await realpath(join(destination, item));
-    if (!inside(physicalPath)) throw new Error(`Packaged runtime path escaped ${RUNTIME_DIRECTORY}: ${item} -> ${physicalPath}`);
+    if (!isPathInside(packagedRoot, physicalPath)) throw new Error(`Packaged runtime path escaped ${RUNTIME_DIRECTORY}: ${item} -> ${physicalPath}`);
     console.log(`[afterPack] contained ${item}: ${physicalPath}`);
   }
   console.log(`[afterPack] authoritative runtime copied: ${source} -> ${destination}`);

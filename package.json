@@ -18,8 +18,8 @@
     "desktop:rebuild-native": "node scripts/prepare-electron-native.mjs",
     "desktop:test-native": "node scripts/test-electron-sqlite.cjs",
     "desktop:build": "npm run build && npm run desktop:prepare",
-    "desktop:dist": "npm run desktop:build && npm run desktop:rebuild-native && npm run desktop:test-native && electron-builder",
-    "desktop:dist:win": "electron-builder --win --x64"
+    "desktop:dist": "npm run desktop:build && npm run desktop:rebuild-native && npm run desktop:test-native && electron-builder --publish never",
+    "desktop:dist:win": "electron-builder --win --x64 --publish never"
   },
   "dependencies": {
     "better-sqlite3": "^11.10.0",

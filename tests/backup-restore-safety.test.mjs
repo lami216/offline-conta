@@ -22,16 +22,14 @@ function legacyBackup(overrides={}) {
   return {format:"conta-backup",schemaVersion:1,createdAt:new Date().toISOString(),appVersion:"legacy",encoding:"mongodb-extended-json-v2",collections,counts:Object.fromEntries(BACKUP_COLLECTIONS.map(name=>[name,collections[name].length]))};
 }
 
-test("restore preserves the local desktop owner with empty or unrelated legacy users",async t=>{
+test("restore guarantees at least one active login user without resurrecting owner",async t=>{
   const h=await sqliteHarness();t.after(()=>h.close());
-  const original=await h.db.collection("users").findOne({id:"owner"});
-  for(const users of [[],[{id:"old-user",username:"old",usernameNormalized:"old",passwordHash:"unused"}]]){
-    await h.db.transaction(session=>restoreNativeBackup(h.db,legacyBackup({users}),session));
-    const owner=await h.db.collection("users").findOne({id:"owner"});
-    assert.equal(owner.passwordHash,original.passwordHash);
-    assert.equal(owner.isActive,true);
-    assert.equal(verifyPasswordHash("12345678",owner.passwordHash),true);
-  }
+  await h.db.transaction(session=>restoreNativeBackup(h.db,legacyBackup({users:[]}),session));
+  const owner=await h.db.collection("users").findOne({id:"owner"});
+  assert.equal(owner.isActive,true);assert.equal(verifyPasswordHash("12345678",owner.passwordHash),true);
+  await h.db.transaction(session=>restoreNativeBackup(h.db,legacyBackup({users:[{id:"active-user",username:"active",usernameNormalized:"active",passwordHash:"unused",isActive:true}]}),session));
+  assert.equal(await h.db.collection("users").findOne({id:"owner"}),null);
+  assert.ok(await h.db.collection("users").findOne({id:"active-user",isActive:true}));
 });
 
 test("restore remediates legacy parties and rebuilds document and product counters transactionally",async t=>{

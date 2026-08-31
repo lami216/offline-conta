@@ -31,15 +31,15 @@ test("transaction account selectors use names only and independent empty state",
   const selector = between("function CompactPaymentSelector", "function InvoiceEditorToolbar");
   const expenses = between("function Expenses", "function Banks");
   const party = between("function PartyPage", "export function periodQuantity");
-  assert.match(selector, /const cashSelected = Boolean/);
-  assert.match(selector, /aria-pressed=\{cashSelected\}/);
-  assert.match(selector, /<option value="">اختر بنك<\/option>/);
+  assert.match(selector, /function PaymentAccountSelect/);
+  assert.match(selector, /payment-account-select/);
+  assert.match(selector, /options.map\(account=><option/);
   assert.doesNotMatch(selector + expenses, /\{(?:a|account)\.name\} —|<option[^>]*>[^{]*\{money\(/);
-  assert.doesNotMatch(party.match(/<select value=\{paymentMethod\}[\s\S]*?<\/select>/)?.[0] ?? "", /balance|money\(/);
+  assert.doesNotMatch(party.match(/<PaymentAccountSelect accounts=\{data.paymentAccounts\}[\s\S]*?\/>/)?.[0] ?? "", /balance|money\(/);
   assert.match(expenses, /recurringPaymentMethod/);
   assert.match(expenses, /disabled=\{!recurringPaymentMethod\}/);
   assert.match(party, /useState\(""\).*paymentMethod/s);
-  assert.match(party, /اختر وسيلة الدفع/);
+  assert.match(party, /<PaymentAccountSelect accounts=\{data.paymentAccounts\} activeOnly/);
   assert.match(party, /setPaymentMethod\(""\)/);
 });
 

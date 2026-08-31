@@ -43,22 +43,22 @@ export function validateInvariants(b: ContaBackup) {
 }
 export async function restoreNativeBackup(db: Db, backup: ContaBackup, session: ClientSession) {
   validateInvariants(backup);
-  const localOwner = await db.collection("users").findOne({ id: "owner" }, { session });
   for (const name of BACKUP_COLLECTIONS) {
     const collection = db.collection(name);
     await collection.deleteMany({}, { session });
-    const rows = name === "users" ? backup.collections.users.filter(user => user.id !== "owner" && user._id !== "owner") : backup.collections[name];
+    const rows = backup.collections[name];
     if (rows.length) await collection.insertMany(rows, { session, ordered: true });
   }
-  await ensureDesktopOwner(db, session, localOwner ?? undefined);
+  await ensureAtLeastOneLoginUser(db, session);
   await ensureLegacyCompatibility(db, session);
   await rebuildCounters(db, session);
   validateInvariants(await createNativeBackup(db));
 }
-export async function ensureDesktopOwner(db: Db, session?: ClientSession, preserved?: Document) {
-  if (await db.collection("users").findOne({ id: "owner" }, { session })) return;
+export async function ensureAtLeastOneLoginUser(db: Db, session?: ClientSession) {
+  if (await db.collection("users").findOne({ isActive:true }, { session })) return;
   const now = new Date();
-  await db.collection("users").insertOne(preserved ?? { id:"owner", username:"المالك", usernameNormalized:"المالك", name:"المالك", passwordHash:hashPassword("12345678"), isActive:true, owner:true, createdAt:now }, { session });
+  await db.collection("users").deleteOne({id:"owner"},{session});
+  await db.collection("users").insertOne({ id:"owner", username:"المالك", usernameNormalized:"المالك", name:"المالك", passwordHash:hashPassword("12345678"), isActive:true, owner:true, createdAt:now, updatedAt:now }, { session });
 }
 export async function ensureLegacyCompatibility(db: Db, session?: ClientSession) {
   const parties=await db.collection("parties").find({}, {session}).toArray();

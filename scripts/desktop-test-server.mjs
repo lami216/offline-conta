@@ -149,7 +149,7 @@ const wait = async () => {
     if (child.exitCode !== null) throw new Error(`${label} server exited ${child.exitCode}`);
     try {
       const response = await fetch(`${origin}/api/health`);
-      if (response.ok) return;
+      if (response.status === 200) return;
       const body = await response.text();
       if (response.status !== 500) console.error(`${label} health response (HTTP ${response.status}):\n${body}`);
       if (response.status === 500) {
@@ -165,22 +165,50 @@ const wait = async () => {
   throw new Error(`${label} server health timeout`);
 };
 const login = async () => { const response = await fetch(`${origin}/api/auth/login`, {method: 'POST', redirect: 'manual', headers: {Origin: origin, Host: `127.0.0.1:${port}`}, body: new URLSearchParams({username: 'المالك', password: '12345678'})}); if (response.status !== 303) throw new Error(`login status ${response.status}`); const cookie = response.headers.get('set-cookie')?.split(';')[0]; if (!cookie) throw new Error('login cookie missing'); return cookie; };
+const jsonResponse = async (url, init) => {
+  const response = await fetch(url, init);
+  const text = await response.text();
+  let body;
+  try { body = text ? JSON.parse(text) : null; }
+  catch { body = text; }
+  return {status: response.status, ok: response.ok, body};
+};
+const expectJson = (description, response, expectedStatus, predicate) => {
+  if (response.status !== expectedStatus || !predicate(response.body)) {
+    throw new Error(`${description}: expected status ${expectedStatus}; actual status ${response.status}; actual body ${JSON.stringify(response.body)}`);
+  }
+};
+const assertUnlicensedState = async (cookie, {includeDeviceAndCommand = false} = {}) => {
+  const licenseStatus = await jsonResponse(`${origin}/api/license/status`, {headers: {cookie}});
+  expectJson(`${label} license status`, licenseStatus, 200, (body) => body?.valid === false);
+  console.log(`${label} license status: unlicensed as expected`);
+
+  if (includeDeviceAndCommand) {
+    const device = await jsonResponse(`${origin}/api/license/device`, {headers: {cookie}});
+    expectJson(`${label} license device`, device, 200, (body) => /^AKD-(?:[A-F0-9]{4}-){4}[A-F0-9]{4}$/.test(body?.deviceId));
+    console.log(`${label} device code: ${device.body.deviceId}`);
+  }
+
+  const bootstrap = await jsonResponse(`${origin}/api/bootstrap`, {headers: {cookie}});
+  expectJson(`${label} bootstrap license gate`, bootstrap, 402, (body) => body?.code === 'LICENSE_REQUIRED');
+  console.log(`${label} bootstrap license gate: passed`);
+
+  if (includeDeviceAndCommand) {
+    const command = await jsonResponse(`${origin}/api/command`, {method: 'POST', headers: {cookie, Origin: origin, Host: `127.0.0.1:${port}`, 'content-type': 'application/json', 'Idempotency-Key': 'desktop-smoke-product'}, body: JSON.stringify({type: 'product.create', name: 'Desktop smoke product'})});
+    expectJson(`${label} command license gate`, command, 402, (body) => body?.code === 'LICENSE_REQUIRED');
+    console.log(`${label} command license gate: passed`);
+  }
+};
 
 try {
   start(); await wait();
   console.log(`${label} /api/health: 200`);
   let cookie = await login();
   console.log(`${label} login: passed`);
-  let bootstrap = await fetch(`${origin}/api/bootstrap`, {headers: {cookie}}).then((response) => response.json());
-  if (!bootstrap.warehouses?.length || !bootstrap.paymentAccounts?.length) throw new Error('defaults missing');
-  console.log(`${label} bootstrap defaults: passed`);
-  const response = await fetch(`${origin}/api/command`, {method: 'POST', headers: {cookie, Origin: origin, Host: `127.0.0.1:${port}`, 'content-type': 'application/json', 'Idempotency-Key': 'desktop-smoke-product'}, body: JSON.stringify({type: 'product.create', name: 'Desktop smoke product'})});
-  if (!response.ok) throw new Error(`mutation failed ${response.status}: ${await response.text()}`);
-  console.log(`${label} product.create mutation: passed`);
+  await assertUnlicensedState(cookie, {includeDeviceAndCommand: true});
   await stop(); start(); await wait(); cookie = await login();
-  bootstrap = await fetch(`${origin}/api/bootstrap`, {headers: {cookie}}).then((response) => response.json());
-  if (!bootstrap.products?.some((product) => product.name === 'Desktop smoke product')) throw new Error('restart persistence failed');
-  console.log(`${label} restart login and persistence: passed`);
+  await assertUnlicensedState(cookie);
+  console.log(`${label} restart unlicensed state: passed`);
   console.log(`${packaged ? 'packaged' : 'staged'} desktop server smoke passed`);
 } finally { await stop(); await rm(directory, {recursive: true, force: true}); }
 } finally {

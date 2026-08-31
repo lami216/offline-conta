@@ -1,4 +1,4 @@
-import { ensurePartyTypes, getMongo } from "../../../lib/mongodb";
+import { getDatabase } from "../../../lib/sqlite";
 import { resolvePartyType } from "../../domain";
 import { log } from "../../../lib/log";
 import { getPrincipalFromRequest, hasCapability } from "../../../lib/auth";
@@ -9,8 +9,8 @@ import { getInvoiceBranding } from "../../../lib/invoice-branding";
 export async function GET(request: Request) {
   const principal=await getPrincipalFromRequest(request);if(!principal)return Response.json({error:"غير مصرح"},{status:401});
   try {
-    const db = await getMongo();
-    await ensurePartyTypes(db);
+    const db = await getDatabase();
+
     await db.collection("documents").createIndex(
       { kind: 1, businessDate: 1, dailySequence: 1 },
       { unique: true, partialFilterExpression: { kind: "sale", businessDate: { $type: "string" }, dailySequence: { $type: "number" } } },

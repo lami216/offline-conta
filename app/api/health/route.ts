@@ -1,9 +1,9 @@
-import { getMongo } from "../../../lib/mongodb";
+import { getDatabase } from "../../../lib/sqlite";
 import { log } from "../../../lib/log";
 
 export async function GET() {
   try {
-    const db = await getMongo();
+    const db = await getDatabase();
     await db.command({ ping: 1 });
     return Response.json({ status: "ok", database: "connected" });
   } catch (error) {

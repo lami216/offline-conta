@@ -1,4 +1,4 @@
-import type { Db } from "mongodb";
+import type { SqliteDatabase as Db } from "./sqlite.ts";
 import { invoiceFonts, type InvoiceBrandingSettings, type InvoiceFont } from "../app/domain.ts";
 import { APP_NAME } from "./app-brand.ts";
 export const INVOICE_BRANDING_ID = "invoice-branding";

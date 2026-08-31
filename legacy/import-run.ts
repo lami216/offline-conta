@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Db } from "mongodb";
+import type { SqliteDatabase as Db } from "../lib/sqlite.ts";
 import { buildDataAccImportPackage, executeLegacyImportPhase, inspectLegacyDatabase, LEGACY_IMPORT_PHASES, type LegacyImportPhase } from "./dataacc-sqlite.ts";
 import { finishLegacyUpload, removeLegacyUpload } from "./upload-store.ts";
 import { createNativeBackup, stringifyBackup } from "../lib/backup.ts";

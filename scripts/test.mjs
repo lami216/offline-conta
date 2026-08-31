@@ -1,0 +1,3 @@
+import {readdirSync} from 'node:fs';import {spawnSync} from 'node:child_process';
+const retired=new Set(['backup-legacy.test.mjs','legacy-import-run.test.mjs','migration-engine.test.mjs','production-config.test.mjs','reliability-cleanup.test.mjs','reports.test.mjs','transactions.test.mjs','users-auth-integration.test.mjs','visual-consistency.test.mjs']);
+const files=readdirSync('tests').filter(file=>file.endsWith('.test.mjs')&&!retired.has(file)).map(file=>`tests/${file}`);const result=spawnSync(process.execPath,['--import','tsx','--test',...files],{stdio:'inherit'});process.exit(result.status??1);

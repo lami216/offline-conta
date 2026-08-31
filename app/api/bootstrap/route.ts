@@ -1,3 +1,4 @@
+import { requireValidLicense } from "../../../lib/license.ts";
 import { getDatabase } from "../../../lib/sqlite";
 import { resolvePartyType } from "../../domain";
 import { log } from "../../../lib/log";
@@ -6,7 +7,7 @@ import { peekNextDocumentSequence } from "../../../lib/document-sequences";
 import { calculatePartyFinancialSummaries } from "../../party-metrics";
 import { getInvoiceBranding } from "../../../lib/invoice-branding";
 
-export async function GET(request: Request) {
+export async function GET(request: Request) {const licenseDenied=await requireValidLicense();if(licenseDenied)return licenseDenied;
   const principal=await getPrincipalFromRequest(request);if(!principal)return Response.json({error:"غير مصرح"},{status:401});
   try {
     const db = await getDatabase();

@@ -1,3 +1,4 @@
+import { requireValidLicense } from "../../../lib/license.ts";
 import type { SqliteSession as ClientSession, SqliteDatabase as Db } from "../../../lib/sqlite.ts";
 import { getDatabase } from "../../../lib/sqlite.ts";
 import { log } from "../../../lib/log.ts";
@@ -345,7 +346,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   throw new CommandError("العملية غير مدعومة");
 }
 
-export async function POST(request: Request) {
+export async function POST(request: Request) {const licenseDenied=await requireValidLicense();if(licenseDenied)return licenseDenied;
   let type = "unknown";
   try {
     const body = await request.json() as Input; type = text(body.type);

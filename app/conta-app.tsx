@@ -83,7 +83,9 @@ type RunCommand = (
 ) => Promise<string & { disposition?: "deleted" | "archived" }>;
 type AdjustmentPrefill = { productId: string; warehouseId: string };
 type BankTab = "accounts" | "movements" | "transfers" | "adjustment";
-type SettingsTab = "general" | "users" | "data";
+type SettingsTab = "general" | "users" | "data" | "support";
+type LicenseInfo = {licenseId:string;storeId:string;customerName:string;storeName:string;deviceId:string;issuedAt:string};
+type LicenseStatus = {valid:boolean;license?:LicenseInfo;reason?:string};
 type DraftLine = {
   productId: string;
   quantity: string;
@@ -178,6 +180,7 @@ export default function ContaApp() {
     [settingsMenu, setSettingsMenu] = useState(false),
     [bankTab, setBankTab] = useState<BankTab>("accounts"),
     [settingsTab, setSettingsTab] = useState<SettingsTab>("general"),
+    [licenseStatus,setLicenseStatus]=useState<LicenseStatus|null>(null),
     [reportType, setReportType] = useState<ReportType>("sales"),
     [doc, setDoc] = useState<DocumentRecord | null>(null),
     [saleEditRequest, setSaleEditRequest] = useState<string | null>(null),
@@ -192,7 +195,7 @@ export default function ContaApp() {
   const bankMenuRef = useRef<HTMLDivElement>(null);
   const settingsMenuRef = useRef<HTMLDivElement>(null);
   const can=(capability:string)=>data.principal.principalType==="owner"||data.principal.permissions.includes(capability);
-  const settingsAllowed=(target:SettingsTab)=>can("settings.view")&&(target==="general"||(target==="users"?can("settings.users.manage"):can("settings.backup.manage")||can("settings.legacy.import")));
+  const settingsAllowed=(target:SettingsTab)=>target==="support"||can("settings.view")&&(target==="general"||(target==="users"?can("settings.users.manage"):can("settings.backup.manage")||can("settings.legacy.import")));
   const viewCapability:Record<View,string>={pos:"pos.view",purchases:"purchases.view",expenses:"expenses.view",customers:"customers.view",suppliers:"suppliers.view",warehouses:"warehouses.inventory.view",warehouseAdmin:"warehouses.view",transfers:"warehouses.transfer",adjustments:"warehouses.adjust",products:"products.view",records:"records.view",reports:"reports.view",banks:"banks.view",settings:"settings.view"};
   useEffect(() => {
     const close = (event: PointerEvent) => {
@@ -219,6 +222,10 @@ export default function ContaApp() {
     const blocking = options.blocking ?? true;
     if (blocking) setLoading(true);
     try {
+      const statusResponse=await fetch("/api/license/status"),status=await statusResponse.json() as LicenseStatus;
+      if(!statusResponse.ok)throw new Error((status as {error?:string}).error??"تعذر التحقق من الترخيص");
+      setLicenseStatus(status);
+      if(!status.valid){setSettingsTab("support");setView("settings");setError("");return}
       const r = await fetch("/api/bootstrap");
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
@@ -262,6 +269,7 @@ export default function ContaApp() {
     }, 50);
     return () => window.clearTimeout(timer);
   }, [autoPrintId, data.documents]);
+  if(!loading&&licenseStatus&&!licenseStatus.valid)return <div className="unlicensed-shell" dir="rtl"><div className="unlicensed-session"><form action="/api/auth/logout" method="post"><button className="soft" type="submit"><LogOut/> خروج</button></form></div><SupportLicensePage initialStatus={licenseStatus} onActivated={()=>reload({blocking:true})}/></div>;
   return (
     <div className={`app-shell section-${view}`} dir="rtl">
       <aside className={menu ? "sidebar open" : "sidebar"}>
@@ -283,7 +291,7 @@ export default function ContaApp() {
           {nav.slice(1).filter(n=>n.id!=="reports"&&n.id!=="settings"&&n.id!=="banks").map(n=><PermissionNavItem key={n.id} allowed={can(viewCapability[n.id])} active={view===n.id} className="nav" onClick={()=>navigate(n.id)}><n.icon/><span>{n.label}</span></PermissionNavItem>)}
           <div className="nav-menu bank-nav-menu" ref={bankMenuRef}><button className={view==="banks"?"nav active":"nav"} aria-expanded={bankMenu} onClick={()=>setBankMenu(open=>!open)}><Landmark/><span>البنوك</span><ChevronDown className="chevron"/></button>{bankMenu&&<div className="nav-popover bank-nav-popover">{bankNav.map(item=><PermissionNavItem key={item.id} allowed={can("banks.view")} active={view==="banks"&&bankTab===item.id} onClick={()=>{setBankTab(item.id);navigate("banks")}}><span>{item.label}</span></PermissionNavItem>)}</div>}</div>
           <div className="nav-menu report-nav-menu" ref={reportMenuRef}><button className={view==="reports"?"nav active":"nav"} aria-expanded={reportMenu} onClick={()=>setReportMenu(value=>!value)}><Receipt/><span>التقارير</span><ChevronDown className="chevron"/></button>{reportMenu&&<div className="nav-popover report-nav-popover">{reportOrder.map(id=><PermissionNavItem key={id} allowed={can("reports.view")} active={view==="reports"&&reportType===id} onClick={()=>{setReportType(id);navigate("reports")}}><span>{reportNames[id]}</span></PermissionNavItem>)}</div>}</div>
-          <div className="nav-menu settings-nav-menu" ref={settingsMenuRef}><button className={view==="settings"?"nav active":"nav"} aria-expanded={settingsMenu} onClick={()=>setSettingsMenu(value=>!value)}><SettingsIcon/><span>الإعدادات</span><ChevronDown className="chevron"/></button>{settingsMenu&&<div className="nav-popover">{([{id:"general",label:"إعدادات عامة"},{id:"users",label:"المستخدمون والصلاحيات"},{id:"data",label:"البيانات والنسخ الاحتياطي"}] as Array<{id:SettingsTab;label:string}>).map(item=><PermissionNavItem key={item.id} allowed={settingsAllowed(item.id)} active={view==="settings"&&settingsTab===item.id} onClick={()=>{setSettingsTab(item.id);navigate("settings")}}><span>{item.label}</span></PermissionNavItem>)}</div>}</div>
+          <div className="nav-menu settings-nav-menu" ref={settingsMenuRef}><button className={view==="settings"?"nav active":"nav"} aria-expanded={settingsMenu} onClick={()=>setSettingsMenu(value=>!value)}><SettingsIcon/><span>الإعدادات</span><ChevronDown className="chevron"/></button>{settingsMenu&&<div className="nav-popover">{([{id:"general",label:"إعدادات عامة"},{id:"users",label:"المستخدمون والصلاحيات"},{id:"data",label:"البيانات والنسخ الاحتياطي"},{id:"support",label:"تواصل مع الدعم"}] as Array<{id:SettingsTab;label:string}>).map(item=><PermissionNavItem key={item.id} allowed={settingsAllowed(item.id)} active={view==="settings"&&settingsTab===item.id} onClick={()=>{setSettingsTab(item.id);if(item.id==="support"){setView("settings");setSettingsMenu(false)}else navigate("settings")}}><span>{item.label}</span></PermissionNavItem>)}</div>}</div>
         </nav>
         <div className="account-session">
           <strong>{data.principal.name}</strong>
@@ -418,8 +426,17 @@ function DataSettings({data,reload}:{data:BootstrapData;reload:()=>Promise<void>
 }
 
 function SettingsPage({data,reload,tab}:{data:BootstrapData;reload:()=>Promise<void>;tab:SettingsTab}) {
-  const allowed=(target:SettingsTab)=>target==="general"?true:target==="users"?(data.principal.principalType==="owner"||data.principal.permissions.includes("settings.users.manage")):(data.principal.principalType==="owner"||data.principal.permissions.some(permission=>["settings.backup.manage","settings.legacy.import"].includes(permission)));
-  return <section className="settings-page">{tab==="general"&&<GeneralSettings data={data} reload={reload}/>} {tab==="users"&&allowed("users")&&<UsersPermissions/>} {tab==="data"&&allowed("data")&&<DataSettings data={data} reload={reload}/>}</section>;
+  const allowed=(target:SettingsTab)=>target==="support"||target==="general"?true:target==="users"?(data.principal.principalType==="owner"||data.principal.permissions.includes("settings.users.manage")):(data.principal.principalType==="owner"||data.principal.permissions.some(permission=>["settings.backup.manage","settings.legacy.import"].includes(permission)));
+  return <section className="settings-page">{tab==="general"&&<GeneralSettings data={data} reload={reload}/>} {tab==="users"&&allowed("users")&&<UsersPermissions/>} {tab==="data"&&allowed("data")&&<DataSettings data={data} reload={reload}/>} {tab==="support"&&<SupportLicensePage onActivated={reload}/>}</section>;
+}
+
+function SupportLicensePage({initialStatus,onActivated}:{initialStatus?:LicenseStatus;onActivated:()=>void|Promise<void>}){
+  const [status,setStatus]=useState<LicenseStatus|undefined>(initialStatus),[deviceId,setDeviceId]=useState(""),[busy,setBusy]=useState(""),[message,setMessage]=useState(""),[failure,setFailure]=useState("");
+  useEffect(()=>{if(initialStatus)return;const timer=window.setTimeout(()=>fetch("/api/license/status").then(readApiResponse).then(value=>setStatus(value as LicenseStatus)).catch(error=>setFailure(error instanceof Error?error.message:"تعذر التحقق من الترخيص")),0);return()=>window.clearTimeout(timer)},[initialStatus]);
+  const device=async()=>{setBusy("device");setFailure("");try{const value=await readApiResponse(await fetch("/api/license/device")) as {deviceId:string};setDeviceId(value.deviceId)}catch(error){setFailure(error instanceof Error?error.message:"تعذر استخراج رقم الجهاز. تواصل مع الدعم.")}finally{setBusy("")}};
+  const copy=async()=>{if(!deviceId)return;try{await navigator.clipboard.writeText(deviceId)}catch{const input=document.createElement("textarea");input.value=deviceId;document.body.appendChild(input);input.select();document.execCommand("copy");input.remove()}setMessage("تم نسخ رقم الجهاز")};
+  const install=async(file:File|null)=>{if(!file)return;setBusy("install");setFailure("");setMessage("");try{const result=await readApiResponse(await fetch("/api/license/install",{method:"POST",headers:{"content-type":"application/json"},body:file})) as {message:string;license:LicenseInfo};setStatus({valid:true,license:result.license});setMessage(result.message);await onActivated()}catch(error){setFailure(error instanceof Error?error.message:"تعذر تثبيت ملف الترخيص")}finally{setBusy("")}};
+  return <section className="license-card" aria-labelledby="license-heading"><img src={APP_LOGO_PATH} alt={APP_LOGO_ALT}/><h2>{APP_NAME}</h2><h3 id="license-heading">ترخيص الجهاز</h3><span className={`license-state ${status?.valid?"active":""}`}>{status?.valid?"مفعل":"غير مفعل"}</span><div className="license-device"><label>رقم الجهاز<input readOnly dir="ltr" value={deviceId||"اضغط لاستخراج رقم الجهاز"}/></label><div><button className="primary" disabled={!!busy} onClick={()=>void device()}>{busy==="device"?"جاري الاستخراج…":"استخراج رقم الجهاز"}</button><button className="soft" disabled={!deviceId} onClick={()=>void copy()}>نسخ الرقم</button></div></div>{status?.valid&&status.license&&<dl className="license-details"><div><dt>اسم العميل</dt><dd>{status.license.customerName}</dd></div><div><dt>اسم المحل</dt><dd>{status.license.storeName}</dd></div><div><dt>رقم الترخيص</dt><dd dir="ltr">{status.license.licenseId}</dd></div><div><dt>معرّف المتجر</dt><dd dir="ltr">{status.license.storeId}</dd></div><div><dt>تاريخ الإصدار</dt><dd>{formatDateTime(status.license.issuedAt)}</dd></div></dl>}<label className="file-button license-upload">{busy==="install"?"جاري التفعيل…":"رفع ملف الترخيص"}<input type="file" accept=".alkarna-license" disabled={!!busy} onChange={event=>void install(event.target.files?.[0]??null)}/></label>{message&&<div className="success">{message}</div>}{failure&&<div className="error" role="alert">{failure}</div>}</section>
 }
 
 function FramedSection({ title, className = "", allowOverflow = false, children }: { title: string; className?: string; allowOverflow?: boolean; children: ReactNode }) {

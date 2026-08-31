@@ -1,6 +1,6 @@
 {
   "name": "alkarna-desktop",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "engines": {
     "node": ">=20.9.0"
@@ -76,12 +76,6 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
         }
       ]
     },
@@ -93,9 +87,6 @@
       "createStartMenuShortcut": true,
       "shortcutName": "الكرنه",
       "artifactName": "AlKarna-Setup-x64.exe"
-    },
-    "portable": {
-      "artifactName": "AlKarna-Portable-x64.exe"
     },
     "npmRebuild": false
   }

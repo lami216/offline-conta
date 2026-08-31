@@ -29,6 +29,7 @@ jobs:
       - run: npm run desktop:test-native
       - run: npm run desktop:test-server
       - run: npm run desktop:dist:win
+      - run: npm run desktop:test-packaged
       - name: Verify Windows artifacts
         shell: pwsh
         run: |

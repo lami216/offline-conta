@@ -164,7 +164,6 @@ const wait = async () => {
   }
   throw new Error(`${label} server health timeout`);
 };
-const login = async () => { const response = await fetch(`${origin}/api/auth/login`, {method: 'POST', redirect: 'manual', headers: {Origin: origin, Host: `127.0.0.1:${port}`}, body: new URLSearchParams({username: 'المالك', password: '12345678'})}); if (response.status !== 303) throw new Error(`login status ${response.status}`); const cookie = response.headers.get('set-cookie')?.split(';')[0]; if (!cookie) throw new Error('login cookie missing'); return cookie; };
 const jsonResponse = async (url, init) => {
   const response = await fetch(url, init);
   const text = await response.text();
@@ -178,23 +177,24 @@ const expectJson = (description, response, expectedStatus, predicate) => {
     throw new Error(`${description}: expected status ${expectedStatus}; actual status ${response.status}; actual body ${JSON.stringify(response.body)}`);
   }
 };
-const assertUnlicensedState = async (cookie, {includeDeviceAndCommand = false} = {}) => {
-  const licenseStatus = await jsonResponse(`${origin}/api/license/status`, {headers: {cookie}});
+const assertUnlicensedState = async ({includeDeviceAndCommand = false} = {}) => {
+  const licenseStatus = await jsonResponse(`${origin}/api/license/status`);
   expectJson(`${label} license status`, licenseStatus, 200, (body) => body?.valid === false);
+  console.log(`${label} zero-user direct access: passed`);
   console.log(`${label} license status: unlicensed as expected`);
 
   if (includeDeviceAndCommand) {
-    const device = await jsonResponse(`${origin}/api/license/device`, {headers: {cookie}});
+    const device = await jsonResponse(`${origin}/api/license/device`);
     expectJson(`${label} license device`, device, 200, (body) => /^AKD-(?:[A-F0-9]{4}-){4}[A-F0-9]{4}$/.test(body?.deviceId));
     console.log(`${label} device code: ${device.body.deviceId}`);
   }
 
-  const bootstrap = await jsonResponse(`${origin}/api/bootstrap`, {headers: {cookie}});
+  const bootstrap = await jsonResponse(`${origin}/api/bootstrap`);
   expectJson(`${label} bootstrap license gate`, bootstrap, 402, (body) => body?.code === 'LICENSE_REQUIRED');
   console.log(`${label} bootstrap license gate: passed`);
 
   if (includeDeviceAndCommand) {
-    const command = await jsonResponse(`${origin}/api/command`, {method: 'POST', headers: {cookie, Origin: origin, Host: `127.0.0.1:${port}`, 'content-type': 'application/json', 'Idempotency-Key': 'desktop-smoke-product'}, body: JSON.stringify({type: 'product.create', name: 'Desktop smoke product'})});
+    const command = await jsonResponse(`${origin}/api/command`, {method: 'POST', headers: {Origin: origin, Host: `127.0.0.1:${port}`, 'content-type': 'application/json', 'Idempotency-Key': 'desktop-smoke-product'}, body: JSON.stringify({type: 'product.create', name: 'Desktop smoke product'})});
     expectJson(`${label} command license gate`, command, 402, (body) => body?.code === 'LICENSE_REQUIRED');
     console.log(`${label} command license gate: passed`);
   }
@@ -203,12 +203,10 @@ const assertUnlicensedState = async (cookie, {includeDeviceAndCommand = false} =
 try {
   start(); await wait();
   console.log(`${label} /api/health: 200`);
-  let cookie = await login();
-  console.log(`${label} login: passed`);
-  await assertUnlicensedState(cookie, {includeDeviceAndCommand: true});
-  await stop(); start(); await wait(); cookie = await login();
-  await assertUnlicensedState(cookie);
-  console.log(`${label} restart unlicensed state: passed`);
+  await assertUnlicensedState({includeDeviceAndCommand: true});
+  await stop(); start(); await wait();
+  await assertUnlicensedState();
+  console.log(`${label} restart zero-user direct mode: passed`);
   console.log(`${packaged ? 'packaged' : 'staged'} desktop server smoke passed`);
 } finally { await stop(); await rm(directory, {recursive: true, force: true}); }
 } finally {

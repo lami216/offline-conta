@@ -2,6 +2,8 @@ import type { SqliteSession as ClientSession, SqliteDatabase as Db, DbDocument a
 import { ensureDatabaseSchema } from "./sqlite.ts";
 import { rebuildDocumentSequenceCounters } from "./document-sequences.ts";
 import { EJSON } from "bson";
+import { hashPassword } from "./password.ts";
+import { resolvePartyType } from "../app/domain.ts";
 
 export const BACKUP_SCHEMA_VERSION = 1;
 export const BACKUP_COLLECTIONS = ["parties", "warehouses", "products", "documents", "stockMovements", "financialMovements", "paymentAccounts", "recurringExpenses", "accountTransfers", "counters", "auditEvents", "appSettings", "users"] as const;
@@ -41,8 +43,29 @@ export function validateInvariants(b: ContaBackup) {
 }
 export async function restoreNativeBackup(db: Db, backup: ContaBackup, session: ClientSession) {
   validateInvariants(backup);
-  for (const name of BACKUP_COLLECTIONS) { const collection = db.collection(name); await collection.deleteMany({}, { session }); if (backup.collections[name].length) await collection.insertMany(backup.collections[name], { session, ordered: true }); }
+  const localOwner = await db.collection("users").findOne({ id: "owner" }, { session });
+  for (const name of BACKUP_COLLECTIONS) {
+    const collection = db.collection(name);
+    await collection.deleteMany({}, { session });
+    const rows = name === "users" ? backup.collections.users.filter(user => user.id !== "owner" && user._id !== "owner") : backup.collections[name];
+    if (rows.length) await collection.insertMany(rows, { session, ordered: true });
+  }
+  await ensureDesktopOwner(db, session, localOwner ?? undefined);
+  await ensureLegacyCompatibility(db, session);
   await rebuildCounters(db, session);
+  validateInvariants(await createNativeBackup(db));
 }
-export async function rebuildCounters(db: Db, session?: ClientSession) { const products = await db.collection("products").find({}, { session, projection: { sku: 1 } }).toArray(); const max = products.reduce((n,p) => /^\d{1,9}$/.test(String(p.sku)) ? Math.max(n, Number(p.sku)) : n, 0); await db.collection<{_id:string;value:number;updatedAt?:Date}>("counters").updateOne({ _id: "productSequence" }, { $max: { value: max }, $set: { updatedAt: new Date() } }, { upsert: true, session }); if (!session) await rebuildDocumentSequenceCounters(db); }
+export async function ensureDesktopOwner(db: Db, session?: ClientSession, preserved?: Document) {
+  if (await db.collection("users").findOne({ id: "owner" }, { session })) return;
+  const now = new Date();
+  await db.collection("users").insertOne(preserved ?? { id:"owner", username:"المالك", usernameNormalized:"المالك", name:"المالك", passwordHash:hashPassword("12345678"), isActive:true, owner:true, createdAt:now }, { session });
+}
+export async function ensureLegacyCompatibility(db: Db, session?: ClientSession) {
+  const parties=await db.collection("parties").find({}, {session}).toArray();
+  for(const party of parties)if(!party.partyType)await db.collection("parties").updateOne({_id:party._id},{$set:{partyType:resolvePartyType(party)}},{session});
+  const sales=await db.collection("documents").find({kind:"sale"},{session}).sort({businessDate:1,occurredAt:1,id:1}).toArray(),used=new Map<string,Set<number>>();
+  for(const sale of sales)if(sale.businessDate&&Number.isSafeInteger(Number(sale.dailySequence))&&Number(sale.dailySequence)>0){const day=String(sale.businessDate),values=used.get(day)??new Set<number>();values.add(Number(sale.dailySequence));used.set(day,values)}
+  for(const sale of sales)if(sale.businessDate&&!(Number.isSafeInteger(Number(sale.dailySequence))&&Number(sale.dailySequence)>0)){const day=String(sale.businessDate),values=used.get(day)??new Set<number>();let sequence=1;while(values.has(sequence))sequence++;values.add(sequence);used.set(day,values);await db.collection("documents").updateOne({_id:sale._id},{$set:{dailySequence:sequence}},{session})}
+}
+export async function rebuildCounters(db: Db, session?: ClientSession) { const products = await db.collection("products").find({}, { session, projection: { sku: 1 } }).toArray(); const max = products.reduce((n,p) => /^\d{1,9}$/.test(String(p.sku)) ? Math.max(n, Number(p.sku)) : n, 0); await db.collection<{_id:string;value:number;updatedAt?:Date}>("counters").updateOne({ _id: "productSequence" }, { $max: { value: max }, $set: { updatedAt: new Date() } }, { upsert: true, session }); await rebuildDocumentSequenceCounters(db); }
 export async function finishRestore(db: Db) { await ensureDatabaseSchema(db); }

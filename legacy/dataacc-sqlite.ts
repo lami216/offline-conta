@@ -1,7 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import initSqlJs, { type Database } from "sql.js";
 import { createRequire } from "node:module";
 import { isAbsolute, join } from "node:path";
-import type { AnyBulkWriteOperation, Db, Document } from "mongodb";
+import type { SqliteDatabase as Db, DbDocument as Document } from "../lib/sqlite.ts";
+type AnyBulkWriteOperation<T> = { updateOne: { filter: Document; update: Document; upsert?: boolean } };
 import { rebuildCounters } from "../lib/backup.ts";
 import { createHash } from "node:crypto";
 import type { CanonicalEntity, CanonicalImportPackage, ImportSourceAdapter } from "../migration/types.ts";

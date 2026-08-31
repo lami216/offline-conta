@@ -1,4 +1,4 @@
-import type { Db } from "mongodb";
+import type { SqliteDatabase as Db } from "../lib/sqlite.ts";
 import type { CanonicalEntityType, CanonicalImportPackage, EntityMatch } from "./types.ts";
 import { matchCanonicalEntity } from "./matching.ts";
 const collections:Partial<Record<CanonicalEntityType,string>>={products:"products",warehouses:"warehouses",parties:"parties",paymentAccounts:"paymentAccounts"};

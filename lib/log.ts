@@ -1,7 +1,7 @@
 const SENSITIVE_KEY = /(password|passwd|secret|token|authorization|cookie|connection|string|uri)/i;
 
 function sanitize(value: unknown, seen = new WeakSet<object>()): unknown {
-  if (typeof value === "string") return value.replace(/mongodb(?:\+srv)?:\/\/[^\s]+/gi, "[redacted connection string]");
+  if (typeof value === "string") return value.replace(/(?:connection|string):\/\/[^\s]+/gi, "[redacted connection string]");
   if (value instanceof Error) return { name: value.name, message: sanitize(value.message, seen), stack: sanitize(value.stack, seen) };
   if (!value || typeof value !== "object") return value;
   if (seen.has(value)) return "[circular]";

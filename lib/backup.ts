@@ -1,5 +1,5 @@
-import { BSON, type ClientSession, type Db, type Document } from "mongodb";
-import { ensureDatabaseSchema } from "./mongodb.ts";
+import type { SqliteSession as ClientSession, SqliteDatabase as Db, DbDocument as Document } from "./sqlite.ts";
+import { ensureDatabaseSchema } from "./sqlite.ts";
 import { rebuildDocumentSequenceCounters } from "./document-sequences.ts";
 
 export const BACKUP_SCHEMA_VERSION = 1;
@@ -7,17 +7,17 @@ export const BACKUP_COLLECTIONS = ["parties", "warehouses", "products", "documen
 export const MAX_BACKUP_ITEMS = 500_000;
 export const MAX_BACKUP_BYTES = 50 * 1024 * 1024;
 type BackupCollection = typeof BACKUP_COLLECTIONS[number];
-export type ContaBackup = { format: "conta-backup"; schemaVersion: 1; createdAt: string; appVersion: string; encoding: "mongodb-extended-json-v2"; collections: Record<BackupCollection, Document[]>; counts: Record<BackupCollection, number> };
+export type ContaBackup = { format: "conta-backup"; schemaVersion: 1; createdAt: string; appVersion: string; encoding: "json-v2"; collections: Record<BackupCollection, Document[]>; counts: Record<BackupCollection, number> };
 
 export async function createNativeBackup(db: Db): Promise<ContaBackup> {
   const pairs = await Promise.all(BACKUP_COLLECTIONS.map(async name => [name, await db.collection(name).find().toArray()] as const));
   const collections = Object.fromEntries(pairs) as unknown as ContaBackup["collections"];
-  return { format: "conta-backup", schemaVersion: 1, createdAt: new Date().toISOString(), appVersion: process.env.npm_package_version ?? "0.1.0", encoding: "mongodb-extended-json-v2", collections, counts: Object.fromEntries(pairs.map(([name, rows]) => [name, rows.length])) as ContaBackup["counts"] };
+  return { format: "conta-backup", schemaVersion: 1, createdAt: new Date().toISOString(), appVersion: process.env.npm_package_version ?? "0.1.0", encoding: "json-v2", collections, counts: Object.fromEntries(pairs.map(([name, rows]) => [name, rows.length])) as ContaBackup["counts"] };
 }
-export function stringifyBackup(value: ContaBackup) { return BSON.EJSON.stringify(value, { relaxed: false }); }
+export function stringifyBackup(value: ContaBackup) { return JSON.stringify(value); }
 export function parseAndValidateBackup(input: string): ContaBackup {
   if (Buffer.byteLength(input) > MAX_BACKUP_BYTES) throw new Error("ملف النسخة أكبر من الحد المسموح");
-  let value: unknown; try { value = BSON.EJSON.parse(input); } catch { throw new Error("ملف النسخة ليس JSON صالحًا"); }
+  let value: unknown; try { value = JSON.parse(input); } catch { throw new Error("ملف النسخة ليس JSON صالحًا"); }
   const b = value as Partial<ContaBackup>;
   if (b.format !== "conta-backup") throw new Error("هذا الملف ليس نسخة الكرنة");
   if (b.schemaVersion !== BACKUP_SCHEMA_VERSION) throw new Error(Number(b.schemaVersion) > BACKUP_SCHEMA_VERSION ? "إصدار النسخة أحدث من هذا التطبيق" : "إصدار النسخة غير مدعوم");

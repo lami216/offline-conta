@@ -1,4 +1,6 @@
-import type { Db, Document, FindCursor } from "mongodb";
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+import type { SqliteDatabase as Db, DbDocument as Document } from "./sqlite.ts";
+type FindCursor<T> = ReturnType<Db["collection"]>["find"] extends (...args:any[])=>infer R ? R : never;
 import type { ReportFilters, ReportResponse, ReportRow, ReportType } from "../app/report-types.ts";
 import { inventoryUnitCost, isProductExpired, resolvePartyType } from "../app/domain.ts";
 import { displayDocumentNumber } from "./document-sequences.ts";

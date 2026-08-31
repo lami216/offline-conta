@@ -1,22 +1,27 @@
 {
-  "name": "conta-pos",
+  "name": "alkarna-desktop",
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=20.9.0"
   },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "node scripts/start.mjs",
-    "test": "tsx --test tests/*.test.mjs",
+    "test": "node scripts/test.mjs",
     "test:production-legacy": "node tests/production-legacy-smoke.mjs",
     "lint": "eslint . --ignore-pattern .next --ignore-pattern .next-candidate",
-    "hash-password": "node scripts/hash-password.mjs"
+    "hash-password": "node scripts/hash-password.mjs",
+    "desktop:dev": "electron .",
+    "desktop:prepare": "npm run build && node scripts/generate-icon.mjs && node scripts/desktop-prepare.mjs",
+    "desktop:build": "npm run desktop:prepare",
+    "desktop:dist": "npm run desktop:prepare && electron-builder",
+    "desktop:dist:win": "electron-builder --win --x64"
   },
   "dependencies": {
+    "better-sqlite3": "^11.10.0",
     "lucide-react": "^0.468.0",
-    "mongodb": "^6.19.0",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",
@@ -24,17 +29,73 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.2.1",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "22.19.19",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@types/sql.js": "^1.4.9",
+    "concurrently": "^9.2.0",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
-    "mongodb-memory-server": "^10.4.3",
+    "png-to-ico": "^3.0.1",
     "tailwindcss": "4.2.1",
     "tsx": "^4.23.12",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "wait-on": "^8.0.4"
   },
   "type": "module",
-  "displayName": "Conta POS"
+  "displayName": "الكرنة",
+  "main": "desktop/main.cjs",
+  "build": {
+    "appId": "mr.alkarna.desktop",
+    "productName": "الكرنة",
+    "asar": true,
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "files": [
+      "desktop/main.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "desktop-dist/app",
+        "to": "app"
+      }
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "icon": "build/alkarna.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "الكرنة",
+      "artifactName": "AlKarna-Setup-x64.exe"
+    },
+    "portable": {
+      "artifactName": "AlKarna-Portable-x64.exe"
+    },
+    "npmRebuild": true
+  }
 }

@@ -1,5 +1,5 @@
-import type { ClientSession, Db } from "mongodb";
-import { getMongo, getMongoClient } from "../../../lib/mongodb.ts";
+import type { SqliteSession as ClientSession, SqliteDatabase as Db } from "../../../lib/sqlite.ts";
+import { getDatabase } from "../../../lib/sqlite.ts";
 import { log } from "../../../lib/log.ts";
 import { requireCapability, validSameOrigin, type Capability } from "../../../lib/auth.ts";
 import { isProductExpired } from "../../domain.ts";
@@ -353,16 +353,16 @@ export async function POST(request: Request) {
     const idempotencyKey=text(request.headers.get("Idempotency-Key"));
     if(!idempotencyKey||idempotencyKey.length>200)return Response.json({error:"مفتاح العملية مطلوب"},{status:400});
     const fingerprint=Buffer.from(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(body)))).toString("hex");
-    const db=await getMongo(),receipts=db.collection("commandReceipts"),prior=await receipts.findOne({_id:idempotencyKey as never});
+    const db=await getDatabase(),receipts=db.collection("commandReceipts"),prior=await receipts.findOne({_id:idempotencyKey as never});
     if(prior){if(prior.fingerprint!==fingerprint)return Response.json({error:"مفتاح العملية مستخدم لطلب مختلف"},{status:409});if(prior.status==="committed")return Response.json(prior.result);return Response.json({error:"العملية قيد التنفيذ"},{status:409});}
-    const client=getMongoClient();let result:unknown="",response:unknown;
-    try{await client.withSession(session=>session.withTransaction(async()=>{
+    let result:unknown="",response:unknown;
+    try{await db.transaction(async session=>{
       await receipts.insertOne({_id:idempotencyKey as never,commandType:type,fingerprint,status:"processing",createdAt:new Date()},{session});
       await db.collection("auditEvents").insertOne({id:id("audit"),action:type,status:"started",createdAt:new Date()},{session});
       result=await execute(db,session,body);response=typeof result==="object"&&result?result:{id:result};
       await db.collection("auditEvents").insertOne({id:id("audit"),action:type,entityId:typeof result==="object"&&result?(result as {id?:unknown}).id:result,status:"committed",createdAt:new Date()},{session});
       await receipts.updateOne({_id:idempotencyKey as never},{$set:{status:"committed",result:response,committedAt:new Date()}},{session});
-    },{readConcern:{level:"snapshot"},writeConcern:{w:"majority"}}));}
+    });}
     catch(error){if((error as {code?:number}).code===11000){const duplicate=await receipts.findOne({_id:idempotencyKey as never});if(duplicate?.fingerprint!==fingerprint)return Response.json({error:"مفتاح العملية مستخدم لطلب مختلف"},{status:409});if(duplicate?.status==="committed")return Response.json(duplicate.result);return Response.json({error:"العملية قيد التنفيذ"},{status:409});}throw error;}
     log("info","api.command.completed",{commandType:type,entityId:result});return Response.json(response);
   }catch(error){const status=error instanceof CommandError?error.status:500;log("error","api.command.failed",{commandType:type,error});return Response.json({error:error instanceof CommandError?error.message:"تعذر تنفيذ العملية"},{status});}

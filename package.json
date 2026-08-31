@@ -55,6 +55,7 @@
   "displayName": "الكرنه",
   "main": "desktop/main.cjs",
   "build": {
+    "afterPack": "scripts/electron-after-pack.cjs",
     "appId": "mr.alkarna.desktop",
     "productName": "الكرنه",
     "asar": true,
@@ -63,12 +64,6 @@
     ],
     "files": [
       "desktop/main.cjs"
-    ],
-    "extraResources": [
-      {
-        "from": "desktop-dist/app",
-        "to": "app"
-      }
     ],
     "directories": {
       "output": "dist"

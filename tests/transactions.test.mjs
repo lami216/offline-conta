@@ -143,7 +143,7 @@ test("product opening stock is validated, auditable, and barcode is unique", asy
   await assert.rejects(command({ type: "product.update", id: otherId, name: "Other", barcode: "123" }), /هذا الباركود مستخدم/);
 });
 
-test("purchase overdraft is allowed while configured account policy still controls other outflows", async t => {
+test("every outflow obeys the configured account overdraft policy", async t => {
   await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:100,allowNegativeBalance:true}});
   const purchaseId=await command({type:"purchase.post",warehouseId:"wh-main",partyId:"supplier",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:2,unitPrice:100}]});
   assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-100);
@@ -161,21 +161,21 @@ test("purchase overdraft is allowed while configured account policy still contro
   await assert.rejects(command({type:"payment-account.update",id:bank,name:"Overdraft",isActive:true,allowNegativeBalance:false}),/لا يمكن إيقاف/);
   await command({type:"account-balance-correction.post",accountId:bank,newBalance:-500,reason:"audit"});
   assert.equal((await db.collection("paymentAccounts").findOne({id:bank})).balance,-500);
-  await assert.rejects(command({type:"account-balance-correction.post",accountId:"cash-id",newBalance:-1,reason:"audit"}),/غير صالح/);
+  await command({type:"account-balance-correction.post",accountId:"cash-id",newBalance:-1,reason:"audit"});
   await command({type:"payment-account.update",id:"cash-id",name:"Cash",isActive:true,allowNegativeBalance:true});
-  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).allowNegativeBalance,false);
+  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).allowNegativeBalance,true);
 });
 
-test("cash expense posts its document and movement from a zero balance",async()=>{
-  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:false}});
+test("cash expense may overdraw when enabled",async()=>{
+  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:true}});
   const expenseId=await command({type:"expense.post",title:"Rent",amount:500,occurredAt:"2026-08-15",paymentMethod:"cash-id"});
   assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-500);
   assert.deepEqual(await db.collection("documents").findOne({id:expenseId},{projection:{_id:0,kind:1,total:1,paidTotal:1}}),{kind:"expense",total:500,paidTotal:500});
   assert.deepEqual(await db.collection("financialMovements").findOne({documentId:expenseId},{projection:{_id:0,type:1,direction:1,amount:1}}),{type:"expense",direction:"out",amount:500});
 });
 
-test("recurring expense materializes once and may make cash negative",async()=>{
-  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:false}});
+test("recurring expense obeys enabled cash overdraft",async()=>{
+  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:true}});
   const recurringId=await command({type:"expense.post",title:"Monthly rent",amount:500,occurredAt:"2026-08-01",frequency:"monthly"});
   const expenseId=await command({type:"expense.materialize",recurringId,dueDate:"2026-08-31",paymentMethod:"cash-id"});
   assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-500);
@@ -185,8 +185,8 @@ test("recurring expense materializes once and may make cash negative",async()=>{
   assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-500);
 });
 
-test("paid purchase update atomically replaces its payment even when the result is negative",async()=>{
-  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:300,allowNegativeBalance:false}});
+test("paid purchase update obeys enabled cash overdraft",async()=>{
+  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:300,allowNegativeBalance:true}});
   const purchaseId=await command({type:"purchase.post",warehouseId:"wh-main",partyId:"supplier",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:1,unitPrice:100}]});
   await command({type:"purchase.update",documentId:purchaseId,warehouseId:"wh-main",partyId:"supplier",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:5,unitPrice:100}]});
   assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-200);

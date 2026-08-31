@@ -2235,3 +2235,10 @@ input[type="date"]{height:34px;min-height:34px;font-size:10px}.expense-form inpu
   .comprehensive-report .overview-accounts, .comprehensive-report .overview-invoices { grid-column: span 3; }
   .comprehensive-report .overview-summary-area { grid-column: 1 / -1; break-inside: avoid; }
 }
+
+/* Native payment-account menus share the approved compact desktop typography. */
+.payment-account-select,
+.payment-account-select option {
+  font: inherit;
+  font-size: 1rem;
+}

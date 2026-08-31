@@ -25,10 +25,12 @@ export function parseReportFilters(url: URL): ReportFilters {
   return { type, from: from || undefined, to: to || undefined, allTime, unpaged, partyId: text(url.searchParams.get("partyId")) || undefined, productId: text(url.searchParams.get("productId")) || undefined, paymentAccountId: text(url.searchParams.get("paymentAccountId")) || undefined, movementType: text(url.searchParams.get("movementType")) || undefined, direction: pick("direction", ["in", "out"]), groupBy: pick("groupBy", ["invoice", "product"], "invoice"), sortBy: pick("sortBy", ["quantity", "sales", "name", "profit"], "quantity"), debtSide: pick("debtSide", ["receivable", "payable", "clear"]), expenseType: pick("expenseType", ["once", "recurring"]), search: text(url.searchParams.get("search")) || undefined, page, pageSize };
 }
 
-const matchDate = (f: ReportFilters): Document => f.allTime ? {} : ({ $expr: { $and: [
-  { $gte: [{ $convert: { input: "$occurredAt", to: "date", onError: null, onNull: null } }, isoDate(f.from!)] },
-  { $lt: [{ $convert: { input: "$occurredAt", to: "date", onError: null, onNull: null } }, isoDate(f.to!, true)] },
-] } });
+/** Stored timestamps are canonical ISO strings, so lexical boundaries are exact and
+ * supported by both the SQLite adapter and the former document store. */
+const matchDate = (f: ReportFilters): Document => f.allTime ? {} : ({ occurredAt: {
+  $gte: isoDate(f.from!).toISOString(),
+  $lt: isoDate(f.to!, true).toISOString(),
+} });
 const pagination = (totalRows: number, f: ReportFilters) => ({ page: f.unpaged ? 1 : f.page, pageSize: f.unpaged ? totalRows : f.pageSize, totalRows, totalPages: f.unpaged ? 1 : Math.max(1, Math.ceil(totalRows / f.pageSize)) });
 const slice = <T>(rows: T[], f: ReportFilters) => f.unpaged ? rows : rows.slice((f.page - 1) * f.pageSize, f.page * f.pageSize);
 const pageCursor = (cursor: FindCursor<Document>, f: ReportFilters) => f.unpaged ? cursor : cursor.skip((f.page - 1) * f.pageSize).limit(f.pageSize);

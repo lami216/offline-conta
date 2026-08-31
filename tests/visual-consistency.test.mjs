@@ -97,7 +97,7 @@ test("focused banking and transaction editor regressions stay explicit", () => {
   for (const label of ["manual-deposit", "opening-balance"]) assert.match(banks, new RegExp(label));
   assert.match(app, /label: "السحب والإيداع"/);
   assert.match(app, /m\.type !== "opening-balance"/);
-  assert.match(bootstrap, /\$ne: \["\$type", "opening-balance"\]/);
+  assert.match(bootstrap, /movement\.direction==="in"&&movement\.type!=="opening-balance"/);
   const purchase = between("function Purchases", "function Expenses");
   assert.doesNotMatch(purchase, /purchase-locked|تأكيد المورد|تعديل المورد|disabled=\{!locked/);
   assert.match(purchase, /disabled=\{!partyId \|\| !warehouseId \|\| !lines\.length \|\| \(payment !== "note" && !payment\)\}/);
@@ -174,7 +174,7 @@ test("party history footer and framed bank workflows preserve semantic hierarchy
   assert.doesNotMatch(party, /دفع للطرف/);
   assert.match(party, /دفع لل\{customer\?"عميل":"مورد"\}/);
   assert.match(party, /className="party-history-toolbar"><CompactDateRange/);
-  assert.ok(party.indexOf('<Recent title="الحركات"') < party.indexOf('className="party-trade-metrics"'));
+  assert.ok(party.indexOf('<Recent title="الحركات"') < party.indexOf('<PartyMetricStrip'));
   assert.match(css, /\.party-payment-row\{[^}]*grid-template-columns:280px 130px 105px minmax\(150px,1fr\)/);
   assert.match(css, /\.party-cash-direction button\{[^}]*white-space:nowrap[^}]*overflow:visible/);
   assert.doesNotMatch(css, /\.party-history-toolbar (?:label|input)\s*\{/);
@@ -192,10 +192,10 @@ test("party financial summaries use explicit business-semantic tones", () => {
   assert.match(party, /data\.partyFinancialSummaries/);
   assert.match(party, /partyTradeMetrics/);
   assert.match(parties, /grossProfit.*metric-positive.*grossProfit.*metric-negative.*metric-neutral/);
-  assert.match(party, /party-trade-metrics.*metric-neutral.*cashIn.*metric-neutral.*cashOut/s);
-  assert.match(party, /grossProfit.*metric-positive.*grossProfit.*metric-negative.*metric-neutral/);
+  assert.match(party, /PartyMetricStrip.*cashIn.*cashOut/s);
+  assert.match(party, /grossProfit.*positive.*grossProfit.*negative.*neutral/);
   assert.match(parties, /balance>0\?"positive":balance<0\?"negative"/);
-  assert.match(css, /\.party-list-metrics b,\.party-trade-metrics b\{[^}]*font-size:16px/);
+  assert.match(css, /\.party-trade-metrics b\{[^}]*font-size:16px/);
   assert.match(css, /\.metric-positive,.metric-positive b\{color:#15803d/);
   assert.match(css, /\.metric-negative,.metric-negative b\{color:#b91c1c/);
 });

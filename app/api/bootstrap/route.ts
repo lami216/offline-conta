@@ -11,14 +11,6 @@ export async function GET(request: Request) {
   try {
     const db = await getDatabase();
 
-    await db.collection("documents").createIndex(
-      { kind: 1, businessDate: 1, dailySequence: 1 },
-      { unique: true, partialFilterExpression: { kind: "sale", businessDate: { $type: "string" }, dailySequence: { $type: "number" } } },
-    );
-    await db.collection("products").createIndex(
-      { sku: 1 },
-      { unique: true, partialFilterExpression: { sku: { $type: "string", $gt: "" } }, name: "product_code_unique" },
-    );
     // One-time, idempotent legacy backfill. The sorted unwind makes the first line
     // for each product the newest real posted purchase price.
     const legacyCosts = await db.collection("documents").aggregate([
@@ -35,7 +27,7 @@ export async function GET(request: Request) {
       db.collection("stockMovements").find().sort({ occurredAt: -1 }).limit(1000).toArray(), db.collection("recurringExpenses").find().sort({ createdAt: -1 }).toArray(),
       db.collection("financialMovements").find().sort({ occurredAt: -1 }).limit(2000).toArray(),
       // Legacy read-only adjustments remain in aggregate inputs; no creation surface exists.
-      db.collection("documents").find({ kind: { $in: ["sale", "return", "purchase"] } }, { projection: { _id: 0, kind: 1, status: 1, partyId: 1, total: 1, "lines.grossProfit": 1 } }).toArray(),
+      db.collection("documents").find({ kind: { $in: ["sale", "return", "purchase"] } }, { projection: { _id: 0, kind: 1, status: 1, partyId: 1, total: 1, lines: 1 } }).toArray(),
       db.collection("financialMovements").find({ partyId: { $type: "string" } }, { projection: { _id: 0, partyId: 1, direction: 1, amount: 1 } }).toArray(),
       db.collection("paymentAccounts").find().sort({ createdAt: 1 }).toArray(),
       db.collection("accountTransfers").find().sort({ occurredAt: -1 }).limit(500).toArray(),
@@ -44,7 +36,9 @@ export async function GET(request: Request) {
     ]);
     const clean = (rows: Array<Record<string, unknown>>) => rows.map(({ _id, ...row }) => ({ id: row.id ?? String(_id), ...row }));
     const cleanProducts = clean(products).map(product => ({ ...product, wholesalePrice: (product as Record<string, unknown>).wholesalePrice ?? null, expiryDate: (product as Record<string, unknown>).expiryDate ?? null, note: (product as Record<string, unknown>).note ?? null }));
-    const totals = await db.collection("financialMovements").aggregate([{ $group: { _id: "$paymentMethod", income: { $sum: { $cond: [{ $and: [{ $eq: ["$direction", "in"] }, { $ne: ["$type", "opening-balance"] }] }, "$amount", 0] } }, expenses: { $sum: { $cond: [{ $eq: ["$direction", "out"] }, "$amount", 0] } }, purchaseTotal: { $sum: { $cond: [{ $eq: ["$type", "purchase"] }, "$amount", 0] } } } }]).toArray();
+    const totalByAccount=new Map<string,{_id:string;income:number;expenses:number;purchaseTotal:number}>();
+    for(const movement of financialMovements){const key=String(movement.paymentMethod),row=totalByAccount.get(key)??{_id:key,income:0,expenses:0,purchaseTotal:0},amount=Number(movement.amount??0);if(movement.direction==="in"&&movement.type!=="opening-balance")row.income+=amount;if(movement.direction==="out")row.expenses+=amount;if(movement.type==="purchase")row.purchaseTotal+=amount;totalByAccount.set(key,row)}
+    const totals=[...totalByAccount.values()];
     const totalMap = new Map(totals.map(row => [String(row._id), row]));
     const accountRows = paymentAccounts.map(account => {
       const aggregate = totalMap.get(String(account.id)) ?? totalMap.get(String(account.code));

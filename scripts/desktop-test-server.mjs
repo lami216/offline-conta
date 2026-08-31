@@ -1,7 +1,7 @@
 import {spawn, spawnSync} from 'node:child_process';
 import {mkdtemp, readFile, readdir, realpath, rm, stat} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {basename, extname, join, resolve, sep} from 'node:path';
+import {basename, extname, isAbsolute, join, relative, sep} from 'node:path';
 import {createRequire} from 'node:module';
 import net from 'node:net';
 import process from 'node:process';
@@ -13,8 +13,9 @@ const packaged = process.argv.includes('--packaged');
 async function packagedRuntime() {
   const dist = join(repositoryRoot, 'dist');
   const trees = (await readdir(dist, {withFileTypes: true})).filter((item) => item.isDirectory() && item.name.endsWith('unpacked'));
-  if (trees.length !== 1) throw new Error(`Expected one electron-builder unpacked tree, found: ${trees.map((x) => x.name).join(', ') || 'none'}`);
-  const tree = join(dist, trees[0].name);
+  const preferred = trees.filter((item) => item.name.toLowerCase() === 'win-unpacked');
+  if (preferred.length !== 1) throw new Error(`Expected electron-builder win-unpacked tree, found: ${trees.map((x) => x.name).join(', ') || 'none'}`);
+  const tree = join(dist, preferred[0].name);
   const executable = (await readdir(tree)).find((file) => file.toLowerCase().endsWith('.exe'));
   if (!executable) throw new Error(`Packaged Electron executable missing from ${tree}`);
   return {root: join(tree, 'resources', 'app'), electronExecutable: join(tree, executable)};
@@ -25,7 +26,7 @@ const runtime = packaged
   : {root: process.argv[2] ?? join(repositoryRoot, 'desktop-dist', 'app'), electronExecutable: require('electron')};
 const root = await realpath(runtime.root);
 const entry = join(root, 'server.js');
-const inside = (candidate) => candidate === root || candidate.startsWith(`${root}${sep}`);
+const inside = (candidate) => { const value = relative(root, candidate); return value === '' || (value !== '..' && !value.startsWith(`..${sep}`) && !isAbsolute(value)); };
 const runtimeRequire = createRequire(entry);
 for (const specifier of ['better-sqlite3', 'better-sqlite3/build/Release/better_sqlite3.node']) {
   const resolved = await realpath(runtimeRequire.resolve(specifier));
@@ -34,8 +35,9 @@ for (const specifier of ['better-sqlite3', 'better-sqlite3/build/Release/better_
 
 // Runtime JS/JSON must not retain a dependency on the checkout or the staged
 // tree. Text assets are deliberately bounded so native binaries are not read.
-const forbidden = new Set([repositoryRoot, repositoryRoot.replaceAll('\\', '/'), resolve(repositoryRoot)]);
-if (packaged) forbidden.add(await realpath(join(repositoryRoot, 'desktop-dist', 'app')));
+const pathSpellings = (value) => [value, value.replaceAll('\\', '/'), value.replaceAll('\\', '\\\\')];
+const forbidden = new Set(pathSpellings(repositoryRoot));
+if (packaged) for (const value of pathSpellings(await realpath(join(repositoryRoot, 'desktop-dist', 'app')))) forbidden.add(value);
 async function auditText(directory) {
   for (const item of await readdir(directory, {withFileTypes: true})) {
     const file = join(directory, item.name);

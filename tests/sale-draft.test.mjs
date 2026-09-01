@@ -16,7 +16,9 @@ test("sale draft accepts empty and every intermediate price without onChange val
 
 test("submit validation preserves below-cost price and over-stock quantity in the draft", () => {
   const belowCost = [draft("4", "10000")];
-  assert.match(validateSaleDraft(belowCost, [product], "sales").errors.join(" "), /أقل من تكلفة الشراء 12000/);
+  const result = validateSaleDraft(belowCost, [product], "sales");
+  assert.deepEqual(result.errors, []);
+  assert.deepEqual(result.warnings, [{ productId: product.id, productName: product.name, salePrice: 10000, purchaseCost: 12000 }]);
   assert.equal(belowCost[0].piecePrice, "10000");
 
   const overStock = [draft("10", "30000")];

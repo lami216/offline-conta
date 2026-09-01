@@ -36,8 +36,8 @@ test("transaction account selectors use names only and independent empty state",
   assert.match(selector, /options.map\(account=><option/);
   assert.doesNotMatch(selector + expenses, /\{(?:a|account)\.name\} —|<option[^>]*>[^{]*\{money\(/);
   assert.doesNotMatch(party.match(/<PaymentAccountSelect accounts=\{data.paymentAccounts\}[\s\S]*?\/>/)?.[0] ?? "", /balance|money\(/);
-  assert.match(expenses, /recurringPaymentMethod/);
-  assert.match(expenses, /disabled=\{!recurringPaymentMethod\}/);
+  assert.match(expenses, /PaymentAccountSelect required accounts=\{accounts\}/);
+  assert.doesNotMatch(expenses, /recurringPaymentMethod|expense\.materialize/);
   assert.match(party, /useState\(""\).*paymentMethod/s);
   assert.match(party, /<PaymentAccountSelect accounts=\{data.paymentAccounts\} activeOnly/);
   assert.match(party, /setPaymentMethod\(""\)/);

@@ -27,10 +27,10 @@ test("invoice history has no 100-row cap and orders numeric sequences newest-fir
 test("expense defaults and all-time controls remain explicit", () => {
   const source = readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
   const expenses = source.slice(source.indexOf("function Expenses"), source.indexOf("function Banks"));
-  assert.match(expenses, /expense-date", localBusinessDay\(\)/);
+  assert.match(expenses, /expense-date",localBusinessDay\(\)/);
   assert.match(expenses, /useState\(today\).*historyAllTime/s);
-  assert.match(expenses, /allTime=\{historyAllTime && !historyQuery\.trim\(\)\}/);
-  assert.match(expenses, /onAllTime=\{\(\) => applyExpenseFilters\(expenseAllTimeMode\(\)\)\}/);
+  assert.match(expenses, /allTime=\{historyAllTime&&!historyQuery\.trim\(\)\}/);
+  assert.match(expenses, /onAllTime=\{\(\)=>applyExpenseFilters\(expenseAllTimeMode\(\)\)\}/);
 });
 
 test("expense search ranks exact numbers and closer titles before loose matches", () => {

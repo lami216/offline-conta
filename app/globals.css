@@ -1621,7 +1621,7 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 .expense-toolbar > span { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid var(--color-expenses); border-radius: 10px; color: var(--color-expenses); background: #fff; font-weight: 800; }
 .expense-toolbar svg { width: 17px; }
 .expense-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto minmax(0, 1fr); gap: 8px; min-width: 0; min-height: 0; }
-.expense-form, .expense-recurring, .expense-history { min-width: 0; min-height: 0; overflow: hidden; }
+.expense-form, .expense-history { min-width: 0; min-height: 0; overflow: hidden; }
 .expense-form { grid-column:1;grid-row:1; }
 .expense-form-body { display:block; }
 .expense-fields { display: grid; grid-template-columns: 165px 95px 128px; gap: 6px; align-items:end; }
@@ -1629,8 +1629,7 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 .expense-save { align-self:end; width:112px; min-width:112px; height:34px; }
 .expense-edit-actions{display:flex;align-items:center;gap:7px;min-width:max-content;white-space:nowrap}.expense-edit-actions button{height:34px;min-height:34px}.expense-cancel{min-width:100px}
 .expense-action-column{width:170px;min-width:170px}.expense-row-actions{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:nowrap;white-space:nowrap}.expense-row-actions button{height:30px;min-height:30px;padding-inline:10px;font-size:10px}.expense-row-actions .expense-pay{color:#145b47;border-color:#9bc8ba;background:#edf8f4}
-.expense-recurring { display:grid;grid-column:1;grid-row:2;grid-template-rows:minmax(0,1fr); }
-.expense-history { display:grid;grid-column:2;grid-row:1 / span 2;grid-template-rows:auto minmax(0,1fr);gap:6px; }
+.expense-history { display:grid;grid-column:2;grid-row:1;grid-template-rows:auto minmax(0,1fr);gap:6px; }
 .expense-history .search { width:min(270px,100%); }
 .expense-scroll { width: 100%; min-width: 0; min-height: 0; padding-inline: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: auto; }
 
@@ -1652,7 +1651,7 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 @media (max-width: 1050px) {
   .content { padding-inline: 12px; }
   .expense-grid, .inventory-browser { grid-template-columns: minmax(0, 1fr); }
-  .expense-form, .expense-recurring, .expense-history { grid-column: 1; grid-row: auto; }
+  .expense-form, .expense-history { grid-column: 1; grid-row: auto; }
   .expense-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .expense-edit-actions { grid-column:1 / -1; justify-self:start; }
   .expense-history > .expense-scroll { overflow-x: auto; }
@@ -1827,7 +1826,7 @@ input, select, .combobox-trigger { border-color: #9faab8; }
   .banks-workspace, .expense-workspace { height: 100%; min-height: 0; overflow: hidden; }
   .transaction-workspace, .workspace-discovery, .workspace-invoice,
   .workspace-checkout, .product-management, .scroll-panel, .bank-panel,
-  .expense-grid, .expense-recurring, .expense-history, .inventory-panel,
+  .expense-grid, .expense-history, .inventory-panel,
   .inventory-browser, .inventory-list-panel, .product-movement-panel {
     height: 100%; min-height: 0; overflow: hidden;
   }

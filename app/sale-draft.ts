@@ -7,6 +7,7 @@ export type SaleDraftLine = {
 };
 
 export type PriceMode = "retail" | "wholesale";
+export type BelowCostWarning = { productId: string; productName: string; salePrice: number; purchaseCost: number };
 
 export const initialSaleUiState = { priceMode: "retail" as PriceMode, scannerEnabled: false };
 
@@ -15,6 +16,10 @@ export function clearPersistedSaleDraft(storage: Pick<Storage, "setItem">) {
   storage.setItem("conta:sale-lines", "[]");
   storage.setItem("conta:sale-payment", JSON.stringify(""));
   storage.setItem("conta:sale-party", JSON.stringify(""));
+}
+
+export function belowCostConfirmation(warnings: BelowCostWarning[]) {
+  return `تنبيه: توجد منتجات تباع بأقل من سعر الشراء:\n\n${warnings.map(w => `• ${w.productName} — البيع ${w.salePrice} MRU / الشراء ${w.purchaseCost} MRU`).join("\n")}\n\nهل تريد متابعة البيع؟`;
 }
 
 /** Selling tiers choose an editable default and never alter accounting cost. */
@@ -38,6 +43,7 @@ export function updateSaleDraftLine<T extends SaleDraftLine>(lines: T[], product
 
 export function validateSaleDraft(lines: SaleDraftLine[], products: Product[], warehouseId?: string, businessDate?: string) {
   const errors: string[] = [];
+  const warnings: BelowCostWarning[] = [];
   const invalidProductIds = new Set<string>();
   for (const line of lines) {
     const product = products.find(item => item.id === line.productId);
@@ -63,9 +69,8 @@ export function validateSaleDraft(lines: SaleDraftLine[], products: Product[], w
       errors.push(`${product.name}: سعر البيع غير صالح ويجب أن يكون أكبر من صفر.`);
       invalidProductIds.add(product.id);
     } else if (product.lastPurchaseCost != null && price < product.lastPurchaseCost) {
-      errors.push(`سعر بيع «${product.name}» أقل من تكلفة الشراء ${product.lastPurchaseCost}.`);
-      invalidProductIds.add(product.id);
+      warnings.push({ productId: product.id, productName: product.name, salePrice: price, purchaseCost: product.lastPurchaseCost });
     }
   }
-  return { errors, invalidProductIds };
+  return { errors, warnings, invalidProductIds };
 }

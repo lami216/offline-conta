@@ -1,6 +1,11 @@
 "use client";
 import { useEffect } from "react";
 
+export function isTypingTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  return target.matches("input, textarea, select, [contenteditable]:not([contenteditable='false'])") || Boolean(target.closest("[contenteditable]:not([contenteditable='false'])"));
+}
+
 /** Activates only explicitly opted-in, currently hovered selection controls. */
 export function useHoverEnterActivation() {
   useEffect(() => {
@@ -9,7 +14,7 @@ export function useHoverEnterActivation() {
     const out = (event: PointerEvent) => { if (hovered && !hovered.contains(event.relatedTarget as Node | null)) hovered = null; };
     const key = (event: KeyboardEvent) => {
       if (event.key !== "Enter" || event.defaultPrevented || event.repeat || !hovered || !hovered.isConnected) return;
-      if (event.target instanceof HTMLTextAreaElement) return;
+      if (isTypingTarget(event.target)) return;
       if (hovered === document.activeElement || hovered.contains(document.activeElement)) return;
       const activeDialog = document.querySelector<HTMLElement>('[role="dialog"][open], dialog[open], [aria-modal="true"]');
       if (activeDialog && !activeDialog.contains(hovered)) return;

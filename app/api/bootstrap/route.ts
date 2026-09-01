@@ -22,10 +22,10 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
     if (legacyCosts.length) await db.collection("products").bulkWrite(legacyCosts.map(cost => ({
       updateOne: { filter: { id: cost._id, lastPurchaseCost: { $exists: false } }, update: { $set: { lastPurchaseCost: cost.cost, lastPurchaseAt: cost.at } } },
     })));
-    const [parties, warehouses, products, documents, movements, recurringExpenses, financialMovements, partyMetricDocuments, partyMetricMovements, paymentAccounts, accountTransfers, productCounter, nextSale, nextPurchase, nextExpense, branding] = await Promise.all([
+    const [parties, warehouses, products, documents, movements, financialMovements, partyMetricDocuments, partyMetricMovements, paymentAccounts, accountTransfers, productCounter, nextSale, nextPurchase, nextExpense, branding] = await Promise.all([
       db.collection("parties").find().sort({ name: 1 }).toArray(), db.collection("warehouses").find().sort({ isSalesDefault: -1, name: 1 }).toArray(),
       db.collection("products").find().sort({ name: 1 }).toArray(), db.collection("documents").find().sort({ occurredAt: -1 }).limit(500).toArray(),
-      db.collection("stockMovements").find().sort({ occurredAt: -1 }).limit(1000).toArray(), db.collection("recurringExpenses").find().sort({ createdAt: -1 }).toArray(),
+      db.collection("stockMovements").find().sort({ occurredAt: -1 }).limit(1000).toArray(),
       db.collection("financialMovements").find().sort({ occurredAt: -1 }).limit(2000).toArray(),
       // Legacy read-only adjustments remain in aggregate inputs; no creation surface exists.
       db.collection("documents").find({ kind: { $in: ["sale", "return", "purchase"] } }, { projection: { _id: 0, kind: 1, status: 1, partyId: 1, total: 1, lines: 1 } }).toArray(),
@@ -45,8 +45,6 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
       const aggregate = totalMap.get(String(account.id)) ?? totalMap.get(String(account.code));
       return { ...account, id: String(account.id), balance: Number(account.balance ?? 0), allowNegativeBalance: account.allowNegativeBalance === true, income: Number(aggregate?.income ?? 0), expenses: Number(aggregate?.expenses ?? 0), purchaseTotal: Number(aggregate?.purchaseTotal ?? 0) };
     });
-    const today = new Date().toISOString().slice(0, 10);
-    const recurringRows = recurringExpenses.map(recurring => { const startsOn=String(recurring.startsOn),month=today.slice(0,7),day=String(Math.min(Number(startsOn.slice(8,10))||1,new Date(`${month}-01T00:00:00Z`).getUTCMonth()===11?31:new Date(Date.UTC(Number(month.slice(0,4)),Number(month.slice(5,7)),0)).getUTCDate())).padStart(2,"0"), scheduled=recurring.frequency === "monthly" ? `${month}-${day}` : today, currentDueDate=scheduled<startsOn?startsOn:scheduled, occurrenceKey = recurring.frequency === "monthly" ? currentDueDate.slice(0, 7) : currentDueDate; const paid = documents.find(d => d.recurringId === recurring.id && (d.occurrenceKey === occurrenceKey || d.dueDate === currentDueDate)); return { ...recurring, currentOccurrenceKey: occurrenceKey, currentDueDate, currentPaymentMethodId: paid?.paymentMethod ?? null, currentDocumentId:paid?.id??null }; });
     const highestLegacyCode = products.reduce((highest, product) => {
       const code = String(product.sku ?? "");
       return /^\d{1,6}$/.test(code) ? Math.max(highest, Number(code)) : highest;
@@ -61,6 +59,6 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
     const exposedProducts=productAdmin?cleanProducts:(cleanProducts as Array<Record<string,unknown>>).map(({id,name,sku,barcode,piecePrice,wholesalePrice,expiryDate,stocks,isArchived})=>({id,name,sku,barcode,piecePrice,wholesalePrice,expiryDate,stocks,isArchived,pieceCost:null,lastPurchaseCost:null}));
     const visiblePartyIds=new Set(cleanParties.filter(party=>(resolvePartyType(party)==="customer"&&hasCapability(principal,"customers.view"))||(resolvePartyType(party)==="supplier"&&hasCapability(principal,"suppliers.view"))).map(party=>String(party.id)));
     const partyFinancialSummaries=partyAdmin?calculatePartyFinancialSummaries(partyMetricDocuments as never[],partyMetricMovements as never[]).filter(summary=>visiblePartyIds.has(summary.partyId)):[];
-    return Response.json({ branding, principal:{principalType:principal.principalType,name:principal.name,permissions:principal.permissions}, parties:exposedParties, warehouses:clean(warehouses), products:exposedProducts, documents:allowedDocuments, movements:hasCapability(principal,"warehouses.inventory.view")?clean(movements):[], recurringExpenses:hasCapability(principal,"expenses.view")?clean(recurringRows):[], financialMovements:bankAccess?clean(financialMovements):[], partyFinancialSummaries, paymentAccounts:selectorAccounts, accountTransfers:hasCapability(principal,"banks.transfer")?clean(accountTransfers):[], nextProductCode, nextDocumentSequences:{sale:nextSale,purchase:nextPurchase,expense:nextExpense} });
+    return Response.json({ branding, principal:{principalType:principal.principalType,name:principal.name,permissions:principal.permissions}, parties:exposedParties, warehouses:clean(warehouses), products:exposedProducts, documents:allowedDocuments, movements:hasCapability(principal,"warehouses.inventory.view")?clean(movements):[], financialMovements:bankAccess?clean(financialMovements):[], partyFinancialSummaries, paymentAccounts:selectorAccounts, accountTransfers:hasCapability(principal,"banks.transfer")?clean(accountTransfers):[], nextProductCode, nextDocumentSequences:{sale:nextSale,purchase:nextPurchase,expense:nextExpense} });
   } catch (error) { log("error", "api.bootstrap.failed", { error }); return Response.json({ error: "تعذر تحميل البيانات" }, { status: 500 }); }
 }

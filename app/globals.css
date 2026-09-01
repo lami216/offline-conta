@@ -2010,9 +2010,7 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 .overview-grid { min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: minmax(260px,1fr) auto; gap: 8px; }
 .overview-grid > .panel { min-height: 0; margin: 0; }
 .overview-accounts .erp-table-wrap, .overview-invoices .erp-table-wrap { height: 100%; overflow: auto; }
-.overview-invoices { display: grid; grid-template-rows: auto minmax(0,1fr) auto; }
-.overview-business-strip { display: grid; grid-template-columns: repeat(6,1fr); border: 1px solid #252525; border-block-start: 0; }
-.overview-business-strip span { padding: 5px 8px; border-inline-start: 1px solid #252525; display: flex; justify-content: space-between; gap: 8px; }
+.overview-invoices { display: grid; grid-template-rows: auto minmax(0,1fr); }
 .pos-payment-row { direction: rtl; display: grid; grid-template-columns: 50px 72px minmax(0, 1fr); align-items: center; gap: 4px; width: 100%; min-width: 0; }
 .pos-payment-row .compact-payment { display: contents; }
 .pos-payment-row > *, .compact-payment, .bank-option, .pos-customer-compact,
@@ -2047,8 +2045,8 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 .pos-note-customer-row .link { height: 36px; min-height: 36px; white-space: nowrap; }
 .overview-invoice-table { width: 100%; min-width: 0; table-layout: fixed; }
 .overview-invoice-table .invoice-group-row th { position: static; height: 27px; padding: 3px 8px; color: var(--color-reports); background: var(--section-soft); text-align: right; }
-.overview-invoice-table td.positive, .overview-business-strip .positive { color: #087443; }
-.overview-invoice-table td.negative, .overview-business-strip .negative, .bank-detail .negative { color: #a11b1b; }
+.overview-invoice-table td.positive { color: #087443; }
+.overview-invoice-table td.negative, .bank-detail .negative { color: #a11b1b; }
 .comprehensive-bank-disclosure { display: block !important; }
 .comprehensive-bank-disclosure > button { display: grid; grid-template-columns: 1fr 140px; align-items: center; width: 100%; min-height: 30px; padding: 0; border: 0; border-radius: 0; background: #fff; text-align: right; }
 .comprehensive-bank-disclosure > button b { display: flex; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; padding: 4px 8px; border-inline-start: 1px solid #333; }

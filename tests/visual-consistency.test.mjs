@@ -51,6 +51,8 @@ test("warehouse summary uses stable metrics and controlled popover overflow", ()
   for (const label of ["عدد المنتجات", "إجمالي الكمية", "قيمة المخزون"]) assert.match(warehouses, new RegExp(label));
   for (const anomaly of ["القيمة المعروفة", "بدون تكلفة فعلية", "تكلفة غير معروفة"]) assert.doesNotMatch(warehouses, new RegExp(anomaly));
   assert.match(warehouses, /className="inventory-overview inventory-toolbar"/);
+  assert.match(warehouses, /<SearchableSelect value=\{wh\} onChange=\{chooseWarehouse\} placeholder="اختر المخزن" searchPlaceholder="ابحث عن مخزن" floating options=\{availableWarehouses\.map/);
+  assert.match(warehouses, /availableWarehouses=activeWarehouses\(data\.warehouses\)/);
   assert.match(css, /\.popover-host\s*\{[^}]*overflow:\s*visible/);
   assert.match(css, /\.inventory-panel\{[^}]*grid-template-rows:auto auto minmax\(0,1fr\)/);
   assert.doesNotMatch(warehouses, /browserOpen/);

@@ -54,7 +54,7 @@ test("expense search, date, and all-time actions switch explicit filter modes", 
 test("product picker and document overlay regression checkpoints remain mounted", () => {
   const source = readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
   const picker = source.slice(source.indexOf("function ProductSearchPicker"), source.indexOf("const SearchProducts"));
-  for (const behavior of ["barcode === term", "onDoubleClick={() => add(product)}", "stockInWarehouse", "isProductExpired", "sellingPrice"]) assert.match(picker, new RegExp(behavior.replace(/[(){}]/g, "\\$&")));
+  for (const behavior of ["barcode === term", 'data-hover-enter="select"', "onClick={() => add(product)}", "stockInWarehouse", "isProductExpired", "sellingPrice"]) assert.match(picker, new RegExp(behavior.replace(/[(){}]/g, "\\$&")));
   assert.match(source, /\{doc && <div className="modal-overlay"/);
   assert.doesNotMatch(source, /\) : doc \? \(/);
 });

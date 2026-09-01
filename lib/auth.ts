@@ -28,4 +28,6 @@ export function hasCapability(principal:Principal|null,capability:Capability){re
 export async function requireCapability(request:Request,capability:Capability){const principal=await getPrincipalFromRequest(request);if(!principal)return Response.json({error:"غير مصرح أو انتهت صلاحية المستخدم"},{status:401});if(!hasCapability(principal,capability))return Response.json({error:"ليس لديك صلاحية تنفيذ هذه العملية"},{status:403});return null}
 export function normalizeUsername(value:string){return value.trim().toLocaleLowerCase("en-US")}
 export function validSameOrigin(request:Request){const origin=request.headers.get("origin"),host=request.headers.get("x-forwarded-host")??request.headers.get("host");if(!origin||!host)return false;try{const parsed=new URL(origin);if(process.env.ALKARNA_DESKTOP==="1")return parsed.protocol==="http:"&&parsed.hostname==="127.0.0.1"&&parsed.host===host;const proto=request.headers.get("x-forwarded-proto")??(process.env.NODE_ENV==="production"?"https":"http");return parsed.origin===`${proto}://${host}`}catch{return false}}
-export const sessionCookieOptions=`Path=/; HttpOnly; SameSite=Strict; Max-Age=${MAX_AGE}`;
+// Keep the signed token expiry as a server-side safety bound, but make the
+// browser cookie session-only so a closed desktop app cannot stay signed in.
+export const sessionCookieOptions="Path=/; HttpOnly; SameSite=Strict";

@@ -102,9 +102,14 @@ test("focused banking and transaction editor regressions stay explicit", () => {
   assert.match(bootstrap, /movement\.direction==="in"&&movement\.type!=="opening-balance"/);
   const purchase = between("function Purchases", "function Expenses");
   assert.doesNotMatch(purchase, /purchase-locked|تأكيد المورد|تعديل المورد|disabled=\{!locked/);
-  assert.match(purchase, /disabled=\{!partyId \|\| !warehouseId \|\| !lines\.length \|\| \(payment !== "note" && !payment\)\}/);
+  assert.match(purchase, /disabled=\{!warehouseId \|\| !lines\.length \|\| \(payment === "note" \? !partyId : !payment\)\}/);
+  assert.match(purchase, /placeholder=\{payment === "note" \? "اختر المورد" : "شراء مباشر"\}.*allowEmpty=\{payment !== "note"\}/s);
+  assert.match(purchase, /aria-label="إضافة المورد" title="إضافة المورد"/); assert.match(purchase, /setQuickSupplier[^;]+><Plus \/><\/button>/);
+  assert.doesNotMatch(purchase, /<span>إضافة المورد<\/span>/);
   const pos = between("function Pos", "function CompactPaymentSelector");
   assert.match(pos, /pos-quick-customer-button/);
+  assert.match(pos, /aria-label="إضافة العميل" title="إضافة العميل"/); assert.match(pos, /setQuick[^;]+><Plus \/><\/button>/);
+  assert.doesNotMatch(pos, /<span>إضافة العميل<\/span>/);
   assert.doesNotMatch(pos, /pos-add-customer|إضافة عميل<\/button>/);
   assert.match(app, /onDone=\{id => \{ setPartyId\(id\); setQuick\(false\); \}\}/);
 });

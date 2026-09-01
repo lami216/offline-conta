@@ -63,7 +63,8 @@
       "**/*.node"
     ],
     "files": [
-      "desktop/main.cjs"
+      "desktop/main.cjs",
+      "desktop/close-flow.cjs"
     ],
     "directories": {
       "output": "dist"

@@ -1,95 +1,49 @@
 import { createHash, webcrypto } from "node:crypto";
 import { execFile } from "node:child_process";
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { log } from "./log.ts";
-import { LICENSE_ALGORITHM, LICENSE_KEY_ID, PUBLIC_LICENSE_KEYS } from "./license-public-key.ts";
+import { LICENSE_ALGORITHM, LICENSE_KEY_ID, LICENSE_V2_KEY_ID, PUBLIC_LICENSE_KEYS } from "./license-public-key.ts";
 
-export const MAX_LICENSE_BYTES = 64 * 1024;
-export const LICENSE_FILENAME = "license.alkarna-license";
-const DEVICE_ERROR = "تعذر استخراج رقم الجهاز. تواصل مع الدعم.";
-const execFileAsync = promisify(execFile);
-
-export type LicensePayload = { licenseId:string;storeId:string;customerName:string;storeName:string;deviceId:string;edition:string;type:string;issuedAt:string;notes:string };
-export type LicenseDocument = { schema:string;version:number;keyId:string;algorithm:string;payload:LicensePayload;signature:string };
-export type LicenseInfo = Pick<LicensePayload,"licenseId"|"storeId"|"customerName"|"storeName"|"deviceId"|"issuedAt">;
-export type LicenseStatus = { valid:false;reason?:string } | { valid:true;license:LicenseInfo };
-
-export class LicenseError extends Error { constructor(message:string,public status=400){super(message)} }
-
-export function canonicalLicensePayload(payload:LicensePayload) {
-  return JSON.stringify({licenseId:payload.licenseId,storeId:payload.storeId,customerName:payload.customerName,storeName:payload.storeName,deviceId:payload.deviceId,edition:payload.edition,type:payload.type,issuedAt:payload.issuedAt,notes:payload.notes});
-}
-
-export function formatDeviceCode(machineGuid:string) {
-  const normalized=machineGuid.trim().toLowerCase().replace(/[{}]/g,"");
-  if(!normalized)throw new LicenseError(DEVICE_ERROR,500);
-  const digest=createHash("sha256").update(`mr.alkarna.desktop|device-v1|${normalized}`,"utf8").digest("hex").slice(0,20).toUpperCase();
-  return `AKD-${digest.match(/.{1,4}/g)!.join("-")}`;
-}
-
-export async function getDeviceId() {
-  if(process.env.NODE_ENV==="test"&&process.env.ALKARNA_TEST_DEVICE_ID){
-    const value=process.env.ALKARNA_TEST_DEVICE_ID.trim();
-    return /^AKD-(?:[A-F0-9]{4}-){4}[A-F0-9]{4}$/.test(value)?value:formatDeviceCode(value);
-  }
-  if(process.platform!=="win32")throw new LicenseError(DEVICE_ERROR,500);
-  try{
-    const {stdout}=await execFileAsync("reg.exe",["query","HKLM\\SOFTWARE\\Microsoft\\Cryptography","/v","MachineGuid"],{windowsHide:true,timeout:5000});
-    const match=stdout.match(/MachineGuid\s+REG_SZ\s+([^\r\n]+)/i);
-    if(!match?.[1])throw new Error("MachineGuid was absent");
-    return formatDeviceCode(match[1]);
-  }catch(error){log("error","license.device.failed",{error});throw new LicenseError(DEVICE_ERROR,500)}
-}
-
+export const MAX_LICENSE_BYTES=64*1024,LICENSE_FILENAME="license.alkarna-license";
+const DEVICE_ERROR="تعذر استخراج رقم الجهاز. تواصل مع الدعم.",execFileAsync=promisify(execFile),CLOCK_TOLERANCE_MS=120000,PERSIST_INTERVAL_MS=300000;
+export type LicensePayloadV1={licenseId:string;storeId:string;customerName:string;storeName:string;deviceId:string;edition:string;type:"perpetual";issuedAt:string;notes:string};
+export type LicensePayloadV2={licenseId:string;storeId:string;customerName:string;storeName:string;deviceId:string;edition:"desktop";type:"perpetual"|"temporary";issuedAt:string;notBefore:string;expiresAt:string|null;activationMode:"single-install";notes:string};
+export type LicensePayload=LicensePayloadV1|LicensePayloadV2;
+export type LicenseDocument={schema:string;version:number;keyId:string;algorithm:string;payload:LicensePayload;signature:string};
+export type LicenseInfo=Pick<LicensePayload,"licenseId"|"storeId"|"customerName"|"storeName"|"deviceId"|"issuedAt"|"type">&{expiresAt:string|null};
+export type LicenseStatus={valid:false;reason?:string;code?:string}|{valid:true;license:LicenseInfo};
+export type LicenseClock=()=>number;
+type Ledger={version:2;deviceId:string;consumedLicenseIds:string[];expiredLicenseIds:string[];lastSeenUtc:string};
+export class LicenseError extends Error{constructor(message:string,public status=400,public code="LICENSE_INVALID"){super(message)}}
+export function canonicalLicensePayload(p:LicensePayloadV1){return JSON.stringify({licenseId:p.licenseId,storeId:p.storeId,customerName:p.customerName,storeName:p.storeName,deviceId:p.deviceId,edition:p.edition,type:p.type,issuedAt:p.issuedAt,notes:p.notes})}
+export function canonicalLicensePayloadV2(p:LicensePayloadV2){return JSON.stringify({licenseId:p.licenseId,storeId:p.storeId,customerName:p.customerName,storeName:p.storeName,deviceId:p.deviceId,edition:p.edition,type:p.type,issuedAt:p.issuedAt,notBefore:p.notBefore,expiresAt:p.expiresAt,activationMode:p.activationMode,notes:p.notes})}
+export function formatDeviceCode(guid:string){const n=guid.trim().toLowerCase().replace(/[{}]/g,"");if(!n)throw new LicenseError(DEVICE_ERROR,500);const d=createHash("sha256").update(`mr.alkarna.desktop|device-v1|${n}`).digest("hex").slice(0,20).toUpperCase();return `AKD-${d.match(/.{1,4}/g)!.join("-")}`}
+export async function getDeviceId(){if(process.env.NODE_ENV==="test"&&process.env.ALKARNA_TEST_DEVICE_ID){const v=process.env.ALKARNA_TEST_DEVICE_ID.trim();return /^AKD-(?:[A-F0-9]{4}-){4}[A-F0-9]{4}$/.test(v)?v:formatDeviceCode(v)}if(process.platform!=="win32")throw new LicenseError(DEVICE_ERROR,500);try{const {stdout}=await execFileAsync("reg.exe",["query","HKLM\\SOFTWARE\\Microsoft\\Cryptography","/v","MachineGuid"],{windowsHide:true,timeout:5000});const m=stdout.match(/MachineGuid\s+REG_SZ\s+([^\r\n]+)/i);if(!m?.[1])throw Error();return formatDeviceCode(m[1])}catch(error){log("error","license.device.failed",{error});throw new LicenseError(DEVICE_ERROR,500)}}
 export function getLicensePath(){return join(process.env.ALKARNA_USER_DATA??join(process.cwd(),".dev-data"),"config",LICENSE_FILENAME)}
-function strictBase64Url(value:unknown){
-  if(typeof value!=="string")throw new LicenseError("تعذر التحقق من توقيع الترخيص");
-  if(!/^[A-Za-z0-9_-]+$/.test(value)||value.length%4===1)throw new LicenseError("تعذر التحقق من توقيع الترخيص");
-  const bytes=Buffer.from(value,"base64url");
-  if(bytes.length!==64||bytes.toString("base64url")!==value)throw new LicenseError("تعذر التحقق من توقيع الترخيص");
-  return bytes;
-}
-function required(value:unknown){return typeof value==="string"&&value.trim().length>0}
-function validIsoTimestamp(value:string){if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value))return false;return Number.isFinite(Date.parse(value))}
-export function parseLicenseFile(content:string|Uint8Array){
-  const bytes=typeof content==="string"?Buffer.byteLength(content):content.byteLength;
-  if(bytes>MAX_LICENSE_BYTES)throw new LicenseError("ملف الترخيص أكبر من الحد المسموح",413);
-  let value:unknown;try{value=JSON.parse(typeof content==="string"?content:Buffer.from(content).toString("utf8"))}catch{throw new LicenseError("ملف الترخيص غير مدعوم")}
-  if(!value||typeof value!=="object"||Array.isArray(value))throw new LicenseError("ملف الترخيص غير مدعوم");
-  return value as LicenseDocument;
-}
-
-export async function verifyLicenseFile(content:string|Uint8Array,currentDeviceId?:string,keys?:Record<string,JsonWebKey>) {
-  currentDeviceId??=await getDeviceId();keys??=PUBLIC_LICENSE_KEYS as unknown as Record<string,JsonWebKey>;
-  const doc=parseLicenseFile(content),p=doc.payload;
-  if(doc.schema!=="alkarna-license"||doc.version!==1||doc.algorithm!==LICENSE_ALGORITHM||doc.keyId!==LICENSE_KEY_ID||!keys[doc.keyId])throw new LicenseError("ملف الترخيص غير مدعوم");
-  if(!p||typeof p!=="object"||![p.licenseId,p.storeId,p.customerName,p.storeName,p.deviceId,p.edition,p.type,p.issuedAt].every(required)||typeof p.notes!=="string"||p.edition!=="desktop"||p.type!=="perpetual"||!validIsoTimestamp(p.issuedAt))throw new LicenseError("هذا الترخيص غير صالح");
-  const signature=strictBase64Url(doc.signature);
-  let valid=false;
-  try{
-    const key=await webcrypto.subtle.importKey("jwk",keys[doc.keyId],{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);
-    valid=await webcrypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},key,signature,new TextEncoder().encode(canonicalLicensePayload(p)));
-  }catch(error){
-    // Key/signature parsing failures are intentionally reduced to a safe,
-    // user-facing error. Never expose WebCrypto internals in the local UI.
-    log("info","license.install.invalid",{reason:error instanceof Error?error.name:"crypto-error"});
-  }
-  if(!valid){log("info","license.install.invalid");throw new LicenseError("تعذر التحقق من توقيع الترخيص")}
-  if(p.deviceId!==currentDeviceId){log("info","license.device-mismatch");throw new LicenseError("هذا الترخيص مخصص لجهاز آخر")}
-  return doc;
-}
-const info=(p:LicensePayload):LicenseInfo=>({licenseId:p.licenseId,storeId:p.storeId,customerName:p.customerName,storeName:p.storeName,deviceId:p.deviceId,issuedAt:p.issuedAt});
+export function getLicenseStatePath(){return process.env.ALKARNA_LICENSE_STATE_PATH??join(process.env.LOCALAPPDATA??join(process.env.HOME??process.cwd(),".local","share"),"PayZone","AlKarna-Licensing","state-v2.json")}
+const registryKey="HKCU\\Software\\PayZone\\AlKarna\\Licensing\\v2",registryValue="State";
+function strictSignature(v:unknown){if(typeof v!=="string"||!/^[A-Za-z0-9_-]+$/.test(v)||v.length%4===1)throw new LicenseError("تعذر التحقق من توقيع الترخيص");const b=Buffer.from(v,"base64url");if(b.length!==64||b.toString("base64url")!==v)throw new LicenseError("تعذر التحقق من توقيع الترخيص");return b}
+const required=(v:unknown)=>typeof v==="string"&&v.trim().length>0;
+const validIso=(v:unknown):v is string=>typeof v==="string"&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(v)&&Number.isFinite(Date.parse(v));
+export function parseLicenseFile(content:string|Uint8Array){if((typeof content==="string"?Buffer.byteLength(content):content.byteLength)>MAX_LICENSE_BYTES)throw new LicenseError("ملف الترخيص أكبر من الحد المسموح",413);try{const v=JSON.parse(typeof content==="string"?content:Buffer.from(content).toString());if(!v||typeof v!=="object"||Array.isArray(v))throw Error();return v as LicenseDocument}catch{throw new LicenseError("ملف الترخيص غير مدعوم")}}
+async function verifySignature(doc:LicenseDocument,canonical:string,keys:Record<string,JsonWebKey>){let valid=false;try{const key=await webcrypto.subtle.importKey("jwk",keys[doc.keyId],{name:"ECDSA",namedCurve:"P-256"},false,["verify"]);valid=await webcrypto.subtle.verify({name:"ECDSA",hash:"SHA-256"},key,strictSignature(doc.signature),new TextEncoder().encode(canonical))}catch{}if(!valid)throw new LicenseError("تعذر التحقق من توقيع الترخيص")}
+async function verifyV1(doc:LicenseDocument,device:string,keys:Record<string,JsonWebKey>){const p=doc.payload as LicensePayloadV1;if(doc.keyId!==LICENSE_KEY_ID||!keys[doc.keyId]||!p||![p.licenseId,p.storeId,p.customerName,p.storeName,p.deviceId,p.edition,p.type,p.issuedAt].every(required)||typeof p.notes!=="string"||p.edition!=="desktop"||p.type!=="perpetual"||!validIso(p.issuedAt))throw new LicenseError("هذا الترخيص غير صالح");await verifySignature(doc,canonicalLicensePayload(p),keys);if(p.deviceId!==device)throw new LicenseError("هذا الترخيص مخصص لجهاز آخر");return doc}
+function emptyLedger(device:string,now:number):Ledger{return{version:2,deviceId:device,consumedLicenseIds:[],expiredLicenseIds:[],lastSeenUtc:new Date(now).toISOString()}}
+function parseLedger(text:string|null){try{const x=JSON.parse(text??"");if(x.version===2&&Array.isArray(x.consumedLicenseIds)&&Array.isArray(x.expiredLicenseIds)&&validIso(x.lastSeenUtc))return x as Ledger}catch{}return null}
+async function readRegistry(){if(process.platform!=="win32"||process.env.ALKARNA_LICENSE_DISABLE_REGISTRY==="1")return null;try{const {stdout}=await execFileAsync("reg.exe",["query",registryKey,"/v",registryValue],{windowsHide:true});return stdout.match(/State\s+REG_SZ\s+([^\r\n]+)/i)?.[1]??null}catch{return null}}
+async function writeRegistry(value:string){if(process.platform!=="win32"||process.env.ALKARNA_LICENSE_DISABLE_REGISTRY==="1")return;await execFileAsync("reg.exe",["add",registryKey,"/v",registryValue,"/t","REG_SZ","/d",value,"/f"],{windowsHide:true})}
+async function persistLedger(l:Ledger){const value=Buffer.from(JSON.stringify(l)).toString("base64url"),path=getLicenseStatePath();await mkdir(dirname(path),{recursive:true});await writeFile(`${path}.tmp`,JSON.stringify(l),{mode:0o600});await rename(`${path}.tmp`,path);await writeRegistry(value)}
+async function loadLedger(device:string,now:number){const [file,reg]=await Promise.all([readFile(getLicenseStatePath(),"utf8").catch(()=>null),readRegistry()]);const a=parseLedger(file),b=parseLedger(reg?Buffer.from(reg,"base64url").toString():null),sources=[a,b].filter(Boolean) as Ledger[];if(!sources.length)return emptyLedger(device,now);const l=sources.reduce((x,y)=>Date.parse(y.lastSeenUtc)>Date.parse(x.lastSeenUtc)?y:x);l.consumedLicenseIds=[...new Set(sources.flatMap(x=>x.consumedLicenseIds))];l.expiredLicenseIds=[...new Set(sources.flatMap(x=>x.expiredLicenseIds))];if(!a||(!b&&process.platform==="win32"))await persistLedger(l);return l}
+let memoryLedger:Ledger|undefined,lastPersisted=0;
+export function resetLicenseRuntimeState(){memoryLedger=undefined;lastPersisted=0}
+async function ledger(device:string,now:number){if(!memoryLedger||memoryLedger.deviceId!==device)memoryLedger=await loadLedger(device,now);return memoryLedger}
+async function validateV2Time(p:LicensePayloadV2,device:string,clock:LicenseClock,persist=true){const now=clock(),l=await ledger(device,now),seen=Date.parse(l.lastSeenUtc);if(l.expiredLicenseIds.includes(p.licenseId))throw new LicenseError("انتهت صلاحية الترخيص",402,"LICENSE_EXPIRED");if(now+CLOCK_TOLERANCE_MS<seen)throw new LicenseError("تم اكتشاف تغيير غير صالح في تاريخ أو وقت الجهاز. صحح التاريخ والوقت ثم أعد المحاولة.",402,"LICENSE_CLOCK_ROLLBACK");if(now<Date.parse(p.notBefore))throw new LicenseError("لم يبدأ سريان الترخيص بعد",402,"LICENSE_NOT_YET_VALID");if(p.type==="temporary"&&now>Date.parse(p.expiresAt!)){l.expiredLicenseIds.push(p.licenseId);l.lastSeenUtc=new Date(Math.max(now,seen)).toISOString();if(persist)await persistLedger(l);throw new LicenseError("انتهت صلاحية الترخيص",402,"LICENSE_EXPIRED")}if(now>seen){l.lastSeenUtc=new Date(now).toISOString();if(persist&&(now-lastPersisted>PERSIST_INTERVAL_MS)){await persistLedger(l);lastPersisted=now}}return l}
+async function verifyV2(doc:LicenseDocument,device:string,keys:Record<string,JsonWebKey>,clock:LicenseClock,persist=true){const p=doc.payload as LicensePayloadV2;if(doc.keyId!==LICENSE_V2_KEY_ID||!keys[doc.keyId]||!p||![p.licenseId,p.storeId,p.customerName,p.storeName,p.deviceId,p.issuedAt,p.notBefore].every(required)||typeof p.notes!=="string"||p.edition!=="desktop"||!(["perpetual","temporary"] as unknown[]).includes(p.type)||p.activationMode!=="single-install"||!validIso(p.issuedAt)||!validIso(p.notBefore)||(p.type==="perpetual"?p.expiresAt!==null:!validIso(p.expiresAt)))throw new LicenseError("هذا الترخيص غير صالح");await verifySignature(doc,canonicalLicensePayloadV2(p),keys);if(p.deviceId!==device)throw new LicenseError("هذا الترخيص مخصص لجهاز آخر");await validateV2Time(p,device,clock,persist);return doc}
+export async function verifyLicenseFile(content:string|Uint8Array,currentDeviceId?:string,keys?:Record<string,JsonWebKey>,clock:LicenseClock=Date.now,persist=true){const device=currentDeviceId??await getDeviceId(),doc=parseLicenseFile(content),all=keys??PUBLIC_LICENSE_KEYS as unknown as Record<string,JsonWebKey>;if(doc.schema!=="alkarna-license"||doc.algorithm!==LICENSE_ALGORITHM||!all[doc.keyId])throw new LicenseError("ملف الترخيص غير مدعوم");if(doc.version===1)return verifyV1(doc,device,all);if(doc.version===2)return verifyV2(doc,device,all,clock,persist);throw new LicenseError("ملف الترخيص غير مدعوم")}
+const info=(p:LicensePayload):LicenseInfo=>({licenseId:p.licenseId,storeId:p.storeId,customerName:p.customerName,storeName:p.storeName,deviceId:p.deviceId,issuedAt:p.issuedAt,type:p.type,expiresAt:"expiresAt" in p?p.expiresAt:null});
 export async function readInstalledLicense(){try{return await readFile(getLicensePath(),"utf8")}catch{return null}}
-export async function getLicenseStatus():Promise<LicenseStatus>{
-  const content=await readInstalledLicense();if(!content)return {valid:false};
-  try{const doc=await verifyLicenseFile(content);log("info","license.status",{valid:true});return {valid:true,license:info(doc.payload)}}catch(error){log("info","license.status",{valid:false,reason:error instanceof Error?error.message:"invalid"});return {valid:false,reason:error instanceof Error?error.message:"هذا الترخيص غير صالح"}}
-}
-export async function requireValidLicense(){const underNodeTest=process.execArgv.includes("--test")||process.env.NODE_TEST_CONTEXT!==undefined;if(underNodeTest&&process.env.ALKARNA_TEST_LICENSE_BYPASS==="1")return null;const status=await getLicenseStatus();return status.valid?null:Response.json({error:"يجب تفعيل ترخيص الجهاز",code:"LICENSE_REQUIRED"},{status:402})}
-export async function installLicense(content:string|Uint8Array,currentDeviceId?:string,keys?:Record<string,JsonWebKey>){
-  const doc=await verifyLicenseFile(content,currentDeviceId,keys),path=getLicensePath(),directory=join(path,"..");await mkdir(directory,{recursive:true});
-  const temporary=`${path}.${process.pid}.${crypto.randomUUID()}.tmp`,serialized=typeof content==="string"?content:Buffer.from(content);
-  try{const handle=await open(temporary,"wx",0o600);try{await writeFile(handle,serialized);await handle.sync()}finally{await handle.close()}await rename(temporary,path)}catch(error){await unlink(temporary).catch(()=>{});throw error}
-  log("info","license.install.success",{licenseId:doc.payload.licenseId});return info(doc.payload);
-}
+export async function getLicenseStatus(clock:LicenseClock=Date.now):Promise<LicenseStatus>{const content=await readInstalledLicense();if(!content)return{valid:false};try{const d=await verifyLicenseFile(content,undefined,undefined,clock);return{valid:true,license:info(d.payload)}}catch(e){return{valid:false,reason:e instanceof Error?e.message:"هذا الترخيص غير صالح",code:e instanceof LicenseError?e.code:"LICENSE_INVALID"}}}
+export async function requireValidLicense(){const test=process.execArgv.includes("--test")||process.env.NODE_TEST_CONTEXT!==undefined;if(test&&process.env.ALKARNA_TEST_LICENSE_BYPASS==="1")return null;const s=await getLicenseStatus();return s.valid?null:Response.json({error:s.reason??"يجب تفعيل ترخيص الجهاز",code:s.code??"LICENSE_REQUIRED"},{status:402})}
+export async function installLicense(content:string|Uint8Array,currentDeviceId?:string,keys?:Record<string,JsonWebKey>,clock:LicenseClock=Date.now){const device=currentDeviceId??await getDeviceId(),doc=await verifyLicenseFile(content,device,keys,clock,false),path=getLicensePath();if(doc.version===2){const l=await ledger(device,clock());if(l.consumedLicenseIds.includes(doc.payload.licenseId))throw new LicenseError("تم استخدام ملف التفعيل مسبقًا على هذا الجهاز",409,"LICENSE_ALREADY_USED");const prepared=`${path}.${process.pid}.prepared`;await mkdir(dirname(path),{recursive:true});await writeFile(prepared,typeof content==="string"?content:Buffer.from(content),{mode:0o600});l.consumedLicenseIds.push(doc.payload.licenseId);await persistLedger(l).catch(async e=>{await unlink(prepared).catch(()=>{});throw e});await rename(prepared,path)}else{await mkdir(dirname(path),{recursive:true});const tmp=`${path}.${process.pid}.tmp`,h=await open(tmp,"wx",0o600);try{await writeFile(h,typeof content==="string"?content:Buffer.from(content));await h.sync()}finally{await h.close()}await rename(tmp,path)}log("info","license.install.success",{licenseId:doc.payload.licenseId});return info(doc.payload)}

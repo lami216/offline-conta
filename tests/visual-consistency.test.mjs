@@ -165,15 +165,18 @@ test("expenses and record filters retain the compact desktop grid", () => {
   assert.doesNotMatch(css, /\.expense-form\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
 });
 
-test("invoice history renders every filtered record and expense actions follow their fields", () => {
+test("invoice history renders every filtered record and expense actions are structurally grouped", () => {
   const recent = between("function Recent", "function Heading");
   assert.match(recent, /visibleDocs\.map\(/);
   assert.doesNotMatch(recent, /visibleDocs\.slice\(|visibleDocs\.filter\([^)]*\)\.slice\(/);
   const expenses = between("function Expenses", "function Banks");
   const fields = expenses.slice(expenses.indexOf('className="expense-fields"'), expenses.indexOf("</div>", expenses.indexOf('className="expense-fields"')));
-  assert.match(fields, /وسيلة الدفع[\s\S]*className="primary expense-save"/);
+  assert.match(fields, /وسيلة الدفع[\s\S]*className="expense-edit-actions"[\s\S]*className="primary expense-save"[\s\S]*إلغاء التعديل/);
   assert.match(css, /\.expense-form-body\s*\{[^}]*display:block/);
   assert.match(css, /\.expense-save\s*\{[^}]*align-self:end[^}]*height:34px/);
+  assert.match(expenses, /className="expense-row-actions"[\s\S]*تسجيل الدفع[\s\S]*تعديل/);
+  assert.match(css, /\.expense-edit-actions\{[^}]*display:flex[^}]*gap:7px[^}]*white-space:nowrap/);
+  assert.match(css, /\.expense-row-actions\{[^}]*display:flex[^}]*gap:6px[^}]*flex-wrap:nowrap/);
 });
 
 test("party history footer and framed bank workflows preserve semantic hierarchy", () => {

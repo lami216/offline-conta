@@ -314,18 +314,59 @@ test("sale update preserves identity and historical cost while revising stock, b
   assert.equal((await db.collection("documents").findOne({ id: saleId })).dueTotal, 240);
 });
 
-test("sale update changes indebted customer, blocks settled debt and protects linked returns", async t => {
+test("sale update moves a settled invoice to another customer without moving its payment", async t => {
   await db.collection("products").updateOne({ id: "p1" }, { $set: { "stocks.wh-main": 10, lastPurchaseCost: 10 } });
   await db.collection("parties").insertOne({ id: "customer-b", name: "B", phone: "", partyType: "customer", receivable: 0, payable: 0, net: 0 });
   const saleId = await command({ type: "sale.post", warehouseId: "wh-main", partyId: "party", paymentMethod: "note", lines: [{ productId: "p1", quantity: 2, piecePrice: 100 }] });
   await command({ type: "sale.update", documentId: saleId, partyId: "customer-b", paymentMethod: "note", lines: [{ productId: "p1", quantity: 2, piecePrice: 150 }] });
   assert.equal((await db.collection("parties").findOne({ id: "party" })).receivable, 0);
   assert.equal((await db.collection("parties").findOne({ id: "customer-b" })).receivable, 300);
-  await command({ type: "payment.post", partyId: "customer-b", side: "receivable", amount: 100, paymentMethod: "cash-id" });
-  await assert.rejects(command({ type: "sale.update", documentId: saleId, partyId: "customer-b", paymentMethod: "note", lines: [{ productId: "p1", quantity: 1, piecePrice: 100 }] }), /تمت تسويته/);
-  assert.equal((await db.collection("documents").findOne({ id: saleId })).total, 300);
+  await command({ type: "payment.post", partyId: "customer-b", side: "receivable", amount: 300, paymentMethod: "cash-id" });
+  const payment = await db.collection("documents").findOne({kind:"payment",partyId:"customer-b"});
+  await command({ type: "sale.update", documentId: saleId, partyId: "party", paymentMethod: "note", lines: [{ productId: "p1", quantity: 1, piecePrice: 100 }] });
+  assert.deepEqual(await db.collection("parties").findOne({id:"customer-b"},{projection:{_id:0,receivable:1,payable:1,net:1}}),{receivable:0,payable:300,net:-300});
+  assert.deepEqual(await db.collection("parties").findOne({id:"party"},{projection:{_id:0,receivable:1,payable:1,net:1}}),{receivable:100,payable:0,net:100});
+  assert.equal((await db.collection("documents").findOne({_id:payment._id})).partyId,"customer-b");
+  assert.equal((await db.collection("documents").findOne({ id: saleId })).total, 100);
   await db.collection("documents").insertOne({ id: "ret", number: "RET-1", kind: "return", status: "posted", parentDocumentId: saleId, lines: [] });
   await assert.rejects(command({ type: "sale.void", documentId: saleId }), /حركة تاريخية/);
+});
+
+test("settled note sales reconcile through zero while preserving receipts and movement history", async () => {
+  await db.collection("products").updateOne({id:"p1"},{$set:{"stocks.wh-main":20,lastPurchaseCost:10}});
+  for (const [id,settlement,newTotal,method,expectedNet] of [
+    ["unsettled",0,100,"cash-id",0],
+    ["full",100,100,"cash-id",-100],
+    ["partial",60,100,"cash-id",-60],
+    ["smaller",100,80,"note",-20],
+    ["larger",100,120,"note",20],
+  ]) {
+    await db.collection("parties").insertOne({id,name:id,partyType:"customer",receivable:0,payable:0,net:0});
+    const saleId=await command({type:"sale.post",warehouseId:"wh-main",partyId:id,paymentMethod:"note",lines:[{productId:"p1",quantity:1,piecePrice:100}]});
+    const paymentId=settlement ? await command({type:"payment.post",partyId:id,side:"receivable",amount:settlement,paymentMethod:"cash-id"}) : null;
+    await command({type:"sale.update",documentId:saleId,partyId:id,paymentMethod:method,lines:[{productId:"p1",quantity:1,piecePrice:newTotal}]});
+    const party=await db.collection("parties").findOne({id}), invoice=await db.collection("documents").findOne({id:saleId});
+    assert.deepEqual([party.receivable,party.payable,party.net],[Math.max(expectedNet,0),Math.max(-expectedNet,0),expectedNet],id);
+    assert.deepEqual([invoice.dueTotal,invoice.paidTotal,invoice.cashAmount],[method==="note"?newTotal:0,method==="note"?0:newTotal,method==="note"?0:newTotal]);
+    assert.deepEqual([invoice.partyBalanceBefore,invoice.partyBalanceDelta,invoice.partyBalanceAfter],[settlement ? -settlement : 0,method==="note"?newTotal:0,expectedNet]);
+    if(paymentId){
+      assert.ok(await db.collection("documents").findOne({id:paymentId,partyId:id}),"historical receipt remains");
+      assert.equal(await db.collection("financialMovements").countDocuments({documentId:paymentId,type:"party-receipt"}),1);
+    }
+    assert.equal(await db.collection("financialMovements").countDocuments({documentId:saleId,type:"sale"}),method==="note"?0:1);
+  }
+});
+
+test("a settled note purchase corrected to direct retains supplier payment as an advance", async () => {
+  const purchaseId=await command({type:"purchase.post",warehouseId:"wh-main",partyId:"supplier",paymentMethod:"note",lines:[{productId:"p1",quantity:1,unitPrice:100}]});
+  const paymentId=await command({type:"payment.post",partyId:"supplier",side:"payable",amount:100,paymentMethod:"cash-id"});
+  await command({type:"purchase.update",documentId:purchaseId,warehouseId:"wh-main",partyId:"supplier",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:1,unitPrice:100}]});
+  const supplier=await db.collection("parties").findOne({id:"supplier"}), invoice=await db.collection("documents").findOne({id:purchaseId});
+  assert.deepEqual([supplier.receivable,supplier.payable,supplier.net],[100,0,100]);
+  assert.deepEqual([invoice.partyBalanceBefore,invoice.partyBalanceDelta,invoice.partyBalanceAfter],[100,0,100]);
+  assert.ok(await db.collection("documents").findOne({id:paymentId,partyId:"supplier"}));
+  assert.equal(await db.collection("financialMovements").countDocuments({documentId:paymentId,type:"party-payment"}),1);
+  assert.equal(await db.collection("financialMovements").countDocuments({documentId:purchaseId,type:"purchase"}),1);
 });
 
 test("sale void reverses effects, preserves number and does not rewind sequence", async t => {

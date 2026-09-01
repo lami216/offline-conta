@@ -2308,11 +2308,11 @@ input[type="date"]{height:34px;min-height:34px;font-size:10px}.expense-form inpu
 .purchase-supplier .combobox-trigger { min-width: 0; overflow: hidden; }
 .purchase-supplier .combobox-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Shared, non-mutating visual keyboard map for both invoice workspaces. */
+/* Game-style invoice key hints stay attached to their real controls. */
 .transaction-page { position: relative; }
 .keyboard-help-button {
   position: absolute;
-  z-index: 1202;
+  z-index: 20;
   inset-block-start: 2px;
   inset-inline-end: 16px;
   display: inline-flex;
@@ -2328,84 +2328,32 @@ input[type="date"]{height:34px;min-height:34px;font-size:10px}.expense-form inpu
   font-size: 10px;
   font-weight: 800;
 }
-.keyboard-help-button svg, .keyboard-help-close svg { width: 14px; height: 14px; }
-.keyboard-help-overlay {
-  position: fixed;
-  z-index: 1200;
-  inset: 0;
-  background: rgba(18, 35, 31, .09);
-  direction: rtl;
+.keyboard-help-button svg { width: 14px; height: 14px; }
+.keyboard-help-button kbd { direction: ltr; font: 800 9px/1 ui-monospace, monospace; }
+.keyboard-shortcut-anchor {
+  position: relative;
+  min-width: 0;
 }
-.keyboard-help-close {
-  position: fixed;
-  z-index: 1203;
-  inset-block-start: 12px;
-  inset-inline-end: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 31px;
-  padding: 4px 9px;
-  border: 1px solid #315f52;
-  border-radius: 6px;
-  color: #fff;
-  background: #174f41;
-  font-weight: 800;
-}
-.keyboard-help-badge {
-  position: fixed;
-  z-index: 1202;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  max-width: calc(100vw - 16px);
-  padding: 5px 7px;
-  border: 1px solid #174f41;
-  border-radius: 7px;
-  color: #123b31;
-  background: #f7fffbcf;
-  box-shadow: 0 3px 10px #102d2433;
-  font-size: 10px;
-  font-weight: 900;
+.keyboard-shortcut-anchor > :is(button, select, label, section, div) { max-width: 100%; }
+.keyboard-shortcut-badge {
+  position: absolute;
+  z-index: 30;
   pointer-events: none;
-}
-.keyboard-keycaps { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
-.keyboard-keycaps kbd {
-  min-width: 24px;
-  padding: 2px 5px;
-  border: 1px solid #66766f;
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  color: #132d26;
-  background: #fff;
-  font: 800 10px/1.35 ui-monospace, monospace;
+  inset-block-start: -7px;
+  inset-inline-end: -4px;
+  min-width: 26px;
+  padding: 3px 5px;
+  border: 1px solid #315f52;
+  border-bottom-width: 3px;
+  border-radius: 5px;
+  color: #123b31;
+  background: #f7fffb;
+  box-shadow: 0 2px 5px #102d2438;
+  font: 800 10px/1 ui-monospace, monospace;
   text-align: center;
+  white-space: nowrap;
 }
-.keyboard-key-plus { color: #52645e; font-weight: 900; }
-.keyboard-help-legend {
-  position: fixed;
-  z-index: 1202;
-  inset-inline: 12px;
-  inset-block-end: 10px;
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 5px 12px;
-  width: fit-content;
-  max-width: calc(100vw - 24px);
-  margin-inline: auto;
-  padding: 7px 10px;
-  border: 1px solid #64766f;
-  border-radius: 8px;
-  color: #18382f;
-  background: #fffffff2;
-  box-shadow: 0 4px 16px #0002;
-  font-size: 10px;
-  font-weight: 800;
-}
-.keyboard-help-legend > span { display: inline-flex; align-items: center; gap: 4px; }
-@media (max-width: 900px) {
-  .pos-payment-row, .purchase-payment-row { gap: 3px; }
-  .pos-quick-customer-button { padding-inline: 5px; }
-  .keyboard-help-legend { justify-content: flex-start; }
-}
+.checkout-footer > .keyboard-shortcut-anchor,
+.invoice-meta-row > .keyboard-shortcut-anchor { flex: 1; }
+.checkout-footer > .keyboard-shortcut-anchor > button,
+.invoice-meta-row > .keyboard-shortcut-anchor > button { width: 100%; }

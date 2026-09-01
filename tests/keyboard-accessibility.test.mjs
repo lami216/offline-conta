@@ -45,27 +45,30 @@ test("important controls have a visible focus-visible treatment", () => {
 
 const shortcutRegistry = await readFile(new URL("../app/invoice-keyboard.ts", import.meta.url), "utf8");
 
-test("invoice help and behavior share one conflict-free shortcut registry", () => {
-  const entries = [...shortcutRegistry.matchAll(/\{ id: "([^"]+)", keys: \[([^\]]+)\][^}]+scope: \[([^\]]+)\][^}]+action: "([^"]+)"/g)];
-  assert.equal(entries.length, 3);
-  for (const scope of ["sale", "purchase"]) {
-    const scoped = entries.filter(entry => entry[3].includes(`"${scope}"`));
-    assert.equal(new Set(scoped.map(entry => entry[1])).size, scoped.length);
-    assert.deepEqual(new Set(scoped.map(entry => entry[4])), new Set(["focus-product", "focus-payment", "submit"]));
-  }
-  assert.match(source, /invoiceShortcutAction\(event\.nativeEvent, "sale"\)/);
-  assert.match(source, /invoiceShortcutAction\(event\.nativeEvent, "purchase"\)/);
-  assert.match(source, /shortcutsForInvoice\(scope\)/);
+test("invoice hints and behavior share one conflict-free shortcut registry", () => {
+  for (const key of ["F1", "F2", "F3", "F4", "F6", "F7", "F8", "F9", "F10", "1", "2"]) assert.ok(shortcutRegistry.includes(`[["${key}"]]`) || shortcutRegistry.includes(`[["${key}"],`));
+  assert.match(shortcutRegistry, /id: "submit", keys: \[\["F9"\], \["Ctrl", "Enter"\]\]/);
+  assert.match(source, /shortcutForAction\(scope, action\)/);
+  assert.equal((source.match(/invoiceShortcutAction\(event\.nativeEvent/g) ?? []).length, 2);
 });
 
-test("visual keyboard help is anchored, dismissible, and blocks invoice shortcuts", () => {
-  assert.equal((source.match(/data-keyboard-help="product-search"/g) ?? []).length, 2);
-  assert.equal((source.match(/data-keyboard-help="payment"/g) ?? []).length, 2);
-  assert.equal((source.match(/data-keyboard-help="submit"/g) ?? []).length, 2);
-  assert.match(source, /role="dialog" aria-modal="true" aria-label="خريطة اختصارات الفاتورة"/);
-  assert.equal((source.match(/if \(!keyboardHelpOpen\) return; event\.preventDefault\(\); event\.stopPropagation\(\)/g) ?? []).length, 2);
-  assert.match(source, /if \(event\.key === "Escape"\) \{ setKeyboardHelpOpen\(false\)/);
-  assert.match(source, /aria-pressed=\{open\} onClick=\{onToggle\}/);
+test("game-style hints are local, non-blocking, and registry-driven", () => {
+  assert.match(source, /function ShortcutHintAnchor/);
+  assert.equal((source.match(/action="focus-product" visible=\{keyboardHintsVisible\}/g) ?? []).length, 2);
+  assert.equal((source.match(/action="focus-payment" visible=\{keyboardHintsVisible\}/g) ?? []).length, 2);
+  assert.equal((source.match(/action="submit" visible=\{keyboardHintsVisible\}/g) ?? []).length, 2);
+  assert.doesNotMatch(source, /KeyboardHelpOverlay|keyboard-help-overlay|onKeyDownCapture/);
+  assert.doesNotMatch(source, /if \(!keyboardHintsVisible\) return; event\.preventDefault/);
+  assert.match(css, /\.keyboard-shortcut-anchor[\s\S]{0,80}position: relative/);
+  assert.match(css, /\.keyboard-shortcut-badge[\s\S]{0,160}pointer-events: none/);
+  assert.doesNotMatch(css, /\.keyboard-help-overlay|\.keyboard-help-legend/);
+});
+
+test("hint mode keeps actions live and protects typing and quick-entry forms", () => {
+  assert.equal((source.match(/action === "toggle-hints"/g) ?? []).length, 2);
+  assert.equal((source.match(/action === "focus-product"/g) ?? []).length, 2);
+  assert.equal((source.match(/action === "submit" && !quick/g) ?? []).length, 2);
+  assert.equal((source.match(/\(action === "select-direct" \|\| action === "select-note"\) && isTypingTarget\(event\.target\)/g) ?? []).length, 2);
 });
 
 test("sale and purchase keep party add and native payment controls in bounded rows", () => {

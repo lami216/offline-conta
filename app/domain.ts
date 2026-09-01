@@ -147,6 +147,7 @@ export interface BootstrapData {
     currentOccurrenceKey: string;
     currentDueDate: string;
     currentPaymentMethodId: string | null;
+    currentDocumentId: string | null;
   }>;
   accountTransfers: Array<{ id: string; number: string; fromAccountId: string; toAccountId: string; amount: number; note: string; occurredAt: string }>;
 }

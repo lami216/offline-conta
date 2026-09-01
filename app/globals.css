@@ -826,6 +826,13 @@ th {
   box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
 }
 .toast {
+  left: 50%;
+  right: auto;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(520px, calc(100vw - 28px));
+  text-align: center;
   background: #0d765c;
 }
 .error {
@@ -938,12 +945,8 @@ th {
   .invoice-lines {
     height: auto;
   }
-  .toast,
-  .error {
-    right: 14px;
-    left: 14px;
-    bottom: 14px;
-  }
+  .toast { left: 50%; right: auto; bottom: 14px; }
+  .error { right: 14px; left: 14px; bottom: 14px; }
   .pay-grid {
     grid-template-columns: repeat(2, 1fr);
   }

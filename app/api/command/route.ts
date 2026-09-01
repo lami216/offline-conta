@@ -101,10 +101,12 @@ async function changePartyDebt(db: Db, session: ClientSession, partyId: unknown,
   await applyPartyNetDelta(db, session, partyId, kind === "sale" ? delta : -delta, reversing);
 }
 async function applyPartyNetDelta(db: Db, session: ClientSession, partyId: unknown, delta: number, reversing = false) {
-  if (!delta) return null;
   const party = await db.collection("parties").findOne({ id: String(partyId) }, { session });
   if (!party) { if (reversing) throw new CommandError("لا يمكن تعديل رصيد الطرف", 409); return null; }
-  const before = partyNet(party as {receivable?:unknown;payable?:unknown}); if(reversing&&((delta<0&&before < -delta)||(delta>0&&before > -delta)))throw new CommandError("لا يمكن تعديل الفاتورة لأن جزءًا من الرصيد تمت تسويته",409); const after = before + delta;
+  const before = partyNet(party as {receivable?:unknown;payable?:unknown});
+  // Invoice corrections reconcile against the current net ledger. Independent party
+  // settlements remain historical facts, so reversing an invoice may cross zero.
+  const after = before + delta;
   await db.collection("parties").updateOne({ _id: party._id }, { $set: { ...normalizePartyNet(after), lastMovementAt: new Date() } }, { session });
   return { before, delta, after };
 }
@@ -264,9 +266,10 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     }
     if (Number(original.dueTotal) > 0) await changePartyDebt(db, session, original.partyId, kind, -Number(original.dueTotal), true);
     await reverseInvoicePayment(db, session, original, kind);
-    if (dueTotal) await changePartyDebt(db, session, partyId, kind, dueTotal);
-    const revised = { partyId: partyId || null, partyName: party?.name ?? (isSale ? "بيع مباشر" : "شراء مباشر"), warehouseId, warehouseName: warehouse.name, paymentMethod, total, paidTotal, cashAmount: paidTotal, dueTotal, lines: calculated, ...(isSale ? { pricingMode: body.pricingMode === "wholesale" ? "wholesale" : "retail" } : {}), updatedAt: new Date(), revision: Number(original.revision ?? 0) + 1 };
-    await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: revised }, { session });
+    const partyEffect = party ? (isSale ? dueTotal : -dueTotal) : 0;
+    const snapshot = party ? await applyPartyNetDelta(db, session, partyId, partyEffect) : null;
+    const revised = { partyId: partyId || null, partyName: party?.name ?? (isSale ? "بيع مباشر" : "شراء مباشر"), warehouseId, warehouseName: warehouse.name, paymentMethod, total, paidTotal, cashAmount: paidTotal, dueTotal, lines: calculated, ...(snapshot ? { partyBalanceBefore: snapshot.before, partyBalanceDelta: snapshot.delta, partyBalanceAfter: snapshot.after } : {}), ...(isSale ? { pricingMode: body.pricingMode === "wholesale" ? "wholesale" : "retail" } : {}), updatedAt: new Date(), revision: Number(original.revision ?? 0) + 1 };
+    await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: revised, ...(!snapshot ? { $unset: { partyBalanceBefore: "", partyBalanceDelta: "", partyBalanceAfter: "" } } : {}) }, { session });
     if (paidTotal) await financialMovement(db, session, { ...original, ...revised }, isSale ? "in" : "out", paidTotal, kind);
     if (!isSale) await recomputePurchaseCosts(db, session, allIds);
     return documentId;

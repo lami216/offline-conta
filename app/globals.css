@@ -2306,3 +2306,20 @@ input[type="date"]{height:34px;min-height:34px;font-size:10px}.expense-form inpu
 .pos-customer-compact .combobox-trigger,
 .purchase-supplier .combobox-trigger { min-width: 0; overflow: hidden; }
 .purchase-supplier .combobox-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Compact add-party action leaves invoice selectors the available row width. */
+.pos-payment-row,
+.purchase-payment-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 36px; }
+.pos-payment-row.note,
+.purchase-payment-row.note { grid-template-columns: minmax(0, 1fr) 36px; }
+.pos-quick-customer-button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+.pos-quick-customer-button svg { width: 18px; height: 18px; }

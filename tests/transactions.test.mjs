@@ -52,6 +52,22 @@ test("direct sale command rejects a price below authoritative purchase cost", as
   assert.equal((await db.collection("products").findOne({ id: "p1" })).stocks["wh-main"], 5);
 });
 
+test("direct sale and purchase use virtual parties without creating master data or debt", async () => {
+  await db.collection("products").updateOne({id:"p1"},{$set:{"stocks.wh-main":10,lastPurchaseCost:50}});
+  const partyCount=await db.collection("parties").countDocuments();
+  const saleId=await command({type:"sale.post",warehouseId:"wh-main",partyId:"",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:1,piecePrice:100}]});
+  const purchaseId=await command({type:"purchase.post",warehouseId:"wh-main",partyId:"",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:2,unitPrice:50}]});
+  assert.deepEqual(await db.collection("documents").findOne({id:saleId},{projection:{_id:0,partyId:1,partyName:1,dueTotal:1}}),{partyId:null,partyName:"بيع مباشر",dueTotal:0});
+  assert.deepEqual(await db.collection("documents").findOne({id:purchaseId},{projection:{_id:0,partyId:1,partyName:1,dueTotal:1}}),{partyId:null,partyName:"شراء مباشر",dueTotal:0});
+  assert.equal(await db.collection("parties").countDocuments(),partyCount);
+  await assert.rejects(command({type:"sale.post",warehouseId:"wh-main",partyId:"",paymentMethod:"note",lines:[{productId:"p1",quantity:1,piecePrice:100}]}),/الطرف غير موجود/);
+  await assert.rejects(command({type:"purchase.post",warehouseId:"wh-main",partyId:"",paymentMethod:"note",lines:[{productId:"p1",quantity:1,unitPrice:50}]}),/الطرف غير موجود/);
+  await command({type:"sale.update",documentId:saleId,partyId:"",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:1,piecePrice:110}]});
+  await command({type:"purchase.update",documentId:purchaseId,partyId:"",warehouseId:"wh-main",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:2,unitPrice:55}]});
+  assert.equal((await db.collection("documents").findOne({id:saleId})).partyName,"بيع مباشر");
+  assert.equal((await db.collection("documents").findOne({id:purchaseId})).partyName,"شراء مباشر");
+});
+
 test("transfer and adjustment initialize missing destination fields", async t => {
   await db.collection("products").updateOne({ id: "p1" }, { $set: { "stocks.wh-main": 30 } });
   await command({ type: "transfer.post", fromWarehouseId: "wh-main", toWarehouseId: "wh-b", lines: [{ productId: "p1", quantity: 10 }] });

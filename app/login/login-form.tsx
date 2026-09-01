@@ -1,0 +1,21 @@
+"use client";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+
+export function LoginForm({exitButton}:{exitButton:ReactNode}) {
+  const [username,setUsername]=useState(""),[password,setPassword]=useState(""),[error,setError]=useState(""),[submitting,setSubmitting]=useState(false);
+  const usernameRef=useRef<HTMLInputElement>(null),passwordRef=useRef<HTMLInputElement>(null),router=useRouter();
+  async function submit(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();setSubmitting(true);setError("");
+    try {
+      const body=new FormData();body.set("username",username);body.set("password",password);
+      const response=await fetch("/api/auth/login",{method:"POST",headers:{"x-alkarna-login-ui":"1"},body});
+      const result=await response.json() as {ok:boolean;field?:"username"|"password";error?:string};
+      if(response.ok&&result.ok){router.replace("/");router.refresh();return}
+      setError(result.error??"تعذر تسجيل الدخول");
+      if(result.field==="username"){setUsername("");requestAnimationFrame(()=>usernameRef.current?.focus())}
+      else if(result.field==="password"){setPassword("");requestAnimationFrame(()=>passwordRef.current?.focus())}
+    } catch {setError("تعذر الاتصال بالتطبيق")} finally {setSubmitting(false)}
+  }
+  return <form onSubmit={submit}><label>اسم المستخدم<input ref={usernameRef} name="username" required autoComplete="username" value={username} onChange={event=>setUsername(event.target.value)}/></label><label>كلمة المرور<input ref={passwordRef} name="password" type="password" required autoComplete="current-password" value={password} onChange={event=>setPassword(event.target.value)}/></label>{error&&<p className="login-error" role="alert">{error}</p>}<div className="login-actions"><button className="login-submit" type="submit" disabled={submitting}>{submitting?"جارٍ الدخول...":"تسجيل الدخول"}</button>{exitButton}</div></form>
+}

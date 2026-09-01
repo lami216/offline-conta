@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const {app,BrowserWindow,Menu,shell,dialog}=require('electron');
+const {app,BrowserWindow,Menu,shell,dialog,session}=require('electron');
 const PRODUCT_NAME='الكرنه';
 app.setName(PRODUCT_NAME);
 const {spawn}=require('node:child_process');const {join}=require('node:path');const {mkdirSync,createWriteStream}=require('node:fs');const {writeFile}=require('node:fs/promises');const crypto=require('node:crypto');const net=require('node:net');const {createCloseFlow}=require('./close-flow.cjs');
@@ -19,7 +19,9 @@ async function start(){
  window=new BrowserWindow({title:PRODUCT_NAME,width:1500,height:900,minWidth:1100,minHeight:700,icon:join(root,'public','alkarna-logo.png'),webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true}});const expectedOrigin=new URL(url).origin,isLocal=target=>{try{return new URL(target).origin===expectedOrigin}catch{return false}};
  Menu.setApplicationMenu(null);window.webContents.setWindowOpenHandler(({url:target})=>{if(isLocal(target))return{action:'allow'};shell.openExternal(target);return{action:'deny'}});window.webContents.on('will-navigate',(event,target)=>{if(!isLocal(target))event.preventDefault()});
  closeFlow=createCloseFlow({dialog,window:()=>window,fetchBackup:async()=>{const response=await fetch(`${serverUrl}/api/desktop/backup`,{headers:{'x-alkarna-desktop-token':desktopToken}});if(!response.ok)throw Error(`backup HTTP ${response.status}`);return Buffer.from(await response.arrayBuffer())},writeBackup:writeFile,onFailure:async error=>{stamp(`backup failed: ${error.stack||error}`);await dialog.showMessageBox(window,{type:'error',title:PRODUCT_NAME,message:'تعذر إنشاء النسخة الاحتياطية. لم يتم إغلاق البرنامج.',buttons:['حسنًا']})},approveQuit:async()=>{quitting=true;await stopServer();logStream?.end();app.quit()}});
- window.on('close',event=>{if(quitting||closeFlow.isApproved())return;event.preventDefault();void closeFlow.requestClose()});await window.loadURL(url);window.maximize();
+ window.on('close',event=>{if(quitting||closeFlow.isApproved())return;event.preventDefault();void closeFlow.requestClose()});
+ await session.defaultSession.cookies.remove(url,'conta_session');
+ await window.loadURL(url);window.maximize();
 }
 app.whenReady().then(start).catch(async error=>{stamp(`startup error: ${error.stack||error}`);await failStartup()});
 app.on('before-quit',event=>{if(quitting)return;if(!ready||!closeFlow){quitting=true;return}event.preventDefault();void closeFlow.requestClose()});app.on('window-all-closed',()=>{if(quitting)app.quit()});

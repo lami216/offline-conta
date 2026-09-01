@@ -137,18 +137,6 @@ export interface BootstrapData {
   financialMovements: FinancialMovement[];
   partyFinancialSummaries: PartyFinancialSummary[];
   paymentAccounts: PaymentAccount[];
-  recurringExpenses: Array<{
-    id: string;
-    title: string;
-    amount: number;
-    frequency: "daily" | "monthly";
-    startsOn: string;
-    active: boolean;
-    currentOccurrenceKey: string;
-    currentDueDate: string;
-    currentPaymentMethodId: string | null;
-    currentDocumentId: string | null;
-  }>;
   accountTransfers: Array<{ id: string; number: string; fromAccountId: string; toAccountId: string; amount: number; note: string; occurredAt: string }>;
 }
 export const invoiceFonts = ["tahoma", "arial", "segoe-ui", "times-new-roman"] as const;

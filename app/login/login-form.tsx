@@ -1,10 +1,11 @@
 "use client";
-import { type FormEvent, type ReactNode, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 export function LoginForm({exitButton}:{exitButton:ReactNode}) {
   const [username,setUsername]=useState(""),[password,setPassword]=useState(""),[error,setError]=useState(""),[submitting,setSubmitting]=useState(false);
   const usernameRef=useRef<HTMLInputElement>(null),passwordRef=useRef<HTMLInputElement>(null),router=useRouter();
+  useEffect(()=>{if(!error)return;const timer=window.setTimeout(()=>setError(""),2800);return()=>window.clearTimeout(timer)},[error]);
   async function submit(event:FormEvent<HTMLFormElement>){
     event.preventDefault();setSubmitting(true);setError("");
     try {

@@ -7,7 +7,7 @@ const bootstrap = readFileSync(new URL("../app/api/bootstrap/route.ts", import.m
 const between = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));
 test("remaining ERP pages use framed regions without legacy title bands", () => {
   const expenses = between("function Expenses", "function Banks");
-  for (const title of ["مصروف جديد", "المصاريف المستحقة", "سجل المصاريف"]) assert.match(expenses, new RegExp(`FramedSection title=.*${title}`));
+  for (const title of ["مصروف جديد", "سجل المصاريف"]) assert.match(expenses, new RegExp(`FramedSection title=.*${title}`));
   assert.doesNotMatch(expenses, /section-title/);
   const warehouses = between("function Warehouses", "function ProductMovementPanel");
   assert.match(warehouses, /FramedSection title="جرد المخازن"/);
@@ -160,8 +160,7 @@ test("expenses and record filters retain the compact desktop grid", () => {
   assert.match(records, /className="records-kind-filter"/);
   assert.match(css, /\.records-filters \.records-kind-filter\{[^}]*width:180px[^}]*flex:0 0 180px/);
   assert.match(css, /\.expense-form \{ grid-column:1;grid-row:1; \}/);
-  assert.match(css, /\.expense-recurring \{[^}]*grid-column:1;grid-row:2/);
-  assert.match(css, /\.expense-history \{[^}]*grid-column:2;grid-row:1 \/ span 2/);
+  assert.match(css, /\.expense-history \{[^}]*grid-column:2;grid-row:1/);
   assert.doesNotMatch(css, /\.expense-form\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
 });
 
@@ -174,9 +173,7 @@ test("invoice history renders every filtered record and expense actions are stru
   assert.match(fields, /وسيلة الدفع[\s\S]*className="expense-edit-actions"[\s\S]*className="primary expense-save"[\s\S]*إلغاء التعديل/);
   assert.match(css, /\.expense-form-body\s*\{[^}]*display:block/);
   assert.match(css, /\.expense-save\s*\{[^}]*align-self:end[^}]*height:34px/);
-  assert.match(expenses, /className="expense-row-actions"[\s\S]*تسجيل الدفع[\s\S]*تعديل/);
   assert.match(css, /\.expense-edit-actions\{[^}]*display:flex[^}]*gap:7px[^}]*white-space:nowrap/);
-  assert.match(css, /\.expense-row-actions\{[^}]*display:flex[^}]*gap:6px[^}]*flex-wrap:nowrap/);
 });
 
 test("party history footer and framed bank workflows preserve semantic hierarchy", () => {

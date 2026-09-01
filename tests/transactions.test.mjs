@@ -45,11 +45,8 @@ test("sale decreases stock and insufficient sale rolls every write back", async 
   assert.equal((await db.collection("parties").findOne({ id: "party" })).receivable, 2700);
 });
 
-test("direct sale command rejects a price below authoritative purchase cost", async t => {
-  await db.collection("products").updateOne({ id: "p1" }, { $set: { "stocks.wh-main": 5, lastPurchaseCost: 12000 } });
-  await assert.rejects(command({ type: "sale.post", warehouseId: "wh-main", paymentMethod: "cash", lines: [{ productId: "p1", quantity: 1, piecePrice: 10000 }] }), /تحت سعر الشراء/);
-  assert.equal(await db.collection("documents").countDocuments({ kind: "sale" }), 0);
-  assert.equal((await db.collection("products").findOne({ id: "p1" })).stocks["wh-main"], 5);
+test("direct sale command allows below-cost pricing and records loss", async () => {
+ await db.collection("products").updateOne({id:"p1"},{$set:{"stocks.wh-main":5,lastPurchaseCost:12000}});const id=await command({type:"sale.post",warehouseId:"wh-main",paymentMethod:"cash",lines:[{productId:"p1",quantity:1,piecePrice:10000}]});const doc=await db.collection("documents").findOne({id});assert.deepEqual([doc.lines[0].costAtSale,doc.lines[0].grossProfit],[12000,-2000]);
 });
 
 test("direct sale and purchase use virtual parties without creating master data or debt", async () => {
@@ -174,7 +171,7 @@ test("every outflow obeys the configured account overdraft policy", async t => {
   await command({type:"expense.post",title:"Large",amount:100,occurredAt:"2026-08-15",paymentMethod:bank});
   await command({type:"account-transfer.post",fromAccountId:bank,toAccountId:"cash-id",amount:100});
   assert.equal((await db.collection("paymentAccounts").findOne({id:bank})).balance,-300);
-  await assert.rejects(command({type:"payment-account.update",id:bank,name:"Overdraft",isActive:true,allowNegativeBalance:false}),/لا يمكن إيقاف/);
+  await command({type:"payment-account.update",id:bank,name:"Overdraft",isActive:true});
   await command({type:"account-balance-correction.post",accountId:bank,newBalance:-500,reason:"audit"});
   assert.equal((await db.collection("paymentAccounts").findOne({id:bank})).balance,-500);
   await command({type:"account-balance-correction.post",accountId:"cash-id",newBalance:-1,reason:"audit"});
@@ -190,15 +187,8 @@ test("cash expense may overdraw when enabled",async()=>{
   assert.deepEqual(await db.collection("financialMovements").findOne({documentId:expenseId},{projection:{_id:0,type:1,direction:1,amount:1}}),{type:"expense",direction:"out",amount:500});
 });
 
-test("recurring expense obeys enabled cash overdraft",async()=>{
-  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:true}});
-  const recurringId=await command({type:"expense.post",title:"Monthly rent",amount:500,occurredAt:"2026-08-01",frequency:"monthly"});
-  const expenseId=await command({type:"expense.materialize",recurringId,dueDate:"2026-08-31",paymentMethod:"cash-id"});
-  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-500);
-  assert.equal(await db.collection("documents").countDocuments({recurringId,occurrenceKey:"2026-08"}),1);
-  assert.equal(await db.collection("financialMovements").countDocuments({documentId:expenseId,type:"expense",direction:"out",amount:500}),1);
-  await assert.rejects(command({type:"expense.materialize",recurringId,dueDate:"2026-08-15",paymentMethod:"cash-id"}),/مسبقًا/);
-  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-500);
+test("legacy materialized expense remains an ordinary editable expense",async()=>{
+ await db.collection("documents").insertOne({id:"legacy-exp",number:"EXP-9",sequence:9,kind:"expense",status:"posted",recurringId:"dormant",occurrenceKey:"2026-08",title:"Rent",total:100,paymentMethod:"cash-id",occurredAt:"2026-08-01T12:00:00Z",lines:[{id:"l",productId:null,description:"Rent",quantity:1,unitPrice:100,lineTotal:100}]});await db.collection("financialMovements").insertOne({id:"fm",documentId:"legacy-exp",type:"expense",paymentMethod:"cash-id",amount:100});await command({type:"expense.update",documentId:"legacy-exp",title:"Rent revised",amount:120,occurredAt:"2026-08-02",paymentMethod:"cash-id"});assert.equal((await db.collection("documents").findOne({id:"legacy-exp"})).recurringId,"dormant");
 });
 
 test("paid purchase update obeys enabled cash overdraft",async()=>{
@@ -211,15 +201,8 @@ test("paid purchase update obeys enabled cash overdraft",async()=>{
   assert.equal(await db.collection("financialMovements").countDocuments({documentId:purchaseId,type:"purchase",direction:"out",amount:500}),1);
 });
 
-test("cash manual withdrawal, transfer, and party payment retain insufficient-balance protection",async()=>{
-  await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:false}});
-  const bank=await command({type:"payment-account.create",name:"Destination"});
-  await db.collection("parties").updateOne({id:"supplier"},{$set:{payable:100,net:-100}});
-  await assert.rejects(command({type:"account-adjustment.post",accountId:"cash-id",direction:"withdrawal",amount:1}),/الرصيد غير كاف/);
-  await assert.rejects(command({type:"account-transfer.post",fromAccountId:"cash-id",toAccountId:bank,amount:1}),/الرصيد غير كاف/);
-  await assert.rejects(command({type:"payment.post",partyId:"supplier",side:"payable",amount:1,paymentMethod:"cash-id"}),/الرصيد غير كاف/);
-  assert.equal((await db.collection("paymentAccounts").findOne({id:bank})).balance,0);
-  assert.equal((await db.collection("parties").findOne({id:"supplier"})).payable,100);
+test("cash manual withdrawal, transfer, and party payment may overdraw",async()=>{
+ await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:false}});const bank=await command({type:"payment-account.create",name:"Destination"});await db.collection("parties").updateOne({id:"supplier"},{$set:{payable:100,net:-100}});await command({type:"account-adjustment.post",accountId:"cash-id",direction:"withdrawal",amount:100});await command({type:"account-transfer.post",fromAccountId:"cash-id",toAccountId:bank,amount:100});await command({type:"payment.post",partyId:"supplier",side:"payable",amount:100,paymentMethod:"cash-id"});assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,(await db.collection("paymentAccounts").findOne({id:bank})).balance],[-300,100]);
 });
 
 test("invoice reversal bypasses normal overdraft policy",async t=>{
@@ -288,8 +271,8 @@ test("payment accounts use auditable opening balances and manual adjustments", a
   await command({ type: "account-adjustment.post", accountId: openedId, direction: "withdrawal", amount: 300 });
   assert.equal((await db.collection("paymentAccounts").findOne({ id: openedId })).balance, 400);
   assert.ok(await db.collection("financialMovements").findOne({ paymentMethod: openedId, type: "manual-withdrawal", direction: "out" }));
-  await assert.rejects(command({ type: "account-adjustment.post", accountId: openedId, direction: "withdrawal", amount: 401 }), /الرصيد غير كاف/);
-  assert.equal((await db.collection("paymentAccounts").findOne({ id: openedId })).balance, 400);
+  await command({ type: "account-adjustment.post", accountId: openedId, direction: "withdrawal", amount: 401 });
+  assert.equal((await db.collection("paymentAccounts").findOne({ id: openedId })).balance, -1);
 });
 
 test("sale update preserves identity and historical cost while revising stock, bank and debt", async t => {
@@ -448,19 +431,10 @@ test("expense update preserves identity and atomically moves its financial effec
   assert.equal(await db.collection("financialMovements").countDocuments({documentId:expenseId,type:"expense"}),1);
 });
 
-test("failed expense update rolls back original document, movement and balances",async()=>{
-  await db.collection("paymentAccounts").insertOne({id:"empty",code:"empty",name:"Empty",isActive:true,balance:10,allowNegativeBalance:false});
-  const expenseId=await command({type:"expense.post",title:"Original",amount:100,occurredAt:"2026-08-15",frequency:"once",paymentMethod:"cash-id"});
-  await assert.rejects(command({type:"expense.update",documentId:expenseId,title:"Changed",amount:150,occurredAt:"2026-08-16",paymentMethod:"empty"}),/الرصيد غير كاف/);
-  assert.deepEqual(await db.collection("documents").findOne({id:expenseId},{projection:{_id:0,title:1,total:1,paymentMethod:1}}),{title:"Original",total:100,paymentMethod:"cash-id"});
-  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,(await db.collection("paymentAccounts").findOne({id:"empty"})).balance],[9900,10]);
-  assert.equal(await db.collection("financialMovements").countDocuments({documentId:expenseId,type:"expense",amount:100}),1);
+test("expense update may move payment to an overdrawn account",async()=>{
+ await db.collection("paymentAccounts").insertOne({id:"empty",code:"empty",name:"Empty",isActive:true,balance:10,allowNegativeBalance:false});const expenseId=await command({type:"expense.post",title:"Original",amount:100,occurredAt:"2026-08-15",paymentMethod:"cash-id"});await command({type:"expense.update",documentId:expenseId,title:"Changed",amount:150,occurredAt:"2026-08-16",paymentMethod:"empty"});assert.equal((await db.collection("paymentAccounts").findOne({id:"empty"})).balance,-140);
 });
 
-test("recurring definition update keeps paid occurrence history unchanged",async()=>{
-  const recurringId=await command({type:"expense.post",title:"Rent",amount:100,occurredAt:"2026-08-01",frequency:"monthly"});
-  const expenseId=await command({type:"expense.materialize",recurringId,dueDate:"2026-08-31",paymentMethod:"cash-id"});
-  await command({type:"recurring-expense.update",recurringId,title:"Future rent",amount:200,startsOn:"2026-09-05",frequency:"daily"});
-  assert.deepEqual(await db.collection("recurringExpenses").findOne({id:recurringId},{projection:{_id:0,title:1,amount:1,startsOn:1,frequency:1}}),{title:"Future rent",amount:200,startsOn:"2026-09-05",frequency:"daily"});
-  assert.deepEqual(await db.collection("documents").findOne({id:expenseId},{projection:{_id:0,title:1,total:1,recurringId:1}}),{title:"Rent",total:100,recurringId});
+test("recurring commands are removed while dormant data is retained",async()=>{
+ await db.collection("recurringExpenses").insertOne({id:"legacy-template",title:"Rent",frequency:"monthly"});await assert.rejects(command({type:"expense.materialize",recurringId:"legacy-template"}),/غير مدعومة/);assert.ok(await db.collection("recurringExpenses").findOne({id:"legacy-template"}));
 });

@@ -87,6 +87,8 @@ type RunCommand = (
   afterSuccess?: () => void,
 ) => Promise<string & { disposition?: "deleted" | "archived" }>;
 type AdjustmentPrefill = { productId: string; warehouseId: string };
+type ActiveEditorGuard = { isEditing: () => boolean; isDirty: () => boolean; discard: () => void };
+type RegisterEditorGuard = (guard: ActiveEditorGuard | null) => void;
 type BankTab = "accounts" | "movements" | "transfers" | "adjustment";
 type SettingsTab = "general" | "users" | "data" | "license" | "contact";
 type LicenseInfo = {licenseId:string;storeId:string;customerName:string;storeName:string;deviceId:string;issuedAt?:string;type:"perpetual"|"temporary";durationSeconds:number|null;remainingSeconds:number|null};
@@ -197,6 +199,8 @@ export default function ContaApp() {
     [autoPrintId, setAutoPrintId] = useState<string | null>(null),
     [partyDetail, setPartyDetail] = useState<Party | null>(null),
     [adjustmentPrefill, setAdjustmentPrefill] = useState<AdjustmentPrefill | null>(null);
+  const activeEditorGuard = useRef<ActiveEditorGuard | null>(null);
+  const registerEditorGuard: RegisterEditorGuard = guard => { activeEditorGuard.current = guard; };
   const warehouseMenuRef = useRef<HTMLDivElement>(null);
   const invoiceMenuRef = useRef<HTMLDivElement>(null);
   const reportMenuRef = useRef<HTMLDivElement>(null);
@@ -261,6 +265,14 @@ export default function ContaApp() {
     const timer = window.setTimeout(() => void reload({ blocking: true }), 0);
     return () => window.clearTimeout(timer);
   }, []);
+  const requestPageRefresh = () => {
+    const guard=activeEditorGuard.current;
+    if(guard?.isEditing()){
+      if(guard.isDirty()&&!confirm("لديك تعديلات غير محفوظة. هل تريد تجاهلها وتحديث الصفحة؟"))return;
+      guard.discard();
+    }
+    void reload({blocking:true});
+  };
   const inFlightCommands = useRef(new Map<string, Promise<unknown>>());
   async function run(body: Record<string, unknown>, message: string, afterSuccess?: () => void) {
     const fingerprint=JSON.stringify(body), existing=inFlightCommands.current.get(fingerprint);
@@ -325,7 +337,7 @@ export default function ContaApp() {
             <Menu />
           </button>
           {partyDetail?<button className="page-title-back" onClick={()=>setPartyDetail(null)}><h1>{resolvePartyType(partyDetail)==="customer"?"العملاء":"الموردون"}</h1></button>:<h1>{[...nav, ...invoiceNav, ...warehouseNav, ...partyNav].find((n) => n.id === view)?.label}</h1>}
-          <button className="icon refresh" title="تحديث البيانات" aria-label="تحديث البيانات" onClick={() => void reload()}><RefreshCw /></button>
+          <button className="icon refresh" title="تحديث البيانات" aria-label="تحديث البيانات" onClick={requestPageRefresh}><RefreshCw /></button>
         </header>
         <div className="content">
           {notice && <div className="toast">{notice}</div>}
@@ -344,13 +356,13 @@ export default function ContaApp() {
           ) : (
             <>
               {view === "pos" && (
-                <Pos data={data} run={run} openDoc={openDoc} editRequest={saleEditRequest} clearEditRequest={() => setSaleEditRequest(null)} requestPrint={setAutoPrintId} openStockAdjustment={openStockAdjustment} />
+                <Pos data={data} run={run} openDoc={openDoc} editRequest={saleEditRequest} clearEditRequest={() => setSaleEditRequest(null)} requestPrint={setAutoPrintId} openStockAdjustment={openStockAdjustment} registerEditorGuard={registerEditorGuard} />
               )}{" "}
               {view === "purchases" && (
-                <Purchases data={data} run={run} openDoc={openDoc} editRequest={purchaseEditRequest} clearEditRequest={() => setPurchaseEditRequest(null)} requestPrint={setAutoPrintId} />
+                <Purchases data={data} run={run} openDoc={openDoc} editRequest={purchaseEditRequest} clearEditRequest={() => setPurchaseEditRequest(null)} requestPrint={setAutoPrintId} registerEditorGuard={registerEditorGuard} />
               )}{" "}
               {view === "expenses" && (
-                <Expenses data={data} run={run} openDoc={openDoc} />
+                <Expenses data={data} run={run} openDoc={openDoc} registerEditorGuard={registerEditorGuard} canEdit={can("expenses.edit")} />
               )}{" "}
               {(view === "customers" || view === "suppliers") && (
                 <Parties partyType={view === "customers" ? "customer" : "supplier"} data={data} run={run} openParty={setPartyDetail} />
@@ -622,6 +634,7 @@ function Pos({
   editRequest,
   clearEditRequest,
   requestPrint,
+  registerEditorGuard,
 }: {
   data: BootstrapData;
   run: RunCommand;
@@ -630,6 +643,7 @@ function Pos({
   clearEditRequest: () => void;
   requestPrint: (id: string) => void;
   openStockAdjustment: (prefill: AdjustmentPrefill) => void;
+  registerEditorGuard: RegisterEditorGuard;
 }) {
   const [query, setQuery] = useState(""),
     [lines, setLines] = useSessionDraft<DraftLine[]>("sale-lines", []),
@@ -661,9 +675,10 @@ function Pos({
   const snapshot = () => JSON.stringify({ lines, payment, partyId, priceMode });
   const dirty = () => editingDocumentId ? snapshot() !== baseline.current : lines.length > 0 || partyId !== "" || payment !== "" || priceMode !== initialSaleUiState.priceMode;
   const resetEditor = () => { clearPersistedSaleDraft(sessionStorage); setEditingDocumentId(null); setLines([]); setPartyId(""); setPayment(""); setPriceMode(initialSaleUiState.priceMode); setSelectedLine(null); setQuery(""); baseline.current = ""; };
+  useEffect(() => { registerEditorGuard({ isEditing: () => Boolean(editingDocumentId), isDirty: dirty, discard: resetEditor }); return () => registerEditorGuard(null); });
   const loadDocument = (document: DocumentRecord) => {
     if (document.legacyKey || document.status !== "posted") { openDoc(document.id); return; }
-    if (dirty() && !confirm("لديك تغييرات غير محفوظة. هل تريد تجاهلها؟")) return;
+    if (editingDocumentId && document.id !== editingDocumentId && dirty() && !confirm("لديك تعديلات غير محفوظة على الفاتورة الحالية. هل تريد تجاهلها وفتح الفاتورة الأخرى؟")) return;
     const loadedLines = document.lines.map(line => ({ productId: String(line.productId), quantity: String(line.quantity), piecePrice: String(line.unitPrice), unitPrice: "", actualQuantity: "" }));
     const loadedPayment = document.paymentMethod ?? "note", loadedParty = document.partyId ?? "", loadedMode = document.pricingMode ?? "retail";
     setLines(loadedLines); setPayment(loadedPayment); setPartyId(loadedParty); setPriceMode(loadedMode); setEditingDocumentId(document.id); setSelectedLine(null); setQuery("");
@@ -764,7 +779,7 @@ function QuickSupplier({ anchor, run, onDone, cancel }: { anchor: React.RefObjec
   const style: CSSProperties = rect ? { position: "fixed", zIndex: 1100, width: 250, top: rect.bottom + 5, left: Math.max(8, rect.right - 250) } : {};
   return createPortal(<form className="pos-quick-customer-popover" style={style} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); cancel(); window.requestAnimationFrame(() => anchor.current?.focus()); } }} onSubmit={async event => { event.preventDefault(); const id = await run({ type: "party.create", partyType: "supplier", name, phone }, "تمت إضافة المورد"); onDone(id); }}><label>اسم المورد *<input autoFocus required value={name} onChange={e => setName(e.target.value)} /></label><label>رقم الهاتف <small>اختياري</small><input dir="ltr" value={phone} onChange={e => setPhone(e.target.value)} /></label><div><button className="primary">حفظ</button><button type="button" className="soft" onClick={cancel}>إلغاء</button></div></form>, document.body);
 }
-function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestPrint }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void; editRequest: string | null; clearEditRequest: () => void; requestPrint: (id: string) => void }) {
+function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestPrint, registerEditorGuard }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void; editRequest: string | null; clearEditRequest: () => void; requestPrint: (id: string) => void; registerEditorGuard: RegisterEditorGuard }) {
   const [partyId, setPartyId] = useSessionDraft("purchase-party", "");
   const [warehouseId, setWarehouseId] = useSessionDraft("purchase-warehouse", "");
   const [lines, setLines] = useSessionDraft<DraftLine[]>("purchase-lines", []);
@@ -780,10 +795,11 @@ function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestP
   const total = details.reduce((sum, item) => sum + Math.round(val(item.line.quantity) * val(item.line.unitPrice)), 0);
   const snapshot = () => JSON.stringify({ lines, payment, partyId, warehouseId });
   const dirty = () => editingDocumentId ? snapshot() !== baseline.current : lines.length > 0 || partyId !== "" || warehouseId !== "" || payment !== "";
-  const resetEditor = () => { setEditingDocumentId(null); setLines([]); setPartyId(""); setWarehouseId(""); setPayment(""); setSelectedLine(null); setQuery(""); baseline.current = ""; };
+  const resetEditor = () => { for(const key of ["purchase-lines","purchase-party","purchase-warehouse","purchase-payment"])sessionStorage.removeItem(`conta:${key}`); setEditingDocumentId(null); setLines([]); setPartyId(""); setWarehouseId(""); setPayment(""); setSelectedLine(null); setQuery(""); baseline.current = ""; };
+  useEffect(() => { registerEditorGuard({ isEditing: () => Boolean(editingDocumentId), isDirty: dirty, discard: resetEditor }); return () => registerEditorGuard(null); });
   const loadDocument = (document: DocumentRecord) => {
     if (document.legacyKey || document.status !== "posted") { openDoc(document.id); return; }
-    if (dirty() && !confirm("لديك تغييرات غير محفوظة. هل تريد تجاهلها؟")) return;
+    if (editingDocumentId && document.id !== editingDocumentId && dirty() && !confirm("لديك تعديلات غير محفوظة على الفاتورة الحالية. هل تريد تجاهلها وفتح الفاتورة الأخرى؟")) return;
     const loadedLines = document.lines.map(line => ({ productId: String(line.productId), quantity: String(line.quantity), unitPrice: String(line.unitPrice), piecePrice: "", actualQuantity: "" }));
     const loadedPayment = document.paymentMethod ?? "note", loadedParty = document.partyId ?? "", loadedWarehouse = document.warehouseId ?? "";
     setLines(loadedLines); setPayment(loadedPayment); setPartyId(loadedParty); setWarehouseId(loadedWarehouse); setEditingDocumentId(document.id); setSelectedLine(null); setQuery("");
@@ -822,45 +838,33 @@ function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestP
   </div></section>;
 
 }
-function Expenses({ data, run, openDoc }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void }) {
-  const [title, setTitle] = useSessionDraft("expense-title", ""),
-    [amount, setAmount] = useSessionDraft("expense-amount", ""),
-    [date, setDate] = useSessionDraft("expense-date", localBusinessDay()),
-    [frequency, setFrequency] = useSessionDraft("expense-frequency", "once"),
-    [paymentMethod, setPaymentMethod] = useSessionDraft("expense-payment", "");
-  const today = localBusinessDay(), [historyQuery, setHistoryQuery] = useState("");
-  const [historyFrom, setHistoryFrom] = useState(today), [historyTo, setHistoryTo] = useState(today), [historyAllTime, setHistoryAllTime] = useState(false);
-  const [paying, setPaying] = useState<string | null>(null);
-  const [recurringPaymentMethod, setRecurringPaymentMethod] = useState("");
-  const accounts = activePaymentAccounts(data.paymentAccounts);
-  const accountName = (id: string | null) => data.paymentAccounts.find(a => a.id === id || a.code === id)?.name ?? "—";
-  const expenseFilters = (): ExpenseHistoryFilters => ({ query: historyQuery, from: historyFrom, to: historyTo, allTime: historyAllTime });
-  const applyExpenseFilters = (next: ExpenseHistoryFilters) => { setHistoryQuery(next.query); setHistoryFrom(next.from); setHistoryTo(next.to); setHistoryAllTime(next.allTime); };
-  const expenses = data.documents.filter(d => d.kind === "expense");
-  const expenseDocs = historyQuery.trim()
-    ? rankExpenseDocuments(expenses, historyQuery)
-    : filterDocumentsByDate(expenses, historyFrom, historyTo, historyAllTime);
-  return <section className="expense-workspace workspace-page">
-    <div className="expense-grid">
-      <FramedSection title="مصروف جديد" className="expense-form"><form className="expense-form-body" onSubmit={async event => { event.preventDefault(); const id = await run({ type: "expense.post", title, amount: val(amount), occurredAt: date, frequency, paymentMethod }, frequency === "once" ? "تم تسجيل المصروف" : "تم حفظ التذكير دون خصم"); setTitle(""); setAmount(""); if (frequency === "once") { setPaymentMethod(""); openDoc(id); } }}>
-        <div className="expense-fields">
-          <label>عنوان المصروف<input required value={title} onChange={e => setTitle(e.target.value)} /></label>
-          <label>المبلغ<Num value={amount} onChange={setAmount} /></label>
-          <label>تاريخ المصروف<input dir="ltr" type="date" value={date} onChange={e => setDate(e.target.value)} /></label>
-          <label>التكرار<select value={frequency} onChange={e => setFrequency(e.target.value)}><option value="once">مرة واحدة</option><option value="daily">يومي</option><option value="monthly">شهري</option></select></label>
-          {frequency === "once" && <label>وسيلة الدفع<PaymentAccountSelect required accounts={accounts} value={paymentMethod} onChange={setPaymentMethod}/></label>}
-          <button className="primary expense-save" disabled={!title || !amount || (frequency === "once" && !paymentMethod)}>{frequency === "once" ? "حفظ الفاتورة" : "حفظ التذكير"}</button>
-        </div>
-      </form></FramedSection>
-      <FramedSection title={`المصاريف المستحقة · ${number(data.recurringExpenses.length)}`} className="expense-recurring"><div className="erp-table-wrap expense-scroll"><table className="erp-table" aria-label="المصاريف المستحقة"><colgroup><col style={{width:"27%"}}/><col style={{width:"19%"}}/><col style={{width:"17%"}}/><col style={{width:"22%"}}/><col style={{width:"15%"}}/></colgroup><thead><tr><th>المصروف</th><th>الاستحقاق</th><th>المبلغ</th><th>الحالة / الحساب</th><th>إجراء</th></tr></thead><tbody>
-        {data.recurringExpenses.map(r => <tr key={r.id}><td className="name-cell">{r.title}</td><td>{formatDate(r.currentDueDate)}</td><td className="num-cell">{money(r.amount)}</td><td>{r.currentPaymentMethodId ? `مدفوع · ${accountName(r.currentPaymentMethodId)}` : r.frequency === "daily" ? "يومي · غير مدفوع" : "شهري · غير مدفوع"}</td><td className="action-cell">{r.currentPaymentMethodId ? accountName(r.currentPaymentMethodId) : <button className="soft" onClick={() => { setRecurringPaymentMethod(""); setPaying(r.id); }}>تسجيل الدفع</button>}</td></tr>)}
-        {!data.recurringExpenses.length && <tr><td colSpan={5}>لا توجد مصاريف متكررة</td></tr>}
-      </tbody></table></div></FramedSection>
-      <FramedSection title="سجل المصاريف" className="expense-history"><div className="expense-history-filters"><CompactSearch value={historyQuery} onChange={query => applyExpenseFilters(expenseSearchMode(expenseFilters(), query))} placeholder="بحث بالعنوان أو رقم المستند" /><CompactDateRange from={historyFrom} to={historyTo} allTime={historyAllTime && !historyQuery.trim()} onAllTime={() => applyExpenseFilters(expenseAllTimeMode())} onFromChange={value => applyExpenseFilters(expenseDateMode(expenseFilters(), "from", value))} onToChange={value => applyExpenseFilters(expenseDateMode(expenseFilters(), "to", value))} /></div><div className="erp-table-wrap expense-scroll"><table className="erp-table" aria-label="سجل المصاريف"><colgroup><col style={{width:"15%"}}/><col style={{width:"15%"}}/><col style={{width:"23%"}}/><col style={{width:"14%"}}/><col style={{width:"18%"}}/><col style={{width:"15%"}}/></colgroup><thead><tr><th>رقم المستند</th><th>التاريخ</th><th>العنوان</th><th>المبلغ</th><th>وسيلة الدفع</th><th>النوع</th></tr></thead><tbody>{expenseDocs.map(document => <tr key={document.id} onClick={() => openDoc(document.id)}><td dir="ltr">{displayDocumentNumber(document)}</td><td>{formatDate(document.occurredAt)}</td><td className="name-cell">{document.title ?? "مصروف"}</td><td className="num-cell">{money(document.total)}</td><td>{accountName(document.paymentMethod)}</td><td>{document.recurringId ? "متكرر" : "مرة واحدة"}</td></tr>)}{!expenseDocs.length && <tr><td colSpan={6}>لا توجد فواتير مطابقة</td></tr>}</tbody></table></div></FramedSection>
-    </div>
-    {paying && <div className="modal-overlay" role="dialog" aria-modal="true"><form className="modal-card payment-dialog" onSubmit={async e => { e.preventDefault(); if (!recurringPaymentMethod) return; const recurring = data.recurringExpenses.find(r => r.id === paying)!; await run({ type: "expense.materialize", recurringId: paying, dueDate: recurring.currentDueDate, paymentMethod: recurringPaymentMethod }, "تم تسجيل دفع الاستحقاق"); setRecurringPaymentMethod(""); setPaying(null); }}><div className="modal-heading"><h3>تسجيل الدفع</h3><button type="button" className="icon" onClick={() => { setRecurringPaymentMethod(""); setPaying(null); }}><X /></button></div><label>تم الدفع من<PaymentAccountSelect required accounts={accounts} value={recurringPaymentMethod} onChange={setRecurringPaymentMethod}/></label><button className="primary" disabled={!recurringPaymentMethod}>تأكيد الدفع</button></form></div>}
-  </section>;
+function Expenses({ data, run, openDoc, registerEditorGuard, canEdit }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void; registerEditorGuard: RegisterEditorGuard; canEdit: boolean }) {
+  const [title,setTitle]=useSessionDraft("expense-title",""),[amount,setAmount]=useSessionDraft("expense-amount",""),[date,setDate]=useSessionDraft("expense-date", localBusinessDay()),[frequency,setFrequency]=useSessionDraft("expense-frequency","once"),[paymentMethod,setPaymentMethod]=useSessionDraft("expense-payment","");
+  const [editingExpenseId,setEditingExpenseId]=useState<string|null>(null),[editingRecurringId,setEditingRecurringId]=useState<string|null>(null),baseline=useRef("");
+  const today=localBusinessDay(),[historyQuery,setHistoryQuery]=useState(""),[historyFrom,setHistoryFrom]=useState(today), [historyTo,setHistoryTo]=useState(today),[historyAllTime,setHistoryAllTime]=useState(false),[paying,setPaying]=useState<string|null>(null),[recurringPaymentMethod,setRecurringPaymentMethod]=useState("");
+  const accounts=activePaymentAccounts(data.paymentAccounts),accountName=(id:string|null)=>data.paymentAccounts.find(a=>a.id===id||a.code===id)?.name??"—";
+  const snapshot=()=>JSON.stringify({title,amount,date,frequency,paymentMethod:editingRecurringId?"":paymentMethod});
+  const dirty=()=>Boolean(editingExpenseId||editingRecurringId)&&snapshot()!==baseline.current;
+  const resetEditor=()=>{for(const key of ["expense-title","expense-amount","expense-date","expense-frequency","expense-payment"])sessionStorage.removeItem(`conta:${key}`);setTitle("");setAmount("");setDate(localBusinessDay());setFrequency("once");setPaymentMethod("");setEditingExpenseId(null);setEditingRecurringId(null);baseline.current="";};
+  useEffect(()=>{registerEditorGuard({isEditing:()=>Boolean(editingExpenseId||editingRecurringId),isDirty:dirty,discard:resetEditor});return()=>registerEditorGuard(null);});
+  const loadExpense=(document:DocumentRecord)=>{if(!canEdit||document.legacyKey||document.status!=="posted"){openDoc(document.id);return}const values={title:document.title??"",amount:String(document.total),date:document.occurredAt.slice(0,10),frequency:"once",paymentMethod:document.paymentMethod??""};setTitle(values.title);setAmount(values.amount);setDate(values.date);setFrequency(values.frequency);setPaymentMethod(values.paymentMethod);setEditingExpenseId(document.id);setEditingRecurringId(null);baseline.current=JSON.stringify(values);};
+  const loadRecurring=(recurring:BootstrapData["recurringExpenses"][number])=>{if(!canEdit)return;const values={title:recurring.title,amount:String(recurring.amount),date:recurring.startsOn,frequency:recurring.frequency,paymentMethod:""};setTitle(values.title);setAmount(values.amount);setDate(values.date);setFrequency(values.frequency);setPaymentMethod("");setEditingRecurringId(recurring.id);setEditingExpenseId(null);baseline.current=JSON.stringify(values);};
+  const cancelEdit=()=>{if(!dirty()||confirm("لديك تعديلات غير محفوظة. هل تريد إلغاء التعديل؟"))resetEditor()};
+  const filters=():ExpenseHistoryFilters=>({query:historyQuery,from:historyFrom,to:historyTo,allTime:historyAllTime}),applyExpenseFilters=(next:ExpenseHistoryFilters)=>{setHistoryQuery(next.query);setHistoryFrom(next.from);setHistoryTo(next.to);setHistoryAllTime(next.allTime)};
+  const expenses=data.documents.filter(d=>d.kind==="expense"),expenseDocs=historyQuery.trim()?rankExpenseDocuments(expenses,historyQuery):filterDocumentsByDate(expenses,historyFrom,historyTo,historyAllTime);
+  const submit=async(event:React.FormEvent)=>{event.preventDefault();if(editingExpenseId){await run({type:"expense.update",documentId:editingExpenseId,title,amount:val(amount),occurredAt:date,paymentMethod},"تم حفظ تعديل المصروف",resetEditor);return}if(editingRecurringId){await run({type:"recurring-expense.update",recurringId:editingRecurringId,title,amount:val(amount),startsOn:date,frequency},"تم حفظ تعديل المصروف المتكرر",resetEditor);return}await run({type:"expense.post",title,amount:val(amount),occurredAt:date,frequency,paymentMethod},frequency==="once"?"تم تسجيل المصروف":"تم حفظ التذكير دون خصم",resetEditor)};
+  return <section className="expense-workspace workspace-page"><div className="expense-grid">
+    <FramedSection title={editingExpenseId ? "تعديل المصروف" : editingRecurringId ? "تعديل المصروف المتكرر" : "مصروف جديد"} className="expense-form"><form className="expense-form-body" onSubmit={submit}><div className="expense-fields">
+      <label>عنوان المصروف<input required value={title} onChange={e=>setTitle(e.target.value)}/></label><label>المبلغ<Num value={amount} onChange={setAmount}/></label><label>تاريخ المصروف<input dir="ltr" type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>
+      <label>التكرار<select value={frequency} disabled={Boolean(editingExpenseId)} onChange={e=>setFrequency(e.target.value)}><option value="once">مرة واحدة</option><option value="daily">يومي</option><option value="monthly">شهري</option></select></label>
+      {!editingRecurringId&&frequency==="once"&&<label>وسيلة الدفع<PaymentAccountSelect required accounts={accounts} value={paymentMethod} onChange={setPaymentMethod}/></label>}
+      <button className="primary expense-save" disabled={!title||!amount||(!editingRecurringId&&frequency==="once"&&!paymentMethod)}>{editingExpenseId||editingRecurringId?"حفظ التعديل":frequency==="once"?"حفظ الفاتورة":"حفظ التذكير"}</button>{(editingExpenseId||editingRecurringId)&&<button type="button" className="soft" onClick={cancelEdit}>إلغاء التعديل</button>}
+    </div></form></FramedSection>
+    <FramedSection title={`المصاريف المستحقة · ${number(data.recurringExpenses.length)}`} className="expense-recurring"><div className="erp-table-wrap expense-scroll"><table className="erp-table" aria-label="المصاريف المستحقة"><thead><tr><th>المصروف</th><th>الاستحقاق</th><th>المبلغ</th><th>الحالة / الحساب</th><th>إجراء</th></tr></thead><tbody>{data.recurringExpenses.map(r=><tr key={r.id}><td className="name-cell">{r.title}</td><td>{formatDate(r.currentDueDate)}</td><td className="num-cell">{money(r.amount)}</td><td>{r.currentPaymentMethodId?<button className="link" onClick={()=>{const doc=data.documents.find(d=>d.id===r.currentDocumentId);if(doc)loadExpense(doc)}}>{`مدفوع · ${accountName(r.currentPaymentMethodId)}`}</button>:r.frequency==="daily"?"يومي · غير مدفوع":"شهري · غير مدفوع"}</td><td className="action-cell">{!r.currentPaymentMethodId&&<button className="soft" onClick={()=>{setRecurringPaymentMethod("");setPaying(r.id)}}>تسجيل الدفع</button>} {canEdit&&<button className="soft" onClick={()=>loadRecurring(r)}>تعديل</button>}</td></tr>)}{!data.recurringExpenses.length&&<tr><td colSpan={5}>لا توجد مصاريف متكررة</td></tr>}</tbody></table></div></FramedSection>
+    <FramedSection title="سجل المصاريف" className="expense-history"><div className="expense-history-filters"><CompactSearch value={historyQuery} onChange={q=>applyExpenseFilters(expenseSearchMode(filters(),q))} placeholder="بحث بالعنوان أو رقم المستند"/><CompactDateRange from={historyFrom} to={historyTo} allTime={historyAllTime && !historyQuery.trim()} onAllTime={() => applyExpenseFilters(expenseAllTimeMode())} onFromChange={v=>applyExpenseFilters(expenseDateMode(filters(),"from",v))} onToChange={v=>applyExpenseFilters(expenseDateMode(filters(),"to",v))}/></div><div className="erp-table-wrap expense-scroll"><table className="erp-table" aria-label="سجل المصاريف"><thead><tr><th>رقم المستند</th><th>التاريخ</th><th>العنوان</th><th>المبلغ</th><th>وسيلة الدفع</th><th>النوع</th></tr></thead><tbody>{expenseDocs.map(document=><tr key={document.id} onClick={()=>loadExpense(document)}><td dir="ltr">{displayDocumentNumber(document)}</td><td>{formatDate(document.occurredAt)}</td><td className="name-cell">{document.title??"مصروف"}</td><td className="num-cell">{money(document.total)}</td><td>{accountName(document.paymentMethod)}</td><td>{document.recurringId?"متكرر":"مرة واحدة"}</td></tr>)}{!expenseDocs.length&&<tr><td colSpan={6}>لا توجد فواتير مطابقة</td></tr>}</tbody></table></div></FramedSection>
+  </div>{paying&&<div className="modal-overlay" role="dialog" aria-modal="true"><form className="modal-card payment-dialog" onSubmit={async e=>{e.preventDefault();if(!recurringPaymentMethod)return;const recurring=data.recurringExpenses.find(r=>r.id===paying)!;await run({type:"expense.materialize",recurringId:paying,dueDate:recurring.currentDueDate,paymentMethod:recurringPaymentMethod},"تم تسجيل دفع الاستحقاق");setRecurringPaymentMethod("");setPaying(null)}}><div className="modal-heading"><h3>تسجيل الدفع</h3><button type="button" className="icon" onClick={()=>setPaying(null)}><X/></button></div><label>تم الدفع من<PaymentAccountSelect required accounts={accounts} value={recurringPaymentMethod} onChange={setRecurringPaymentMethod}/></label><button className="primary" disabled={!recurringPaymentMethod}>تأكيد الدفع</button></form></div>}</section>;
 }
+
 type FinancialDetail = {type:string;occurredAt:string;amount:number;reference:string;note?:string|null;from?:string;to?:string;account?:string;balanceBefore?:number;balanceAfter?:number};
 function useBankScope(){const today=localBusinessDay(),[draftFrom,setDraftFrom]=useState(today),[draftTo,setDraftTo]=useState(today),[period,setPeriod]=useState<CommittedPeriod>(()=>({from:today,to:today}));const resetAllFilters=()=>{setDraftFrom("");setDraftTo("");setPeriod(null)};return {draftFrom,draftTo,setDraftFrom,setDraftTo,period,commit:()=>setPeriod({from:draftFrom,to:draftTo}),all:resetAllFilters}}
 function buildFinancialPresentation(detail:FinancialDetail):OfficialPresentation{const transfer=!!detail.from&&!!detail.to,correction=detail.balanceBefore!=null||detail.balanceAfter!=null,title=transfer?"سند تحويل بين الحسابات":correction?"سند تصحيح رصيد":/إيداع/.test(detail.type)?"سند إيداع":/سحب/.test(detail.type)?"سند سحب":"سند عملية مالية";return{title,meta:[["المرجع",detail.reference],["التاريخ",formatDateTime(detail.occurredAt)],...(detail.account?[["الحساب",detail.account]] as Array<[string,string]>:[]),...(detail.from?[["من الحساب",detail.from]] as Array<[string,string]>:[]),...(detail.to?[["إلى الحساب",detail.to]] as Array<[string,string]>:[]),...(detail.balanceBefore!=null?[["الرصيد قبل",money(detail.balanceBefore)]] as Array<[string,string]>:[]),...(detail.balanceAfter!=null?[["الرصيد بعد",money(detail.balanceAfter)]] as Array<[string,string]>:[]),...(detail.note?[[correction?"السبب":"ملاحظة",detail.note]] as Array<[string,string]>:[])],totals:[[correction?"مقدار التغيير":"المبلغ",money(detail.amount)]],tone:transfer||correction?"neutral":/إيداع/.test(detail.type)?"positive":/سحب/.test(detail.type)?"negative":"neutral"}}

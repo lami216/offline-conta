@@ -395,3 +395,31 @@ test("payment-account removal blocks balances, archives every kind of history, d
  const unused=await command({type:"payment-account.create",name:"Unused",allowNegativeBalance:false});const deleted=await command({type:"payment-account.delete",accountId:unused});assert.equal(deleted.disposition,"deleted");assert.equal(await db.collection("paymentAccounts").findOne({id:unused}),null);
  for(const kind of ["movement","document","transfer"]){const id=`history-${kind}`;await db.collection("paymentAccounts").insertOne({id,code:id,name:`Historic ${kind}`,isActive:true,balance:0,allowNegativeBalance:false});if(kind==="movement")await db.collection("financialMovements").insertOne({id:"m-"+id,paymentMethod:id});if(kind==="document")await db.collection("documents").insertOne({id:"d-"+id,paymentMethod:id});if(kind==="transfer")await db.collection("accountTransfers").insertOne({id:"t-"+id,fromAccountId:id,toAccountId:"cash-id"});const result=await command({type:"payment-account.delete",accountId:id});assert.equal(result.disposition,"archived");let account=await db.collection("paymentAccounts").findOne({id});assert.equal(account.isArchived,true);await assert.rejects(command({type:"account-adjustment.post",accountId:id,direction:"deposit",amount:1}),/صالحة/);await command({type:"payment-account.restore",accountId:id});account=await db.collection("paymentAccounts").findOne({id});assert.deepEqual([account.id,account.code,account.isActive,account.isArchived],[id,id,true,false]);}
 });
+
+test("expense update preserves identity and atomically moves its financial effect",async()=>{
+  await db.collection("paymentAccounts").insertOne({id:"bank",code:"bank",name:"Bank",isActive:true,balance:500,allowNegativeBalance:false});
+  const expenseId=await command({type:"expense.post",title:"A",amount:100,occurredAt:"2026-08-15",frequency:"once",paymentMethod:"cash-id"});
+  const original=await db.collection("documents").findOne({id:expenseId});
+  await command({type:"expense.update",documentId:expenseId,title:"B",amount:150,occurredAt:"2026-08-16",paymentMethod:"bank"});
+  const revised=await db.collection("documents").findOne({id:expenseId});
+  assert.deepEqual([revised.id,revised.number,revised.sequence,revised.title,revised.total,revised.paymentMethod,revised.revision],[original.id,original.number,original.sequence,"B",150,"bank",1]);
+  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,(await db.collection("paymentAccounts").findOne({id:"bank"})).balance],[10000,350]);
+  assert.equal(await db.collection("financialMovements").countDocuments({documentId:expenseId,type:"expense"}),1);
+});
+
+test("failed expense update rolls back original document, movement and balances",async()=>{
+  await db.collection("paymentAccounts").insertOne({id:"empty",code:"empty",name:"Empty",isActive:true,balance:10,allowNegativeBalance:false});
+  const expenseId=await command({type:"expense.post",title:"Original",amount:100,occurredAt:"2026-08-15",frequency:"once",paymentMethod:"cash-id"});
+  await assert.rejects(command({type:"expense.update",documentId:expenseId,title:"Changed",amount:150,occurredAt:"2026-08-16",paymentMethod:"empty"}),/الرصيد غير كاف/);
+  assert.deepEqual(await db.collection("documents").findOne({id:expenseId},{projection:{_id:0,title:1,total:1,paymentMethod:1}}),{title:"Original",total:100,paymentMethod:"cash-id"});
+  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,(await db.collection("paymentAccounts").findOne({id:"empty"})).balance],[9900,10]);
+  assert.equal(await db.collection("financialMovements").countDocuments({documentId:expenseId,type:"expense",amount:100}),1);
+});
+
+test("recurring definition update keeps paid occurrence history unchanged",async()=>{
+  const recurringId=await command({type:"expense.post",title:"Rent",amount:100,occurredAt:"2026-08-01",frequency:"monthly"});
+  const expenseId=await command({type:"expense.materialize",recurringId,dueDate:"2026-08-31",paymentMethod:"cash-id"});
+  await command({type:"recurring-expense.update",recurringId,title:"Future rent",amount:200,startsOn:"2026-09-05",frequency:"daily"});
+  assert.deepEqual(await db.collection("recurringExpenses").findOne({id:recurringId},{projection:{_id:0,title:1,amount:1,startsOn:1,frequency:1}}),{title:"Future rent",amount:200,startsOn:"2026-09-05",frequency:"daily"});
+  assert.deepEqual(await db.collection("documents").findOne({id:expenseId},{projection:{_id:0,title:1,total:1,recurringId:1}}),{title:"Rent",total:100,recurringId});
+});

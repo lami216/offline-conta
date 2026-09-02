@@ -51,7 +51,7 @@ test("warehouse summary uses stable metrics and controlled popover overflow", ()
   for (const label of ["عدد المنتجات", "إجمالي الكمية", "قيمة المخزون"]) assert.match(warehouses, new RegExp(label));
   for (const anomaly of ["القيمة المعروفة", "بدون تكلفة فعلية", "تكلفة غير معروفة"]) assert.doesNotMatch(warehouses, new RegExp(anomaly));
   assert.match(warehouses, /className="inventory-overview inventory-toolbar"/);
-  assert.match(warehouses, /<SearchableSelect value=\{wh\} onChange=\{chooseWarehouse\} placeholder="اختر المخزن" searchPlaceholder="ابحث عن مخزن" floating options=\{availableWarehouses\.map/);
+  assert.match(warehouses, /<SearchableSelect value=\{wh\} onChange=\{chooseWarehouse\} placeholder="اختر المخزن" searchPlaceholder="ابحث عن مخزن" floating options=\{\[\{value:ALL_WAREHOUSES,label:"كل المخازن"\},\.\.\.availableWarehouses\.map/);
   assert.match(warehouses, /availableWarehouses=activeWarehouses\(data\.warehouses\)/);
   assert.match(css, /\.popover-host\s*\{[^}]*overflow:\s*visible/);
   assert.match(css, /\.inventory-panel\{[^}]*grid-template-rows:auto auto minmax\(0,1fr\)/);
@@ -98,8 +98,8 @@ test("focused banking and transaction editor regressions stay explicit", () => {
   assert.ok(banks.indexOf('className="bank-panel"') < banks.indexOf('title="ملخص الحسابات"'));
   for (const label of ["manual-deposit", "opening-balance"]) assert.match(banks, new RegExp(label));
   assert.match(app, /label: "السحب والإيداع"/);
-  assert.match(app, /m\.type !== "opening-balance"/);
-  assert.match(bootstrap, /movement\.direction==="in"&&movement\.type!=="opening-balance"/);
+  assert.match(app, /!\["opening-balance","opening-balance-correction"\]\.includes\(m\.type\)/);
+  assert.match(bootstrap, /nonOperatingTypes=new Set\(\["opening-balance","opening-balance-correction"\]\)/);
   const purchase = between("function Purchases", "function Expenses");
   assert.doesNotMatch(purchase, /purchase-locked|تأكيد المورد|تعديل المورد|disabled=\{!locked/);
   assert.match(purchase, /disabled=\{!warehouseId \|\| !lines\.length \|\| \(payment === "note" \? !partyId : !payment\)\}/);

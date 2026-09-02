@@ -172,9 +172,9 @@ test("every outflow obeys the configured account overdraft policy", async t => {
   await command({type:"account-transfer.post",fromAccountId:bank,toAccountId:"cash-id",amount:100});
   assert.equal((await db.collection("paymentAccounts").findOne({id:bank})).balance,-300);
   await command({type:"payment-account.update",id:bank,name:"Overdraft",isActive:true});
-  await command({type:"account-balance-correction.post",accountId:bank,newBalance:-500,reason:"audit"});
+  await command({type:"account-opening-balance-correction.post",accountId:bank,newOpeningBalance:-200,reason:"audit"});
   assert.equal((await db.collection("paymentAccounts").findOne({id:bank})).balance,-500);
-  await command({type:"account-balance-correction.post",accountId:"cash-id",newBalance:-1,reason:"audit"});
+  await command({type:"account-opening-balance-correction.post",accountId:"cash-id",newOpeningBalance:-1,reason:"audit"});
   await command({type:"payment-account.update",id:"cash-id",name:"Cash",isActive:true,allowNegativeBalance:true});
   assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).allowNegativeBalance,true);
 });

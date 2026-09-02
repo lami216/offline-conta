@@ -170,6 +170,8 @@ export interface PaymentAccount {
   isActive: boolean;
   allowNegativeBalance: boolean;
   balance: number;
+  /** Persisted starting basis; bootstrap normalizes legacy rows to a finite value. */
+  openingBalance: number;
   income: number;
   expenses: number;
   purchaseTotal: number;
@@ -193,6 +195,8 @@ export interface FinancialMovement {
   delta?: number;
   balanceBefore?: number;
   balanceAfter?: number;
+  openingBalanceBefore?: number;
+  openingBalanceAfter?: number;
   reason?: string;
 }
 export const paymentMethods: Array<{

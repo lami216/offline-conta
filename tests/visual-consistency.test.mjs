@@ -63,7 +63,7 @@ test("product movement details prioritize the table", () => {
   for (const metric of ["الكمية في", "إجمالي الكمية", "تكلفة الوحدة", "القيمة في"]) assert.match(panel, new RegExp(metric));
   assert.doesNotMatch(panel, /شراء \/ بيع|تحويل \/ تصحيح|تكلفة غير معروفة/);
   assert.match(panel, /aria-label="سجل حركة المنتج"/);
-  for (const heading of ["التاريخ", "العملية", "الطرف / المخزن", "الكمية", "السعر", "المستند"]) assert.equal((panel.match(new RegExp(`label="${heading}"`, "g")) ?? []).length, 1);
+  for (const heading of ["التاريخ", "العملية", "الطرف / المخزن", "الكمية", "السعر", "المستند"]) assert.equal((panel.match(new RegExp(`<th>${heading}</th>`, "g")) ?? []).length, 1);
   const warehouses = between("function Warehouses", "function ProductMovementPanel");
   assert.match(warehouses, /modal-overlay section-warehouses/);
 });
@@ -166,7 +166,7 @@ test("expenses and record filters retain the compact desktop grid", () => {
 
 test("invoice history renders every filtered record and expense actions are structurally grouped", () => {
   const recent = between("function Recent", "function Heading");
-  assert.match(recent, /sortedRows\.map\(/);
+  assert.match(recent, /visibleDocs\.map\(/);
   assert.doesNotMatch(recent, /visibleDocs\.slice\(|visibleDocs\.filter\([^)]*\)\.slice\(/);
   const expenses = between("function Expenses", "function Banks");
   const fields = expenses.slice(expenses.indexOf('className="expense-fields"'), expenses.indexOf("</div>", expenses.indexOf('className="expense-fields"')));

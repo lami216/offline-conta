@@ -37,13 +37,15 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
     ]);
     const clean = (rows: Array<Record<string, unknown>>) => rows.map(({ _id, ...row }) => ({ id: row.id ?? String(_id), ...row }));
     const cleanProducts = clean(products).map(product => ({ ...product, wholesalePrice: (product as Record<string, unknown>).wholesalePrice ?? null, expiryDate: (product as Record<string, unknown>).expiryDate ?? null, note: (product as Record<string, unknown>).note ?? null }));
-    const totalByAccount=new Map<string,{_id:string;income:number;expenses:number;purchaseTotal:number}>();
-    for(const movement of financialMovements){const key=String(movement.paymentMethod),row=totalByAccount.get(key)??{_id:key,income:0,expenses:0,purchaseTotal:0},amount=Number(movement.amount??0);if(movement.direction==="in"&&movement.type!=="opening-balance")row.income+=amount;if(movement.direction==="out")row.expenses+=amount;if(movement.type==="purchase")row.purchaseTotal+=amount;totalByAccount.set(key,row)}
+    const nonOperatingTypes=new Set(["opening-balance","opening-balance-correction"]);
+    const totalByAccount=new Map<string,{_id:string;income:number;expenses:number;purchaseTotal:number;derivedOpening:number}>();
+    for(const movement of financialMovements){const key=String(movement.paymentMethod),row=totalByAccount.get(key)??{_id:key,income:0,expenses:0,purchaseTotal:0,derivedOpening:0},amount=Number(movement.amount??0),signed=Number.isFinite(Number(movement.delta))?Number(movement.delta):(movement.direction==="out"?-amount:amount);if(movement.type==="opening-balance"||movement.type==="opening-balance-correction")row.derivedOpening+=signed;if(movement.direction==="in"&&!nonOperatingTypes.has(String(movement.type)))row.income+=amount;if(movement.direction==="out"&&!nonOperatingTypes.has(String(movement.type)))row.expenses+=amount;if(movement.type==="purchase")row.purchaseTotal+=amount;totalByAccount.set(key,row)}
     const totals=[...totalByAccount.values()];
     const totalMap = new Map(totals.map(row => [String(row._id), row]));
     const accountRows = paymentAccounts.map(account => {
       const aggregate = totalMap.get(String(account.id)) ?? totalMap.get(String(account.code));
-      return { ...account, id: String(account.id), balance: Number(account.balance ?? 0), allowNegativeBalance: account.allowNegativeBalance === true, income: Number(aggregate?.income ?? 0), expenses: Number(aggregate?.expenses ?? 0), purchaseTotal: Number(aggregate?.purchaseTotal ?? 0) };
+      const storedOpening=Number(account.openingBalance);
+      return { ...account, id: String(account.id), balance: Number(account.balance ?? 0), openingBalance:Number.isFinite(storedOpening)?storedOpening:Number(aggregate?.derivedOpening??0), allowNegativeBalance: account.allowNegativeBalance === true, income: Number(aggregate?.income ?? 0), expenses: Number(aggregate?.expenses ?? 0), purchaseTotal: Number(aggregate?.purchaseTotal ?? 0) };
     });
     const highestLegacyCode = products.reduce((highest, product) => {
       const code = String(product.sku ?? "");

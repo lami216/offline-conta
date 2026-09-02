@@ -2331,3 +2331,11 @@ input[type="date"]{height:34px;min-height:34px;font-size:10px}.expense-form inpu
 .pos-quick-customer-button svg { width: 18px; height: 18px; }
 .app-confirm-dialog{background:var(--panel,#fff);color:var(--text,#172033);width:min(440px,calc(100vw - 32px));padding:24px;border-radius:18px;box-shadow:0 24px 70px #0005;white-space:pre-line}
 .app-confirm-dialog h2{margin:0 0 12px}.app-confirm-dialog p{margin:0;line-height:1.8}.app-confirm-actions{display:flex;gap:10px;margin-top:24px}.app-confirm-actions button{min-height:44px;min-width:110px}
+
+/* Interaction-only selection guard: controls remain fully editable/selectable. */
+:is(.app-shell,.unlicensed-shell,.modal-overlay) { user-select:none; -webkit-user-select:none; }
+:is(.app-shell,.unlicensed-shell,.modal-overlay) :is(input,textarea,[contenteditable="true"],[contenteditable=""]) { user-select:text; -webkit-user-select:text; }
+textarea { width:100%; min-height:64px; border:1px solid var(--line); border-radius:11px; background:#fff; padding:9px 12px; color:var(--ink); font:inherit; resize:vertical; }
+textarea:focus { outline:3px solid rgba(11,109,103,.17); outline-offset:1px; border-color:var(--section-color,var(--brand)); }
+.report-sort-header{width:100%;min-height:0;padding:0;border:0;color:inherit;background:transparent;font:inherit;cursor:pointer}.report-sort-header:focus-visible{outline:2px solid #fff;outline-offset:-1px}
+.blocked-action{position:relative;display:inline-flex}.blocked-action>.primary{width:100%}.blocked-action-tooltip{position:absolute;z-index:1200;inset:auto 50% calc(100% + 7px) auto;display:none;min-width:190px;max-width:280px;padding:7px 9px;transform:translateX(50%);border:1px solid #d97706;border-radius:6px;color:#78350f;background:#fffbeb;box-shadow:0 5px 18px #0002;font-size:10px;line-height:1.6;white-space:normal}.blocked-action-tooltip span{display:block}.blocked-action.is-blocked:hover .blocked-action-tooltip,.blocked-action.is-blocked:focus-visible .blocked-action-tooltip{display:block}.checkout-layout:has(.blocked-action.is-blocked:hover) :is(.pos-payment-row,.purchase-payment-row,.product-search-grid),.expense-form:has(.blocked-action.is-blocked:hover) .expense-fields>label{border-radius:6px;background:#fffbeb;box-shadow:0 0 0 2px #f59e0b66}

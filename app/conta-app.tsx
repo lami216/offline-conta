@@ -65,6 +65,7 @@ import { expenseAllTimeMode, expenseDateMode, expenseSearchMode, filterDocuments
 import { bankScopeMetrics, filterFinancialMovements, filterTransfers, type CommittedPeriod } from "./bank-filters";
 import { allPermissions, permissionRows, setPermission, setRowFullControl, type PermissionAction } from "./user-permissions";
 import { formatLicenseDuration } from "./license-countdown";
+import { ConfirmationProvider, useAppConfirm } from "./app-confirm";
 
 type View =
   | "pos"
@@ -176,7 +177,8 @@ function PermissionNavItem({allowed,active,onClick,className="",children}:{allow
   return <button disabled={!allowed} aria-disabled={!allowed?"true":undefined} title={!allowed?NO_ACCESS_TITLE:undefined} className={`${className}${allowed&&active?`${className?" ":""}active`:""}`} onClick={onClick}>{children}</button>;
 }
 
-export default function ContaApp() {
+export default function ContaApp(){return <ConfirmationProvider><ContaAppContent/></ConfirmationProvider>}
+function ContaAppContent() {
   useHoverEnterActivation();
   const [data, setData] = useState<BootstrapData>(empty),
     [view, setView] = useState<View>("pos"),
@@ -201,6 +203,7 @@ export default function ContaApp() {
     [partyDetail, setPartyDetail] = useState<Party | null>(null),
     [adjustmentPrefill, setAdjustmentPrefill] = useState<AdjustmentPrefill | null>(null);
   const activeEditorGuard = useRef<ActiveEditorGuard | null>(null);
+  const confirmAction=useAppConfirm();
   useEffect(() => {
     if (!error && !notice) return;
     const timer = window.setTimeout(() => { setError(""); setNotice(""); }, TRANSIENT_NOTICE_MS);
@@ -272,10 +275,10 @@ export default function ContaApp() {
     const timer = window.setTimeout(() => void reload({ blocking: true }), 0);
     return () => window.clearTimeout(timer);
   }, []);
-  const requestPageRefresh = () => {
+  const requestPageRefresh = async () => {
     const guard=activeEditorGuard.current;
     if(guard?.isEditing()){
-      if(guard.isDirty()&&!confirm("لديك تعديلات غير محفوظة. هل تريد تجاهلها وتحديث الصفحة؟"))return;
+      if(guard.isDirty()&&!await confirmAction({message:"لديك تعديلات غير محفوظة. هل تريد تجاهلها وتحديث الصفحة؟"}))return;
       guard.discard();
     }
     void reload({blocking:true});
@@ -369,7 +372,7 @@ export default function ContaApp() {
                 <Purchases data={data} run={run} openDoc={openDoc} editRequest={purchaseEditRequest} clearEditRequest={() => setPurchaseEditRequest(null)} requestPrint={setAutoPrintId} registerEditorGuard={registerEditorGuard} />
               )}{" "}
               {view === "expenses" && (
-                <Expenses data={data} run={run} openDoc={openDoc} registerEditorGuard={registerEditorGuard} canEdit={can("expenses.edit")} />
+                <Expenses data={data} run={run} openDoc={openDoc} registerEditorGuard={registerEditorGuard} canEdit={can("expenses.edit")} canDelete={can("expenses.delete")} />
               )}{" "}
               {(view === "customers" || view === "suppliers") && (
                 <Parties partyType={view === "customers" ? "customer" : "supplier"} data={data} run={run} openParty={setPartyDetail} />
@@ -404,6 +407,7 @@ type FilePreview = { format:string;uploadId?:string;source?:{filename?:string;fi
 type ImportRun = {importRunId:string;sourceType?:string;filename?:string;state:string;phase:string;progress?:{processed:number;total:number;label:string};counts?:Record<string,{processed:number;created:number;existing:number;skipped:number}>;reviewCount?:number;backupIdBeforeImport?:string;startedAt?:string;completedAt?:string;publicError?:string};
 type ManagedUser={id:string;name:string;username:string;isActive:boolean;permissions:string[];owner?:boolean};
 function UsersPermissions() {
+  const confirmAction=useAppConfirm();
   const [users,setUsers]=useState<ManagedUser[]>([]),[editing,setEditing]=useState<ManagedUser|null>(null);
   const [username,setUsername]=useState(""),[password,setPassword]=useState(""),[active,setActive]=useState(true),[permissions,setPermissions]=useState<string[]>([]);
   const [loading,setLoading]=useState(true),[saving,setSaving]=useState(false),[loadError,setLoadError]=useState(""),[error,setError]=useState(""),[success,setSuccess]=useState("");
@@ -411,7 +415,7 @@ function UsersPermissions() {
   const load=useCallback(async(selectedId?:string)=>{setLoading(true);setLoadError("");try{const value=await readApiResponse(await fetch("/api/settings/users")) as {users:ManagedUser[]};setUsers(value.users);if(selectedId){const selected=value.users.find(user=>user.id===selectedId);if(selected)select(selected)}return value.users}catch(reason){setLoadError(reason instanceof Error?reason.message:"تعذر تحميل المستخدمين");return null}finally{setLoading(false)}},[select]);
   useEffect(()=>{const timeout=window.setTimeout(()=>void load(),0);return()=>window.clearTimeout(timeout)},[load]);
   const save=async()=>{setSaving(true);setError("");setSuccess("");try{const isEditing=!!editing;const response=await fetch(isEditing?`/api/settings/users/${editing.id}`:"/api/settings/users",{method:isEditing?"PUT":"POST",headers:{"content-type":"application/json"},body:JSON.stringify({username,password,...(isEditing?{isActive:active}:{}),permissions})});const result=await readApiResponse(response) as {user?:ManagedUser};const selectedId=editing?.id??result.user?.id;if(!selectedId)throw new Error("تم الحفظ لكن تعذر تحديد المستخدم");const refreshed=await load(selectedId);if(!refreshed)throw new Error("تم الحفظ، لكن تعذر تحديث قائمة المستخدمين");setSuccess(isEditing?"تم حفظ تعديلات المستخدم":"تم إنشاء المستخدم بنجاح")}catch(reason){setError(reason instanceof Error?reason.message:"تعذر الحفظ")}finally{setSaving(false)}};
-  const remove=async(user:ManagedUser)=>{if(!confirm("هل تريد حذف هذا المستخدم؟"))return;setError("");try{const result=await readApiResponse(await fetch(`/api/settings/users/${user.id}`,{method:"DELETE"})) as {logoutRequired?:boolean};if(result.logoutRequired){await fetch("/api/auth/logout",{method:"POST"});window.location.assign("/login");return}if(editing?.id===user.id)select(null);await load();setSuccess("تم حذف المستخدم")}catch(reason){setError(reason instanceof Error?reason.message:"تعذر حذف المستخدم")}};
+  const remove=async(user:ManagedUser)=>{if(!await confirmAction({message:"هل تريد حذف هذا المستخدم؟",confirmLabel:"حذف المستخدم",tone:"danger"}))return;setError("");try{const result=await readApiResponse(await fetch(`/api/settings/users/${user.id}`,{method:"DELETE"})) as {logoutRequired?:boolean};if(result.logoutRequired){await fetch("/api/auth/logout",{method:"POST"});window.location.assign("/login");return}if(editing?.id===user.id)select(null);await load();setSuccess("تم حذف المستخدم")}catch(reason){setError(reason instanceof Error?reason.message:"تعذر حذف المستخدم")}};
   const actionLabels:Record<PermissionAction,string>={view:"عرض",create:"إضافة",edit:"تعديل",delete:"حذف"};
   const everythingSelected=allPermissions.every(permission=>permissions.includes(permission));
   return <FramedSection title="المستخدمون والصلاحيات" className="users-permissions">
@@ -438,13 +442,14 @@ function GeneralSettings({data,reload}:{data:BootstrapData;reload:()=>Promise<vo
 }
 
 function DataSettings({data,reload}:{data:BootstrapData;reload:()=>Promise<void>}) {
+  const confirmAction=useAppConfirm();
   const canBackup=data.principal.principalType==="owner"||data.principal.permissions.includes("settings.backup.manage"),canImport=data.principal.principalType==="owner"||data.principal.permissions.includes("settings.legacy.import");
   const [selectedFile,setSelectedFile]=useState<File|null>(null),[nativePreview,setNativePreview]=useState<FilePreview|null>(null),[externalPreview,setExternalPreview]=useState<FilePreview|null>(null),[importRun,setImportRun]=useState<ImportRun|null>(null),[stockPolicy,setStockPolicy]=useState("keep-current"),[accountPolicy,setAccountPolicy]=useState("keep-current"),[busy,setBusy]=useState(""),[message,setMessage]=useState(""),[failure,setFailure]=useState("");
   const request=async(url:string,file:File)=>readApiResponse(await fetch(url,{method:"POST",headers:{"content-type":file.type||"application/octet-stream"},body:file}));
   const uploadExternal=async(file:File)=>{const started=await readApiResponse(await fetch("/api/settings/legacy/upload/start",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({size:file.size})})),uploadId=String(started.uploadId),chunkSize=Number(started.chunkSize);for(let index=0,offset=0;offset<file.size;index++,offset+=chunkSize)await readApiResponse(await fetch(`/api/settings/legacy/upload/chunk?uploadId=${encodeURIComponent(uploadId)}&index=${index}`,{method:"POST",headers:{"content-type":"application/octet-stream"},body:file.slice(offset,offset+chunkSize)}));return readApiResponse(await fetch("/api/settings/legacy/upload/complete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({uploadId,action:"preview",filename:file.name})}));};
   const download=async()=>{const response=await fetch("/api/settings/backup");if(!response.ok)throw new Error("تعذر إنشاء النسخة");const blob=await response.blob(),link=document.createElement("a");link.href=URL.createObjectURL(blob);link.download=response.headers.get("content-disposition")?.match(/filename="([^"]+)/)?.[1]??"conta-backup.conta.json";link.click();URL.revokeObjectURL(link.href);};
   const chooseFile=async(file:File|null)=>{setSelectedFile(file);setNativePreview(null);setExternalPreview(null);setImportRun(null);setFailure("");if(!file)return;setBusy("inspect");try{if(file.name.endsWith(".json")){setNativePreview(await request("/api/settings/restore/preview",file) as FilePreview)}else{setExternalPreview(await uploadExternal(file) as FilePreview)}}catch(e){setFailure(e instanceof Error?e.message:"تعذر فحص المصدر")}finally{setBusy("")}};
-  const restore=async()=>{if(!selectedFile||!nativePreview||!confirm("هذه استعادة كاملة وستستبدل بيانات الكرنه الحالية. هل تريد المتابعة؟"))return;setBusy("restore");setFailure("");try{await download();await request("/api/settings/restore",selectedFile);setMessage("تمت الاستعادة الكاملة وإنشاء نسخة أمان للحالة السابقة");await reload()}catch(e){setFailure(e instanceof Error?e.message:"تعذرت الاستعادة")}finally{setBusy("")}};
+  const restore=async()=>{if(!selectedFile||!nativePreview||!await confirmAction({message:"هذه استعادة كاملة وستستبدل بيانات الكرنه الحالية. هل تريد المتابعة؟",tone:"danger"}))return;setBusy("restore");setFailure("");try{await download();await request("/api/settings/restore",selectedFile);setMessage("تمت الاستعادة الكاملة وإنشاء نسخة أمان للحالة السابقة");await reload()}catch(e){setFailure(e instanceof Error?e.message:"تعذرت الاستعادة")}finally{setBusy("")}};
   const advance=async(run:ImportRun)=>{let current=run;while(current.state!=="completed"){await new Promise(resolve=>setTimeout(resolve,350));current=await readApiResponse(await fetch(`/api/settings/legacy/import-runs/${encodeURIComponent(current.importRunId)}/advance`,{method:"POST",headers:{"content-type":"application/json"},body:"{}"})) as ImportRun;setImportRun(current);if(current.state==="failed")throw new Error(current.publicError||`تعذر الاستيراد. رقم العملية: ${current.importRunId}`)}return current};
   const importExternal=async()=>{if(!externalPreview?.uploadId)return;setBusy("import");setFailure("");try{let run=await readApiResponse(await fetch("/api/settings/legacy/upload/complete",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({uploadId:externalPreview.uploadId,action:"import",stockPolicy,accountBalancePolicy:accountPolicy,filename:selectedFile?.name})})) as ImportRun;setImportRun(run);run=await advance(run);setMessage(`تم الدمج بأمان. نسخة الرجوع: ${run.backupIdBeforeImport}`);await reload()}catch(e){setFailure(e instanceof Error?e.message:"تعذر الاستيراد")}finally{setBusy("")}};
 
@@ -653,6 +658,7 @@ function Pos({
   openStockAdjustment: (prefill: AdjustmentPrefill) => void;
   registerEditorGuard: RegisterEditorGuard;
 }) {
+  const confirmAction=useAppConfirm();
   const [query, setQuery] = useState(""),
     [lines, setLines] = useSessionDraft<DraftLine[]>("sale-lines", []),
     [payment, setPayment] = useSessionDraft("sale-payment", ""),
@@ -684,9 +690,9 @@ function Pos({
   const dirty = () => editingDocumentId ? snapshot() !== baseline.current : lines.length > 0 || partyId !== "" || payment !== "" || priceMode !== initialSaleUiState.priceMode;
   const resetEditor = () => { clearPersistedSaleDraft(sessionStorage); setEditingDocumentId(null); setLines([]); setPartyId(""); setPayment(""); setPriceMode(initialSaleUiState.priceMode); setSelectedLine(null); setQuery(""); baseline.current = ""; };
   useEffect(() => { registerEditorGuard({ isEditing: () => Boolean(editingDocumentId), isDirty: dirty, discard: resetEditor }); return () => registerEditorGuard(null); });
-  const loadDocument = (document: DocumentRecord) => {
+  const loadDocument = async (document: DocumentRecord) => {
     if (document.legacyKey || document.status !== "posted") { openDoc(document.id); return; }
-    if (editingDocumentId && document.id !== editingDocumentId && dirty() && !confirm("لديك تعديلات غير محفوظة على الفاتورة الحالية. هل تريد تجاهلها وفتح الفاتورة الأخرى؟")) return;
+    if (editingDocumentId && document.id !== editingDocumentId && dirty() && !await confirmAction({message:"لديك تعديلات غير محفوظة على الفاتورة الحالية. هل تريد تجاهلها وفتح الفاتورة الأخرى؟"})) return;
     const loadedLines = document.lines.map(line => ({ productId: String(line.productId), quantity: String(line.quantity), piecePrice: String(line.unitPrice), unitPrice: "", actualQuantity: "" }));
     const loadedPayment = document.paymentMethod ?? "note", loadedParty = document.partyId ?? "", loadedMode = document.pricingMode ?? "retail";
     setLines(loadedLines); setPayment(loadedPayment); setPartyId(loadedParty); setPriceMode(loadedMode); setEditingDocumentId(document.id); setSelectedLine(null); setQuery("");
@@ -722,7 +728,7 @@ function Pos({
       window.requestAnimationFrame(() => productSearchRef.current?.focus());
       return;
     }
-    if (validation.warnings.length && !confirm(belowCostConfirmation(validation.warnings))) return;
+    if (validation.warnings.length && !await confirmAction({title:"تنبيه البيع بأقل من التكلفة",message:belowCostConfirmation(validation.warnings)})) return;
     if (payment === "note" ? !partyId : !payment) { (payment === "note" ? customerRef.current : paymentRef.current)?.focus(); return; }
     submittingRef.current = true;
     const resetSuccessfulDraft = () => {
@@ -751,8 +757,8 @@ function Pos({
     resetEditor();
     if (printAfterSave) requestPrint(id); } finally { submittingRef.current = false; }
   }
-  const voidSale = editingDocument ? async () => { if (!confirm(`هل تريد حذف فاتورة البيع رقم ${displayDocumentNumber(editingDocument)}؟\nسيتم عكس تأثيرها على المخزون والحسابات.`)) return; await run({ type: "sale.void", documentId: editingDocument.id }, "تم حذف فاتورة البيع"); resetEditor(); } : () => { if (lines.length && confirm("هل تريد حذف مسودة الفاتورة؟")) resetEditor(); };
-  const newInvoice = () => { if (!dirty() || confirm("لديك تغييرات غير محفوظة. هل تريد بدء فاتورة جديدة؟")) resetEditor(); };
+  const voidSale = editingDocument ? async () => { if (!await confirmAction({message:`هل تريد حذف فاتورة البيع رقم ${displayDocumentNumber(editingDocument)}؟\nسيتم عكس تأثيرها على المخزون والحسابات.`,confirmLabel:"حذف الفاتورة",tone:"danger"})) return; await run({ type: "sale.void", documentId: editingDocument.id }, "تم حذف فاتورة البيع"); resetEditor(); } : async () => { if (lines.length && await confirmAction({message:"هل تريد حذف مسودة الفاتورة؟",confirmLabel:"حذف المسودة",tone:"danger"})) resetEditor(); };
+  const newInvoice = async () => { if (!dirty() || await confirmAction({message:"لديك تغييرات غير محفوظة. هل تريد بدء فاتورة جديدة؟"})) { resetEditor(); requestAnimationFrame(()=>productSearchRef.current?.focus()); } };
   const invoice = <FramedSection title="الفاتورة" className="invoice-card workspace-invoice">
     <InvoiceEditorToolbar number={editingDocument ? displayDocumentNumber(editingDocument) : String(data.nextDocumentSequences.sale)} newInvoice={newInvoice} modes={<><button type="button" className="selection-option" aria-pressed={priceMode === "retail"} onClick={() => changePriceMode("retail")}>بيع الفرد</button><button type="button" className="selection-option" aria-pressed={priceMode === "wholesale"} onClick={() => changePriceMode("wholesale")}>بيع الجملة</button></>} scanner={<BarcodeScanner products={activeProducts(data.products)} onScan={add} enabled={scannerEnabled} onEnabledChange={setScannerEnabled} onError={setStockNotice} />} />
     <div className={lines.length ? "invoice-preview has-items" : "invoice-preview"}><div className="erp-table-wrap invoice-preview-list"><table className="erp-table invoice-table" aria-label="منتجات الفاتورة"><colgroup><col style={{width:"38%"}}/><col style={{width:"14%"}}/><col style={{width:"17%"}}/><col style={{width:"19%"}}/><col style={{width:"12%"}}/></colgroup><thead><tr><th>الاسم</th><th>الكمية</th><th>السعر</th><th>المجموع</th><th>حذف</th></tr></thead><tbody>{details.map(({ l, p, total: lineTotal }) => <tr className={selectedLine === p.id ? "selected" : ""} onClick={() => setSelectedLine(p.id)} key={p.id}><td className="name-cell">{p.name}</td><td className="num-cell"><Num value={l.quantity} onChange={value => updateSaleLine(p, { quantity: value })} /></td><td className="num-cell"><Num value={l.piecePrice} onChange={value => updateSaleLine(p, { piecePrice: value })} /></td><td className="num-cell">{number(lineTotal)}</td><td className="action-cell"><button type="button" className="row-delete" aria-label={`حذف ${p.name}`} onClick={event => { event.stopPropagation(); setLines(current => current.filter(item => item.productId !== p.id)); }}><X /></button></td></tr>)}{!details.length && <tr className="invoice-empty-row"><td colSpan={5}>الفاتورة فارغة</td></tr>}</tbody></table></div></div>
@@ -789,6 +795,7 @@ function QuickSupplier({ anchor, run, onDone, cancel }: { anchor: React.RefObjec
   return createPortal(<form className="pos-quick-customer-popover" style={style} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); cancel(); window.requestAnimationFrame(() => anchor.current?.focus()); } }} onSubmit={async event => { event.preventDefault(); const id = await run({ type: "party.create", partyType: "supplier", name, phone }, "تمت إضافة المورد"); onDone(id); }}><label>اسم المورد *<input autoFocus required value={name} onChange={e => setName(e.target.value)} /></label><label>رقم الهاتف <small>اختياري</small><input dir="ltr" value={phone} onChange={e => setPhone(e.target.value)} /></label><div><button className="primary">حفظ</button><button type="button" className="soft" onClick={cancel}>إلغاء</button></div></form>, document.body);
 }
 function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestPrint, registerEditorGuard }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void; editRequest: string | null; clearEditRequest: () => void; requestPrint: (id: string) => void; registerEditorGuard: RegisterEditorGuard }) {
+  const confirmAction=useAppConfirm();
   const [partyId, setPartyId] = useSessionDraft("purchase-party", "");
   const [warehouseId, setWarehouseId] = useSessionDraft("purchase-warehouse", "");
   const [lines, setLines] = useSessionDraft<DraftLine[]>("purchase-lines", []);
@@ -806,9 +813,9 @@ function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestP
   const dirty = () => editingDocumentId ? snapshot() !== baseline.current : lines.length > 0 || partyId !== "" || warehouseId !== "" || payment !== "";
   const resetEditor = () => { for(const key of ["purchase-lines","purchase-party","purchase-warehouse","purchase-payment"])sessionStorage.removeItem(`conta:${key}`); setEditingDocumentId(null); setLines([]); setPartyId(""); setWarehouseId(""); setPayment(""); setSelectedLine(null); setQuery(""); baseline.current = ""; };
   useEffect(() => { registerEditorGuard({ isEditing: () => Boolean(editingDocumentId), isDirty: dirty, discard: resetEditor }); return () => registerEditorGuard(null); });
-  const loadDocument = (document: DocumentRecord) => {
+  const loadDocument = async (document: DocumentRecord) => {
     if (document.legacyKey || document.status !== "posted") { openDoc(document.id); return; }
-    if (editingDocumentId && document.id !== editingDocumentId && dirty() && !confirm("لديك تعديلات غير محفوظة على الفاتورة الحالية. هل تريد تجاهلها وفتح الفاتورة الأخرى؟")) return;
+    if (editingDocumentId && document.id !== editingDocumentId && dirty() && !await confirmAction({message:"لديك تعديلات غير محفوظة على الفاتورة الحالية. هل تريد تجاهلها وفتح الفاتورة الأخرى؟"})) return;
     const loadedLines = document.lines.map(line => ({ productId: String(line.productId), quantity: String(line.quantity), unitPrice: String(line.unitPrice), piecePrice: "", actualQuantity: "" }));
     const loadedPayment = document.paymentMethod ?? "note", loadedParty = document.partyId ?? "", loadedWarehouse = document.warehouseId ?? "";
     setLines(loadedLines); setPayment(loadedPayment); setPartyId(loadedParty); setWarehouseId(loadedWarehouse); setEditingDocumentId(document.id); setSelectedLine(null); setQuery("");
@@ -824,8 +831,8 @@ function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestP
     setQuery("");
     window.requestAnimationFrame(() => productSearchRef.current?.focus());
   }
-  const deletePurchase = editingDocument ? async () => { if (!confirm(`هل تريد حذف فاتورة الشراء رقم ${displayDocumentNumber(editingDocument)}؟\nسيتم عكس تأثيرها على المخزون والحسابات.`)) return; await run({ type: "purchase.void", documentId: editingDocument.id }, "تم حذف فاتورة الشراء"); resetEditor(); } : () => { if (lines.length && confirm("هل تريد حذف مسودة فاتورة الشراء؟")) resetEditor(); };
-  const newInvoice = () => { if (!dirty() || confirm("لديك تغييرات غير محفوظة. هل تريد بدء فاتورة جديدة؟")) resetEditor(); };
+  const deletePurchase = editingDocument ? async () => { if (!await confirmAction({message:`هل تريد حذف فاتورة الشراء رقم ${displayDocumentNumber(editingDocument)}؟\nسيتم عكس تأثيرها على المخزون والحسابات.`,confirmLabel:"حذف الفاتورة",tone:"danger"})) return; await run({ type: "purchase.void", documentId: editingDocument.id }, "تم حذف فاتورة الشراء"); resetEditor(); } : async () => { if (lines.length && await confirmAction({message:"هل تريد حذف مسودة فاتورة الشراء؟",confirmLabel:"حذف المسودة",tone:"danger"})) resetEditor(); };
+  const newInvoice = async () => { if (!dirty() || await confirmAction({message:"لديك تغييرات غير محفوظة. هل تريد بدء فاتورة جديدة؟"})) { resetEditor(); requestAnimationFrame(()=>productSearchRef.current?.focus()); } };
   async function submit() {
     if (submittingRef.current) return;
     if (payment === "note" && !partyId) { supplierRef.current?.focus(); return; }
@@ -847,7 +854,8 @@ function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestP
   </div></section>;
 
 }
-function Expenses({ data, run, openDoc, registerEditorGuard, canEdit }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void; registerEditorGuard: RegisterEditorGuard; canEdit: boolean }) {
+function Expenses({ data, run, openDoc, registerEditorGuard, canEdit, canDelete }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void; registerEditorGuard: RegisterEditorGuard; canEdit: boolean; canDelete:boolean }) {
+  const confirmAction=useAppConfirm();
   const [title,setTitle]=useSessionDraft("expense-title",""),[amount,setAmount]=useSessionDraft("expense-amount",""),[date,setDate]=useSessionDraft("expense-date",localBusinessDay()),[paymentMethod,setPaymentMethod]=useSessionDraft("expense-payment","");
   const [editingExpenseId,setEditingExpenseId]=useState<string|null>(null),baseline=useRef("");
   const today=localBusinessDay(),[historyQuery,setHistoryQuery]=useState(""),[historyFrom,setHistoryFrom]=useState(today),[historyTo,setHistoryTo]=useState(today),[historyAllTime,setHistoryAllTime]=useState(false);
@@ -856,12 +864,13 @@ function Expenses({ data, run, openDoc, registerEditorGuard, canEdit }: { data: 
   const resetEditor=()=>{for(const key of ["expense-title","expense-amount","expense-date","expense-payment"])sessionStorage.removeItem(`conta:${key}`);setTitle("");setAmount("");setDate(localBusinessDay());setPaymentMethod("");setEditingExpenseId(null);baseline.current=""};
   useEffect(()=>{registerEditorGuard({isEditing:()=>Boolean(editingExpenseId),isDirty:dirty,discard:resetEditor});return()=>registerEditorGuard(null)});
   const loadExpense=(document:DocumentRecord)=>{if(!canEdit||document.legacyKey||document.status!=="posted"){openDoc(document.id);return}const values={title:document.title??"",amount:String(document.total),date:document.occurredAt.slice(0,10),paymentMethod:document.paymentMethod??""};setTitle(values.title);setAmount(values.amount);setDate(values.date);setPaymentMethod(values.paymentMethod);setEditingExpenseId(document.id);baseline.current=JSON.stringify(values)};
-  const cancelEdit=()=>{if(!dirty()||confirm("لديك تعديلات غير محفوظة. هل تريد إلغاء التعديل؟"))resetEditor()};
+  const cancelEdit=async()=>{if(!dirty()||await confirmAction({message:"لديك تعديلات غير محفوظة. هل تريد إلغاء التعديل؟"}))resetEditor()};
   const filters=():ExpenseHistoryFilters=>({query:historyQuery,from:historyFrom,to:historyTo,allTime:historyAllTime}),applyExpenseFilters=(next:ExpenseHistoryFilters)=>{setHistoryQuery(next.query);setHistoryFrom(next.from);setHistoryTo(next.to);setHistoryAllTime(next.allTime)};
-  const expenses=data.documents.filter(d=>d.kind==="expense"),expenseDocs=historyQuery.trim()?rankExpenseDocuments(expenses,historyQuery):filterDocumentsByDate(expenses,historyFrom,historyTo,historyAllTime);
+  const expenses=data.documents.filter(d=>d.kind==="expense"&&d.status==="posted"),expenseDocs=historyQuery.trim()?rankExpenseDocuments(expenses,historyQuery):filterDocumentsByDate(expenses,historyFrom,historyTo,historyAllTime);
   const submit=async(event:React.FormEvent)=>{event.preventDefault();await run({type:editingExpenseId?"expense.update":"expense.post",...(editingExpenseId?{documentId:editingExpenseId}:{}),title,amount:val(amount),occurredAt:date,paymentMethod},editingExpenseId?"تم حفظ تعديل المصروف":"تم تسجيل المصروف",resetEditor)};
+  const removeExpense=async()=>{if(!editingExpenseId)return;const document=data.documents.find(item=>item.id===editingExpenseId);if(!document)return;if(!await confirmAction({message:`هل تريد حذف فاتورة المصروف رقم ${displayDocumentNumber(document)}؟\nسيتم إلغاء الفاتورة وإعادة مبلغها إلى وسيلة الدفع.`,confirmLabel:"حذف الفاتورة",tone:"danger"}))return;await run({type:"expense.void",documentId:editingExpenseId},"تم حذف فاتورة المصروف",resetEditor)};
   return <section className="expense-workspace workspace-page"><div className="expense-grid">
-    <FramedSection title={editingExpenseId?"تعديل المصروف":"مصروف جديد"} className="expense-form"><form className="expense-form-body" onSubmit={submit}><div className="expense-fields"><label>عنوان المصروف<input required value={title} onChange={e=>setTitle(e.target.value)}/></label><label>المبلغ<Num value={amount} onChange={setAmount}/></label><label>تاريخ المصروف<input required dir="ltr" type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>وسيلة الدفع<PaymentAccountSelect required accounts={accounts} value={paymentMethod} onChange={setPaymentMethod}/></label><div className="expense-edit-actions"><button className="primary expense-save" disabled={!title||!amount||!paymentMethod}>{editingExpenseId?"حفظ التعديل":"حفظ الفاتورة"}</button>{editingExpenseId&&<button type="button" className="soft expense-cancel" onClick={cancelEdit}>إلغاء التعديل</button>}</div></div></form></FramedSection>
+    <FramedSection title={editingExpenseId?"تعديل المصروف":"مصروف جديد"} className="expense-form"><form className="expense-form-body" onSubmit={submit}><div className="expense-fields"><label>عنوان المصروف<input required value={title} onChange={e=>setTitle(e.target.value)}/></label><label>المبلغ<Num value={amount} onChange={setAmount}/></label><label>تاريخ المصروف<input required dir="ltr" type="date" value={date} onChange={e=>setDate(e.target.value)}/></label><label>وسيلة الدفع<PaymentAccountSelect required accounts={accounts} value={paymentMethod} onChange={setPaymentMethod}/></label><div className="expense-edit-actions"><button className="primary expense-save" disabled={!title||!amount||!paymentMethod}>{editingExpenseId?"حفظ التعديل":"حفظ الفاتورة"}</button>{editingExpenseId&&<button type="button" className="soft expense-cancel" onClick={cancelEdit}>إلغاء التعديل</button>}{editingExpenseId&&canDelete&&<button type="button" className="danger expense-delete" onClick={()=>void removeExpense()}>حذف الفاتورة</button>}</div></div></form></FramedSection>
     <FramedSection title="سجل المصاريف" className="expense-history"><div className="expense-history-filters"><CompactSearch value={historyQuery} onChange={q=>applyExpenseFilters(expenseSearchMode(filters(),q))} placeholder="بحث بالعنوان أو رقم المستند"/><CompactDateRange from={historyFrom} to={historyTo} allTime={historyAllTime&&!historyQuery.trim()} onAllTime={()=>applyExpenseFilters(expenseAllTimeMode())} onFromChange={v=>applyExpenseFilters(expenseDateMode(filters(),"from",v))} onToChange={v=>applyExpenseFilters(expenseDateMode(filters(),"to",v))}/></div><div className="erp-table-wrap expense-scroll"><table className="erp-table" aria-label="سجل المصاريف"><thead><tr><th>رقم المستند</th><th>التاريخ</th><th>العنوان</th><th>المبلغ</th><th>وسيلة الدفع</th></tr></thead><tbody>{expenseDocs.map(document=><tr key={document.id} onClick={()=>loadExpense(document)}><td dir="ltr">{displayDocumentNumber(document)}</td><td>{formatDate(document.occurredAt)}</td><td className="name-cell">{document.title??"مصروف"}</td><td className="num-cell">{money(document.total)}</td><td>{accountName(document.paymentMethod)}</td></tr>)}{!expenseDocs.length&&<tr><td colSpan={5}>لا توجد فواتير مطابقة</td></tr>}</tbody></table></div></FramedSection>
   </div></section>;
 }
@@ -894,9 +903,10 @@ function Banks({ data, run, openDoc, tab }: { data: BootstrapData; run: RunComma
 }
 
 function PaymentAccountDialog({ account, close, run }: { account: PaymentAccount; close: () => void; run: RunCommand }) {
+  const confirmAction=useAppConfirm();
   const [name,setName]=useState(account.name),[isActive,setActive]=useState(account.isActive),[openingBalance,setOpeningBalance]=useState("0"),[correcting,setCorrecting]=useState(false),[newBalance,setNewBalance]=useState(String(account.balance??0)),[reason,setReason]=useState("");
   const difference=val(newBalance)-Number(account.balance??0);
-  const remove=async()=>{if(account.code==="cash"){showTransientNotice("لا يمكن حذف وسيلة الدفع النقدية الأساسية");return}if(!confirm("سيتم حذف وسيلة الدفع إذا لم يكن لها أي سجل سابق.\nإذا كانت مرتبطة بسجلات قديمة فسيتم أرشفتها مع الاحتفاظ بكامل التاريخ.\nلا يمكن تنفيذ العملية إذا كان الرصيد غير صفري."))return;const result=await run({type:"payment-account.delete",accountId:account.id},"");showTransientNotice(result?.disposition==="archived"?"تمت أرشفة وسيلة الدفع مع الاحتفاظ بسجلها":"تم حذف وسيلة الدفع");close()};
+  const remove=async()=>{if(account.code==="cash"){showTransientNotice("لا يمكن حذف وسيلة الدفع النقدية الأساسية");return}if(!await confirmAction({message:"سيتم حذف وسيلة الدفع إذا لم يكن لها أي سجل سابق.\nإذا كانت مرتبطة بسجلات قديمة فسيتم أرشفتها مع الاحتفاظ بكامل التاريخ.\nلا يمكن تنفيذ العملية إذا كان الرصيد غير صفري.",confirmLabel:"حذف وسيلة الدفع",tone:"danger"}))return;const result=await run({type:"payment-account.delete",accountId:account.id},"");showTransientNotice(result?.disposition==="archived"?"تمت أرشفة وسيلة الدفع مع الاحتفاظ بسجلها":"تم حذف وسيلة الدفع");close()};
   if(correcting)return <div className="modal-overlay" role="dialog" aria-modal="true"><form className="modal-card account-dialog" onSubmit={async e=>{e.preventDefault();await run({type:"account-balance-correction.post",accountId:account.id,newBalance:val(newBalance),reason},"تم اعتماد تصحيح الرصيد");close()}}><div className="modal-heading"><h3>تصحيح الرصيد</h3><button type="button" className="icon" onClick={close}><X/></button></div><label>الرصيد الحالي<input readOnly value={account.balance}/></label><label>الرصيد الصحيح<Num value={newBalance} onChange={setNewBalance}/></label><label>الفرق<input readOnly value={`${difference>0?"+":""}${difference}`}/></label><label>سبب التصحيح<textarea required value={reason} onChange={e=>setReason(e.target.value)}/></label><div className="dialog-actions"><button className="primary" disabled={!reason.trim()||difference===0}>اعتماد التصحيح</button><button type="button" onClick={()=>setCorrecting(false)}>إلغاء</button></div></form></div>;
   return <div className="modal-overlay" role="dialog" aria-modal="true"><form className="modal-card account-dialog" onSubmit={async e=>{e.preventDefault();await run({type:account.id?"payment-account.update":"payment-account.create",id:account.id,name,isActive,openingBalance:val(openingBalance)},"تم حفظ وسيلة الدفع");close()}}><div className="modal-heading"><h3>{account.id?"تعديل وسيلة الدفع":"وسيلة دفع جديدة"}</h3><button type="button" className="icon" onClick={close}><X/></button></div><label>{account.id?"الاسم":"اسم البنك أو وسيلة الدفع"}<input required value={name} onChange={e=>setName(e.target.value)}/></label>{!account.id&&<label>رصيد البداية<Num value={openingBalance} onChange={setOpeningBalance}/></label>}{account.id&&<label className="active-toggle"><input type="checkbox" checked={isActive} onChange={e=>setActive(e.target.checked)}/> متاحة للعمليات الجديدة</label>}<button className="primary">حفظ</button>{account.id&&<div className="admin-actions"><button type="button" className="soft" onClick={()=>setCorrecting(true)}>تصحيح الرصيد</button><button type="button" className="danger" onClick={()=>void remove()}>حذف الوسيلة</button></div>}</form></div>;
 }
@@ -939,9 +949,10 @@ function PartyPage({party,data,openDoc,run}:{party:Party;data:BootstrapData;open
 export function periodQuantity(documents:DocumentRecord[],productId:string,warehouseId:string,kind:"purchase"|"sale",from:string,to:string){return documents.filter(document=>document.kind===kind&&document.status==="posted"&&document.warehouseId===warehouseId&&(!from||document.occurredAt.slice(0,10)>=from)&&(!to||document.occurredAt.slice(0,10)<=to)).reduce((sum,document)=>sum+document.lines.filter(line=>line.productId===productId).reduce((lineSum,line)=>lineSum+Number(line.quantity),0),0)}
 
 function WarehouseAdmin({data,run,canDelete}:{data:BootstrapData;run:RunCommand;canDelete:boolean}){
+  const confirmAction=useAppConfirm();
   const [newName,setNewName]=useState(""),[names,setNames]=useState<Record<string,string>>({});
   const active=activeWarehouses(data.warehouses);
-  return <section className="workspace-page warehouse-admin"><FramedSection title="إضافة مخزن"><div className="warehouse-admin-create"><input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="اسم المخزن الجديد"/><button className="primary" disabled={!newName.trim()} onClick={async()=>{await run({type:"warehouse.create",name:newName},"تمت إضافة المخزن");setNewName("")}}><Plus/> إضافة مخزن</button></div></FramedSection><FramedSection title="إدارة المخازن" className="scroll-panel"><div className="erp-table-wrap"><table className="erp-table"><thead><tr><th>المخزن</th><th>الحالة</th><th>الاسم الجديد</th><th>إجراءات</th></tr></thead><tbody>{active.map(warehouse=><tr key={warehouse.id}><td className="name-cell">{warehouse.name}</td><td>{warehouse.isSalesDefault?"مخزن البيع":"نشط"}</td><td><input value={names[warehouse.id]??""} onChange={e=>setNames(current=>({...current,[warehouse.id]:e.target.value}))} placeholder={warehouse.name}/></td><td className="action-cell"><button className="soft" disabled={!names[warehouse.id]?.trim()} onClick={()=>void run({type:"warehouse.update",id:warehouse.id,name:names[warehouse.id]},"تم تعديل اسم المخزن")}>حفظ الاسم</button><button className="soft" disabled={warehouse.isSalesDefault} onClick={()=>void run({type:"warehouse.default",warehouseId:warehouse.id},"تم تعيين مخزن البيع")}>{warehouse.isSalesDefault?"مخزن البيع":"تعيين للبيع"}</button>{canDelete&&<button className="danger compact-delete" onClick={()=>{if(confirm("سيتم حذف المخزن الفارغ أو أرشفته عند وجود تاريخ مرتبط. هل تريد المتابعة؟"))void run({type:"warehouse.delete",id:warehouse.id},"تم حذف أو أرشفة المخزن")}}>حذف</button>}</td></tr>)}</tbody></table></div></FramedSection></section>;
+  return <section className="workspace-page warehouse-admin"><FramedSection title="إضافة مخزن"><div className="warehouse-admin-create"><input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="اسم المخزن الجديد"/><button className="primary" disabled={!newName.trim()} onClick={async()=>{await run({type:"warehouse.create",name:newName},"تمت إضافة المخزن");setNewName("")}}><Plus/> إضافة مخزن</button></div></FramedSection><FramedSection title="إدارة المخازن" className="scroll-panel"><div className="erp-table-wrap"><table className="erp-table"><thead><tr><th>المخزن</th><th>الحالة</th><th>الاسم الجديد</th><th>إجراءات</th></tr></thead><tbody>{active.map(warehouse=><tr key={warehouse.id}><td className="name-cell">{warehouse.name}</td><td>{warehouse.isSalesDefault?"مخزن البيع":"نشط"}</td><td><input value={names[warehouse.id]??""} onChange={e=>setNames(current=>({...current,[warehouse.id]:e.target.value}))} placeholder={warehouse.name}/></td><td className="action-cell"><button className="soft" disabled={!names[warehouse.id]?.trim()} onClick={()=>void run({type:"warehouse.update",id:warehouse.id,name:names[warehouse.id]},"تم تعديل اسم المخزن")}>حفظ الاسم</button><button className="soft" disabled={warehouse.isSalesDefault} onClick={()=>void run({type:"warehouse.default",warehouseId:warehouse.id},"تم تعيين مخزن البيع")}>{warehouse.isSalesDefault?"مخزن البيع":"تعيين للبيع"}</button>{canDelete&&<button className="danger compact-delete" onClick={async()=>{if(await confirmAction({message:"سيتم حذف المخزن الفارغ أو أرشفته عند وجود تاريخ مرتبط. هل تريد المتابعة؟",confirmLabel:"حذف المخزن",tone:"danger"}))void run({type:"warehouse.delete",id:warehouse.id},"تم حذف أو أرشفة المخزن")}}>حذف</button>}</td></tr>)}</tbody></table></div></FramedSection></section>;
 }
 
 function Warehouses({ data, openDoc }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void }) {
@@ -971,6 +982,7 @@ function ProductMovementPanel({ product, selectedWarehouseId, data, filter, setF
 }
 
 function Products({ data, run }: { data: BootstrapData; run: RunCommand }) {
+  const confirmAction=useAppConfirm();
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Product | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -987,7 +999,7 @@ function Products({ data, run }: { data: BootstrapData; run: RunCommand }) {
   const toggleSort = (key: "price" | "cost" | "stock") => setSort(current => ({ key, direction: current?.key === key && current.direction === "asc" ? "desc" : "asc" }));
   const sortHeader = (id: "price" | "cost" | "stock", label: string) => <button className={sort?.key === id ? "sort-header active" : "sort-header"} onClick={() => toggleSort(id)}>{label}{sort?.key === id && <span>{sort.direction === "asc" ? "↑" : "↓"}</span>}</button>;
   const openForm = (product: Product | null) => { setEditing(product); setFormOpen(true); };
-  const remove = async (product: Product) => { if(window.confirm("سيُحذف المنتج من الاستخدام الجديد مع الاحتفاظ بمخزونه وتاريخه. هل تريد المتابعة؟"))await run({type:"product.delete",id:product.id},"تم حذف المنتج بأمان"); };
+  const remove = async (product: Product) => { if(await confirmAction({message:"سيُحذف المنتج من الاستخدام الجديد مع الاحتفاظ بمخزونه وتاريخه. هل تريد المتابعة؟",confirmLabel:"حذف المنتج",tone:"danger"}))await run({type:"product.delete",id:product.id},"تم حذف المنتج بأمان"); };
   return <section className="workspace-page products-page">
     <div className="toolbar workspace-toolbar">
       <label className="search compact-search"><Search /><input value={query} onChange={event => setQuery(event.target.value)} placeholder="بحث سريع بالاسم أو الرمز أو الباركود" /></label>
@@ -1011,12 +1023,13 @@ function Products({ data, run }: { data: BootstrapData; run: RunCommand }) {
 }
 
 function ProductForm({ run, close, product, warehouses }: { run: RunCommand; close: () => void; product: Product | null; warehouses: BootstrapData["warehouses"] }) {
+  const confirmAction=useAppConfirm();
   const [name, setName] = useState(product?.name ?? ""), [cost, setCost] = useState(String(product?.pieceCost ?? "")),
     [price, setPrice] = useState(String(product?.piecePrice ?? "")), [wholesalePrice, setWholesalePrice] = useState(String(product?.wholesalePrice ?? "")),
     [openingStock, setOpeningStock] = useState(""), [openingWarehouseId, setOpeningWarehouseId] = useState(warehouses.find(warehouse => warehouse.isSalesDefault)?.id ?? ""),
     [barcode, setBarcode] = useState(product?.barcode ?? ""), [expiryDate, setExpiryDate] = useState(product?.expiryDate ?? ""), [note, setNote] = useState(product?.note ?? "");
   const barcodeInput = useRef<HTMLInputElement>(null);
-  return <form className="panel product-form" onSubmit={async event => { event.preventDefault(); const sensitive = product && (name.trim() !== product.name || (cost === "" ? null : val(cost)) !== product.pieceCost); const confirmed = sensitive ? window.confirm(`أنت تغيّر بيانات أساسية للمنتج «${product.name}». هل تريد المتابعة؟`) : true; if (!confirmed) return;
+  return <form className="panel product-form" onSubmit={async event => { event.preventDefault(); const sensitive = product && (name.trim() !== product.name || (cost === "" ? null : val(cost)) !== product.pieceCost); const confirmed = sensitive ? await confirmAction({message:`أنت تغيّر بيانات أساسية للمنتج «${product.name}». هل تريد المتابعة؟`}) : true; if (!confirmed) return;
     await run({ type: product ? "product.update" : "product.create", id: product?.id, name, barcode, expiryDate, note, pieceCost: cost, piecePrice: price, wholesalePrice, openingStock, openingWarehouseId, confirmSensitive: confirmed }, product ? "تم تعديل المنتج" : "تم إنشاء المنتج"); close(); }}>
     <div className="product-form-head"><div><small>{product ? "بيانات المنتج" : "منتج جديد"}</small><h2>{product ? "تعديل المنتج" : "إضافة منتج جديد"}</h2></div><button type="button" className="icon" aria-label="إغلاق" onClick={close}><X /></button></div>
     <div className="product-form-halves">

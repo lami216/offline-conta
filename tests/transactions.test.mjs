@@ -438,3 +438,24 @@ test("expense update may move payment to an overdrawn account",async()=>{
 test("recurring commands are removed while dormant data is retained",async()=>{
  await db.collection("recurringExpenses").insertOne({id:"legacy-template",title:"Rent",frequency:"monthly"});await assert.rejects(command({type:"expense.materialize",recurringId:"legacy-template"}),/غير مدعومة/);assert.ok(await db.collection("recurringExpenses").findOne({id:"legacy-template"}));
 });
+
+test("expense void restores the current payment movement exactly once and preserves audit history",async()=>{
+  const expenseId=await command({type:"expense.post",title:"Rent",amount:300,occurredAt:"2026-08-15",paymentMethod:"cash-id"});
+  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,9700);
+  await command({type:"expense.void",documentId:expenseId});
+  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,10000);
+  const document=await db.collection("documents").findOne({id:expenseId});
+  assert.equal(document.status,"voided");assert.ok(document.voidedAt);assert.equal(document.revision,1);
+  assert.equal(await db.collection("financialMovements").countDocuments({documentId:expenseId,type:"expense"}),0);
+  await assert.rejects(command({type:"expense.void",documentId:expenseId}),/غير موجودة أو ملغاة بالفعل/);
+  assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,10000);
+});
+
+test("expense void after edit reverses only the current account and amount",async()=>{
+  await db.collection("paymentAccounts").insertOne({id:"bankily",code:"bankily",name:"Bankily",isActive:true,balance:1000,allowNegativeBalance:false});
+  const expenseId=await command({type:"expense.post",title:"A",amount:100,occurredAt:"2026-08-15",paymentMethod:"cash-id"});
+  await command({type:"expense.update",documentId:expenseId,title:"B",amount:500,occurredAt:"2026-08-16",paymentMethod:"bankily"});
+  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,(await db.collection("paymentAccounts").findOne({id:"bankily"})).balance],[10000,500]);
+  await command({type:"expense.void",documentId:expenseId});
+  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,(await db.collection("paymentAccounts").findOne({id:"bankily"})).balance],[10000,1000]);
+});

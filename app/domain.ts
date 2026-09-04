@@ -229,21 +229,18 @@ export function western(value: number | string) {
     .replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))
     .replace(/[۰-۹]/g, (d) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(d)));
 }
-const DISPLAY_LOCALE = "fr-FR-u-nu-latn";
-const numberFormatter = new Intl.NumberFormat(DISPLAY_LOCALE, {
-  maximumFractionDigits: 0,
-  numberingSystem: "latn",
-});
+import { getRuntimeLocale } from "./i18n/messages";
+import * as localized from "./i18n/formatting";
 
 /** Format display values with Latin digits without changing stored data. */
 export function formatNumber(value: number) {
-  return western(numberFormatter.format(value));
+  return localized.formatNumber(getRuntimeLocale(), value);
 }
 export function formatQuantity(value: number) {
   return formatNumber(value);
 }
 export function formatMoney(value: number) {
-  return `${formatNumber(value)} MRU`;
+  return localized.formatMoney(getRuntimeLocale(), value);
 }
 export function displayDocumentNumber(document: Pick<DocumentRecord, "number" | "sequence" | "kind">) {
   return ["sale", "purchase", "expense"].includes(document.kind) && Number.isSafeInteger(Number(document.sequence)) && Number(document.sequence) > 0 ? String(document.sequence) : document.number;
@@ -256,10 +253,7 @@ export function formatDate(
   value: Date | string | number,
   options: Intl.DateTimeFormatOptions = { day: "2-digit", month: "2-digit", year: "numeric" },
 ) {
-  return western(new Intl.DateTimeFormat(DISPLAY_LOCALE, {
-    ...options,
-    numberingSystem: "latn",
-  }).format(new Date(value)));
+  return localized.formatDate(getRuntimeLocale(), value, options);
 }
 export function formatDateTime(value: Date | string | number) {
   return formatDate(value, {

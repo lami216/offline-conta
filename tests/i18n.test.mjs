@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { arMessages, frMessages } from "../app/i18n/messages.ts";
+import { translateApiError } from "../app/i18n/api-errors.ts";
 import { DEFAULT_LOCALE, direction, LOCALE_COOKIE, normalizeLocale, supportedLocales } from "../app/i18n/locale.ts";
 
 const read = path => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -59,4 +60,27 @@ test("main page bar contains localized date and language controls", () => {
   assert.match(pageBar, /today-long/);
   assert.match(pageBar, /today-short/);
   assert.match(pageBar, /language-switch/);
+});
+
+
+test("translated metric and settings labels are never translated twice", () => {
+  assert.match(app, /type PartyMetricStripItem = \{ labelKey: MessageKey/);
+  assert.doesNotMatch(app, /labelKey:[^,}]*tr\(/);
+  assert.doesNotMatch(app, /label:tr\("إعدادات عامة"\)/);
+});
+
+test("API errors have safe exact, dynamic and fallback French presentation", () => {
+  assert.equal(translateApiError("fr", "اسم المستخدم غير صحيح"), "Nom d’utilisateur incorrect");
+  assert.equal(translateApiError("fr", "الرصيد غير كافٍ في الصندوق"), "Solde insuffisant sur الصندوق");
+  assert.equal(translateApiError("fr", "المخزون غير كافٍ للمنتج Thé"), "Stock insuffisant pour Thé");
+  assert.match(translateApiError("fr", "خطأ جديد"), /erreur/i);
+});
+
+test("direction-aware desktop navigation and settings CSS regressions are guarded", () => {
+  const css=read("../app/globals.css");
+  assert.match(css, /sidebar nav \{[^}]*minmax\(175px/);
+  assert.match(css, /left:\s*50%;[\s\S]*transform:\s*translateX\(-50%\)/);
+  assert.match(css, /users-permissions-layout\{[^}]*direction:inherit/);
+  assert.match(css, /invoice-table-row > :last-child \{ border-inline-end: 0/);
+  assert.doesNotMatch(app, /setRuntimeLocale|getRuntimeLocale/);
 });

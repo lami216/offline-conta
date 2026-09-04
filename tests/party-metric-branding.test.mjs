@@ -14,7 +14,7 @@ test("party list and account summaries share one four-item metric strip", () => 
   assert.match(app, /return <PartyMetricStrip items=\{items\} aggregate\/>/);
   assert.match(app, /<PartyMetricStrip items=\{\[/);
   const aggregate = app.slice(app.indexOf("function PartyAggregateMetrics"), app.indexOf("function Parties"));
-  assert.equal((aggregate.match(/label:/g) ?? []).length, 8);
+  assert.equal((aggregate.match(/labelKey:/g) ?? []).length, 8);
   assert.doesNotMatch(css, /party-list-metrics/);
   assert.match(css, /\.party-trade-metrics\{flex-wrap:nowrap\}/);
   assert.match(css, /@media\(max-width:760px\)\{\.party-trade-metrics\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}\}/);

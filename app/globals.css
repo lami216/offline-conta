@@ -1767,9 +1767,10 @@ input, select, .combobox-trigger { border-color: #9faab8; }
   .purchase-details > label { display: grid; gap: 4px; font-size: 10px; font-weight: 800; }
 
   .sidebar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; padding: 10px 16px; }
-  .sidebar nav { display: grid; grid-template-columns: minmax(82px,.9fr) minmax(92px,1fr) minmax(100px,1fr) minmax(175px,1.65fr) minmax(85px,.9fr) minmax(85px,.9fr) minmax(85px,.9fr) minmax(95px,1fr); gap: 3px; width: 100%; min-width: 0; }
+  .sidebar nav { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; width: 100%; min-width: 0; }
   .sidebar nav > *, .nav-menu, .nav-menu > .nav { width: 100%; min-width: 0; }
   .nav { justify-content: center; min-width: 0; min-height: 48px; padding: 5px 3px; gap: 5px; border: 2px solid var(--nav-color, #687585); border-radius: 9px; font-size: 10px; white-space: nowrap; }
+  .party-nav-menu > .nav > span { min-width: 0; white-space: normal; line-height: 1.05; text-align: center; text-wrap: balance; overflow-wrap: anywhere; }
   .nav svg { flex: 0 0 auto; }
   .brand-logo { width: 54px; height: 54px; flex: 0 0 54px; }
   .brand strong { font-size: 19px; }

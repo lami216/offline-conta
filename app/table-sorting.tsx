@@ -9,7 +9,7 @@ const empty=(value:unknown)=>value===null||value===undefined||value==="";
 export function compareTableValues(left:unknown,right:unknown,type:TableValueType,direction:"asc"|"desc"){
   if(empty(left)||empty(right)){if(empty(left)&&empty(right))return 0;return empty(left)?1:-1}
   let result=0;
-  if(type==="text")result=String(left).localeCompare(String(right),"ar",{numeric:true,sensitivity:"base"});
+  if(type==="text")result=String(left).localeCompare(String(right),undefined,{numeric:true,sensitivity:"base"});
   else if(type==="date")result=new Date(String(left)).getTime()-new Date(String(right)).getTime();
   else result=Number(left)-Number(right);
   return result*(direction==="asc"?1:-1);

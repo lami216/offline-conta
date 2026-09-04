@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyPriceMode, sellingPrice, updateSaleDraftLine, validateSaleDraft } from "../app/sale-draft.ts";
+import { applyPriceMode, formatSaleValidationError, sellingPrice, updateSaleDraftLine, validateSaleDraft } from "../app/sale-draft.ts";
 
 const product = { id: "lion", name: "أسد زيريار", sku: "1", barcode: "", pieceCost: 12000, lastPurchaseCost: 12000, piecePrice: 7500, stocks: { sales: 5 } };
 const draft = (quantity = "1", piecePrice = "7500") => ({ productId: product.id, quantity, piecePrice, unitPrice: "", actualQuantity: "" });
@@ -22,7 +22,7 @@ test("submit validation preserves below-cost price and over-stock quantity in th
   assert.equal(belowCost[0].piecePrice, "10000");
 
   const overStock = [draft("10", "30000")];
-  assert.match(validateSaleDraft(overStock, [product], "sales").errors.join(" "), /هي 10 والمتوفر 5 فقط/);
+  assert.match(validateSaleDraft(overStock, [product], "sales").errors.map(error => formatSaleValidationError("ar", error)).join(" "), /هي 10 والمتوفر 5 فقط/);
   assert.equal(overStock[0].quantity, "10");
   assert.deepEqual(validateSaleDraft([draft("4", "30000")], [product], "sales").errors, []);
 });
@@ -80,5 +80,5 @@ test("expiry is inclusive and frontend draft validation blocks only later dates"
   assert.equal(isProductExpired(expiring, "2026-08-22"), false);
   assert.equal(validateSaleDraft([draft()], [expiring], "sales", "2026-08-22").errors.length, 0);
   assert.equal(isProductExpired(expiring, "2026-08-23"), true);
-  assert.match(validateSaleDraft([draft()], [expiring], "sales", "2026-08-23").errors.join(" "), /انتهت صلاحية/);
+  assert.match(validateSaleDraft([draft()], [expiring], "sales", "2026-08-23").errors.map(error => formatSaleValidationError("ar", error)).join(" "), /انتهت صلاحية/);
 });

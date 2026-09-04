@@ -16,7 +16,7 @@ export function expenseAllTimeMode(): ExpenseHistoryFilters {
 }
 
 function normalizeExpenseSearch(value: unknown) {
-  return String(value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase("ar");
+  return String(value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
 export function expenseSearchScore(document: DocumentRecord, query: string) {

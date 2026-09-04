@@ -78,7 +78,10 @@ test("API errors have safe exact, dynamic and fallback French presentation", () 
 
 test("direction-aware desktop navigation and settings CSS regressions are guarded", () => {
   const css=read("../app/globals.css");
-  assert.match(css, /sidebar nav \{[^}]*minmax\(175px/);
+  assert.match(css, /sidebar nav \{[^}]*grid-template-columns:\s*repeat\(8,\s*minmax\(0,\s*1fr\)\)/);
+  assert.doesNotMatch(css, /minmax\(175px/);
+  assert.match(css, /party-nav-menu > \.nav > span[^}]*white-space:\s*normal/);
+  assert.match(css, /\.nav \{[^}]*min-height:\s*48px/);
   assert.match(css, /left:\s*50%;[\s\S]*transform:\s*translateX\(-50%\)/);
   assert.match(css, /users-permissions-layout\{[^}]*direction:inherit/);
   assert.match(css, /invoice-table-row > :last-child \{ border-inline-end: 0/);

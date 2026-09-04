@@ -1,8 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { normalizePresentationSource } from "./presentation-source.mjs";
 
-const app = readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+const app = normalizePresentationSource(readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
 const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const login = readFileSync(new URL("../app/login/page.tsx", import.meta.url), "utf8");
 const layout = readFileSync(new URL("../app/layout.tsx", import.meta.url), "utf8");
@@ -24,7 +25,8 @@ test("visible product branding uses the shared Arabic identity and logo path", (
   assert.match(brand, /APP_LOGO_PATH = "\/alkarna-logo\.png"/);
   assert.match(app, /className="brand-logo"><img src=\{APP_LOGO_PATH\}/);
   assert.match(login, /<img src=\{APP_LOGO_PATH\}/);
-  assert.match(layout, /title: `\$\{APP_NAME\} — \$\{APP_TAGLINE\}`/);
+  assert.match(layout, /title: `\$\{APP_NAME\} — \$\{tagline\}`/);
+  assert.match(layout, /locale==="ar"\?"نظام المتجر":"Gestion du magasin"/);
   assert.doesNotMatch(login, />Conta<|>C</);
   assert.match(app, /تم إنشاء هذا المستند بواسطة \{APP_NAME\}/);
 });

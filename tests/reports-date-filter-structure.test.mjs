@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { normalizePresentationSource } from "./presentation-source.mjs";
 
-const app = readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+const app = normalizePresentationSource(readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
 const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const reports = app.slice(app.indexOf("function Reports"), app.indexOf("function PrintableDocument"));
 

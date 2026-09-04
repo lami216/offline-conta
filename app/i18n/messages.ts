@@ -849,6 +849,12 @@ export const arMessages = {
   "۰۱۲۳۴۵۶۷۸۹": "۰۱۲۳۴۵۶۷۸۹",
   "— إدارة ترخيص هذا الجهاز": "— إدارة ترخيص هذا الجهاز",
   "← العودة": "← العودة",
+  "ui.transactionRecord": "سجل المعاملة {number}",
+  "ui.deleteItem": "حذف {name}",
+  "invoice.deleteSaleConfirm": "هل تريد حذف فاتورة البيع رقم {number}؟\nسيتم عكس تأثيرها على المخزون والحسابات.",
+  "invoice.deletePurchaseConfirm": "هل تريد حذف فاتورة الشراء رقم {number}؟\nسيتم عكس تأثيرها على المخزون والحسابات.",
+  "product.sensitiveChangeConfirm": "أنت تغيّر بيانات أساسية للمنتج «{name}». هل تريد المتابعة؟",
+  "report.periodRange": "الفترة: من {from} إلى {to}",
   "Français": "Français",
   "العربية": "العربية"
 } as const;
@@ -947,7 +953,7 @@ export const frMessages: Record<MessageKey, string> = {
   "إعادة المحاولة": "Réessayer",
   "إعدادات الصفحة غير صالحة": "Paramètres de page invalides",
   "إعدادات عامة": "Paramètres généraux",
-  "إغلاق": "clôture",
+  "إغلاق": "Fermer",
   "إغلاق التفاصيل": "Fermer les détails",
   "إلغاء": "Annuler",
   "إلغاء التعديل": "Annuler la modification",
@@ -1009,7 +1015,7 @@ export const frMessages: Record<MessageKey, string> = {
   "اسم المحل مطلوب ويجب ألا يتجاوز 80 حرفًا": "Le nom du magasin est obligatoire et ne doit pas dépasser 80 caractères",
   "اسم المخزن": "Nom du dépôt",
   "اسم المخزن الجديد": "Le nom du nouveau dépôt",
-  "اسم المخزن مطلوب": "Nom du référentiel requis",
+  "اسم المخزن مطلوب": "Le nom du dépôt est obligatoire",
   "اسم المستخدم": "Nom d’utilisateur",
   "اسم المستخدم غير صحيح": "Le nom d'utilisateur n'est pas valide",
   "اسم المستخدم مستخدم بالفعل": "Le nom d'utilisateur est déjà utilisé",
@@ -1026,7 +1032,7 @@ export const frMessages: Record<MessageKey, string> = {
   "الأسعار والمخزون": "Prix ​​et inventaire",
   "الإجمالي": "Total",
   "الإعدادات": "Paramètres",
-  "الاحتفاظ برصيد الكرنه": "Maintenir le solde de la carte de crédit",
+  "الاحتفاظ برصيد الكرنه": "Conserver le solde actuel dans الكرنه",
   "الاستعادة والاستيراد": "Restaurer et importer",
   "الاسم": "le nom",
   "الاسم الجديد": "Nouveau nom",
@@ -1165,7 +1171,7 @@ export const frMessages: Record<MessageKey, string> = {
   "النسخ الاحتياطي": "Sauvegarde",
   "النسخ الاحتياطي والاستعادة": "Sauvegarde et restauration",
   "النهاية": "la fin",
-  "النوع": "Taper",
+  "النوع": "Type",
   "الهاتف": "Téléphone",
   "الهامش %": "Marge %",
   "الوقت المتبقي": "temps restant",
@@ -1196,7 +1202,7 @@ export const frMessages: Record<MessageKey, string> = {
   "بيع": "vente",
   "بيع الجملة": "Gros",
   "بيع الفرد": "Détail",
-  "بيع مباشر": "Client comptant",
+  "بيع مباشر": "Vente directe",
   "بيم": "Bim",
   "تأكيد": "Confirmation",
   "تاريخ الإصدار": "Date de sortie",
@@ -1210,11 +1216,11 @@ export const frMessages: Record<MessageKey, string> = {
   "تحصيل من طرف": "Collecte par",
   "تحكم كامل": "Contrôle total",
   "تحليل الأرباح": "Analyse des bénéfices",
-  "تحويل": "transformation",
+  "تحويل": "Transfert",
   "تحويل بين المخازن": "Transfert entre dépôts",
-  "تحويل جديد": "Nouvelle transformation",
-  "تحويل خارج": "Transfert",
-  "تحويل داخل": "Convertir à l'intérieur",
+  "تحويل جديد": "Nouveau transfert",
+  "تحويل خارج": "Transfert sortant",
+  "تحويل داخل": "Transfert entrant",
   "تحويل مخزون": "Transfert de stock",
   "تسجيل Adjustment بالفرق": "Enregistrement de réglage avec différence",
   "تسجيل الحركة": "Enregistrement de mouvement",
@@ -1450,18 +1456,18 @@ export const frMessages: Record<MessageKey, string> = {
   "سند تحويل مخزون": "Bon de transfert de stock",
   "سند تصحيح رصيد": "Bon de correction de solde",
   "سند تصحيح مخزون": "Bon de correction d'inventaire",
-  "سند سحب": "Facture de retrait",
-  "سند صرف": "Lettre de change",
+  "سند سحب": "Bon de retrait",
+  "سند صرف": "Bon de décaissement",
   "سند عملية مالية": "Document de transaction financière",
   "سند قبض": "Bon de réception",
-  "سند مصروف": "Caution de dépenses",
+  "سند مصروف": "Bon de dépense",
   "سند مقاصة": "Instrument de compensation",
   "سيتم إنشاء نسخة أمان تلقائية قبل أول مرحلة دمج. لن تُجمع الأرصدة أو كميات المخزون.": "Une copie de sécurité automatique sera créée avant la première phase de fusion. Les crédits ou les quantités en stock ne seront pas accumulés.",
   "سيتم حذف المخزن الفارغ أو أرشفته عند وجود تاريخ مرتبط. هل تريد المتابعة؟": "Le coffre-fort vide sera supprimé ou archivé lorsqu'il y aura une date associée. Voulez-vous continuer ?",
   "سيتم حذف وسيلة الدفع إذا لم يكن لها أي سجل سابق.\nإذا كانت مرتبطة بسجلات قديمة فسيتم أرشفتها مع الاحتفاظ بكامل التاريخ.\nلا يمكن تنفيذ العملية إذا كان الرصيد غير صفري.": "Le mode de paiement sera supprimé s’il n’a pas d’historique.\nS'ils sont liés à d'anciens enregistrements, ils seront archivés avec tout l'historique conservé.\nL'opération ne peut être effectuée si le solde n'est pas nul.",
   "سيُحذف المنتج من الاستخدام الجديد مع الاحتفاظ بمخزونه وتاريخه. هل تريد المتابعة؟": "Le produit sera retiré de toute nouvelle utilisation avec son stock et son historique conservés. Voulez-vous continuer ?",
   "شراء": "achat",
-  "شراء مباشر": "Achat comptant",
+  "شراء مباشر": "Achat direct",
   "صافي التدفق التشغيلي": "Flux net d'exploitation",
   "صافي الحركة": "mouvement net",
   "صافي الذمم": "Créances nettes",
@@ -1707,21 +1713,25 @@ export const frMessages: Record<MessageKey, string> = {
   "۰۱۲۳۴۵۶۷۸۹": "0123456789",
   "— إدارة ترخيص هذا الجهاز": "— Gérer la licence de cet appareil",
   "← العودة": "← Retour",
+  "ui.transactionRecord": "Historique de l’opération {number}",
+  "ui.deleteItem": "Supprimer {name}",
+  "invoice.deleteSaleConfirm": "Supprimer la facture de vente n° {number} ?\nSon effet sur le stock et les comptes sera annulé.",
+  "invoice.deletePurchaseConfirm": "Supprimer la facture d’achat n° {number} ?\nSon effet sur le stock et les comptes sera annulé.",
+  "product.sensitiveChangeConfirm": "Vous modifiez des données essentielles du produit « {name} ». Continuer ?",
+  "report.periodRange": "Période : du {from} au {to}",
   "Français": "Français",
   "العربية": "العربية"
 };
 export const messages = { ar: arMessages, fr: frMessages } as const;
 export function translate(locale: "ar" | "fr", key: MessageKey, params: TranslationParams = {}) { let value: string = messages[locale][key]; for (const [name,replacement] of Object.entries(params)) value=value.replaceAll(`{${name}}`,String(replacement)); return value; }
 
-let runtimeLocale: "ar" | "fr" = "ar";
-export function setRuntimeLocale(locale: "ar" | "fr") { runtimeLocale=locale; }
-export function getRuntimeLocale() { return runtimeLocale; }
-/** For legacy view modules while they are migrated to semantic keys. Every accepted value is present in both typed dictionaries. */
+/** Compatibility translator for the legacy single-file UI. Locale state remains owned by LocaleProvider; this never stores mutable module state. */
 export function tr(key: string, params: TranslationParams = {}) {
+  const runtimeLocale = typeof document !== "undefined" && document.documentElement.lang === "fr" ? "fr" : "ar";
   const known=key as MessageKey;
   const value=(messages[runtimeLocale] as Record<string,string>)[known];
   if (value === undefined) {
-    if (runtimeLocale === "fr") throw new Error(`Missing French translation: ${key}`);
+    if (runtimeLocale === "fr") { console.error(`Missing French translation key: ${key}`); return frMessages["تعذر تنفيذ العملية"]; }
     return key;
   }
   return Object.entries(params).reduce((text,[name,replacement])=>text.replaceAll(`{${name}}`,String(replacement)),value);

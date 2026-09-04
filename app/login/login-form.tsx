@@ -2,9 +2,10 @@
 import { type FormEvent, type ReactNode, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useI18n } from "../i18n/provider";
+import { translateApiError } from "../i18n/api-errors";
 
 export function LoginForm({exitButton}:{exitButton:ReactNode}) {
-  const {t}=useI18n();
+  const {t,locale}=useI18n();
   const [username,setUsername]=useState(""),[password,setPassword]=useState(""),[error,setError]=useState(""),[submitting,setSubmitting]=useState(false);
   const usernameRef=useRef<HTMLInputElement>(null),passwordRef=useRef<HTMLInputElement>(null),router=useRouter();
   useEffect(()=>{if(!error)return;const timer=window.setTimeout(()=>setError(""),2800);return()=>window.clearTimeout(timer)},[error]);
@@ -15,7 +16,7 @@ export function LoginForm({exitButton}:{exitButton:ReactNode}) {
       const response=await fetch("/api/auth/login",{method:"POST",headers:{"x-alkarna-login-ui":"1"},body});
       const result=await response.json() as {ok:boolean;field?:"username"|"password";error?:string};
       if(response.ok&&result.ok){router.replace("/");router.refresh();return}
-      setError(result.error??t("تعذر تسجيل الدخول"));
+      setError(translateApiError(locale,result.error??"تعذر تسجيل الدخول"));
       if(result.field==="username"){setUsername("");requestAnimationFrame(()=>usernameRef.current?.focus())}
       else if(result.field==="password"){setPassword("");requestAnimationFrame(()=>passwordRef.current?.focus())}
     } catch {setError(t("تعذر الاتصال بالتطبيق"))} finally {setSubmitting(false)}

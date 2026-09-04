@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-test("desktop navigation has eight unique destinations with reports before settings",async()=>{const source=await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),match=source.match(/MAIN_NAV_ORDER = \[([^\]]+)\]/);assert.ok(match);const entries=[...match[1].matchAll(/"([^"]+)"/g)].map(x=>x[1]);assert.deepEqual(entries,["pos","invoices","warehouses","products","parties","banks","reports","settings"]);assert.equal(new Set(entries).size,entries.length);});
+import { normalizePresentationSource } from "./presentation-source.mjs";
+test("desktop navigation has eight unique destinations with reports before settings",async()=>{const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8")),match=source.match(/MAIN_NAV_ORDER = \[([^\]]+)\]/);assert.ok(match);const entries=[...match[1].matchAll(/"([^"]+)"/g)].map(x=>x[1]);assert.deepEqual(entries,["pos","invoices","warehouses","products","parties","banks","reports","settings"]);assert.equal(new Set(entries).size,entries.length);});
 
 test("submenu current states require their parent view without resetting remembered selections", async () => {
-  const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+  const source = normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
 
   assert.match(source, /allowed=\{can\("banks\.view"\)\} active=\{view==="banks"&&bankTab===item\.id\}/);
   assert.match(source, /allowed=\{can\("reports\.view"\)\} active=\{view==="reports"&&reportType===id\}/);
@@ -19,7 +20,7 @@ test("submenu current states require their parent view without resetting remembe
 });
 
 test("permission-aware navigation stays complete and disabled items cannot activate", async () => {
-  const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+  const source = normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
   for (const collection of ["invoiceNav", "warehouseNav", "partyNav", "bankNav", "reportOrder"])
     assert.match(source, new RegExp(`${collection}\\.map\\(`));
   assert.doesNotMatch(source, /(?:invoiceNav|warehouseNav|partyNav)\.filter\([^\n]*can/);
@@ -31,7 +32,7 @@ test("permission-aware navigation stays complete and disabled items cannot activ
 });
 
 test("top navigation dropdowns share one visual system and render text-only rows", async () => {
-  const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+  const source = normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
 
   assert.equal((source.match(/className="nav-popover(?: [^"]+)?"/g) ?? []).length, 6);
@@ -60,7 +61,7 @@ test("top navigation dropdowns share one visual system and render text-only rows
 });
 
 test("product and report tables use uncapped shared scroll viewports", async () => {
-  const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+  const source = normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
   assert.doesNotMatch(source, /slice\(0,\s*20\)/);
   assert.match(source, /FramedSection title="قائمة المنتجات" className="scroll-panel product-management"[\s\S]{0,160}erp-table-wrap product-table-viewport/);
@@ -69,7 +70,7 @@ test("product and report tables use uncapped shared scroll viewports", async () 
 });
 
 test("party ledger filters real compatible roles and transient documents overlay mounted content", async () => {
-  const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+  const source = normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
   assert.match(source, /filter\(p=>resolvePartyType\(p\)===partyTypeFilter\)/);
   assert.match(source, /search:`\$\{p\.name\} \$\{p\.phone\?\?""\}`/);
   assert.match(source, /setPartyTypeFilter\("supplier"\);setPartyId\(""\);setResult\(null\)/);

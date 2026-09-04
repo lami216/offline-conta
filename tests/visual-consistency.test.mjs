@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-const app = readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+import { normalizePresentationSource } from "./presentation-source.mjs";
+const app = normalizePresentationSource(readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
 const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 const bootstrap = readFileSync(new URL("../app/api/bootstrap/route.ts", import.meta.url), "utf8");
 const between = (start, end) => app.slice(app.indexOf(start), app.indexOf(end, app.indexOf(start)));

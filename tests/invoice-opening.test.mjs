@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
+import { normalizePresentationSource } from "./presentation-source.mjs";
 
-const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+const source = normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
 const between = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
 test("general invoice records open details before offering an explicit edit action", () => {
@@ -11,7 +12,7 @@ test("general invoice records open details before offering an explicit edit acti
 
   const detail = between("function DocumentDetail", "function InvoiceQuickBrowser");
   assert.match(detail, /onEdit\?: \(\) => void/);
-  assert.match(detail, /\{onEdit && \([\s\S]*className="primary" onClick=\{onEdit\}[\s\S]*<PencilLine \/> تعديل الفاتورة/);
+  assert.match(detail, /\{onEdit && \([\s\S]*className="primary" onClick=\{onEdit\}[\s\S]*<PencilLine \/>\s+تعديل الفاتورة/);
 });
 
 test("top-level invoice edit eligibility includes document and permission checks", () => {

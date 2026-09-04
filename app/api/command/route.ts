@@ -6,7 +6,6 @@ import { requireCapability, validSameOrigin, type Capability } from "../../../li
 import { isProductExpired } from "../../domain.ts";
 import { normalizePartyNet, partyCashDelta, partyNet } from "../../party-balance.ts";
 import { nextDocumentSequence, type SequencedDocumentKind } from "../../../lib/document-sequences.ts";
-import { localizeMessage } from "../../i18n/server";
 
 type Input = Record<string, unknown>;
 type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; purchaseCost?: number | null; costAtSale?: number | null; grossProfit?: number | null };
@@ -377,17 +376,17 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   throw new CommandError("العملية غير مدعومة");
 }
 
-export async function POST(request: Request) {const message=(value:string)=>localizeMessage(request,value);const licenseDenied=await requireValidLicense();if(licenseDenied)return licenseDenied;
+export async function POST(request: Request) {const licenseDenied=await requireValidLicense();if(licenseDenied)return licenseDenied;
   let type = "unknown";
   try {
     const body = await request.json() as Input; type = text(body.type);
     const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","adjustment.post":"warehouses.adjust","payment.post":text(body.side)==="receivable"?"customers.collect":"suppliers.pay","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","settlement.post":"customers.edit","offset.post":"customers.edit","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-transfer.post":"banks.transfer","account-opening-balance-correction.post":"banks.balance_correct","party.create":body.partyType==="customer"?"customers.create":"suppliers.create"};
-    const capability=map[type];if(!capability)return Response.json({error:message("العملية غير مدعومة")},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;if(!validSameOrigin(request))return Response.json({error:message("طلب غير صالح")},{status:403});
+    const capability=map[type];if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;if(!validSameOrigin(request))return Response.json({error:"طلب غير صالح"},{status:403});
     const idempotencyKey=text(request.headers.get("Idempotency-Key"));
-    if(!idempotencyKey||idempotencyKey.length>200)return Response.json({error:message("مفتاح العملية مطلوب")},{status:400});
+    if(!idempotencyKey||idempotencyKey.length>200)return Response.json({error:"مفتاح العملية مطلوب"},{status:400});
     const fingerprint=Buffer.from(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(body)))).toString("hex");
     const db=await getDatabase(),receipts=db.collection("commandReceipts"),prior=await receipts.findOne({_id:idempotencyKey as never});
-    if(prior){if(prior.fingerprint!==fingerprint)return Response.json({error:message("مفتاح العملية مستخدم لطلب مختلف")},{status:409});if(prior.status==="committed")return Response.json(prior.result);return Response.json({error:message("العملية قيد التنفيذ")},{status:409});}
+    if(prior){if(prior.fingerprint!==fingerprint)return Response.json({error:"مفتاح العملية مستخدم لطلب مختلف"},{status:409});if(prior.status==="committed")return Response.json(prior.result);return Response.json({error:"العملية قيد التنفيذ"},{status:409});}
     let result:unknown="",response:unknown;
     try{await db.transaction(async session=>{
       await receipts.insertOne({_id:idempotencyKey as never,commandType:type,fingerprint,status:"processing",createdAt:new Date()},{session});
@@ -396,7 +395,7 @@ export async function POST(request: Request) {const message=(value:string)=>loca
       await db.collection("auditEvents").insertOne({id:id("audit"),action:type,entityId:typeof result==="object"&&result?(result as {id?:unknown}).id:result,status:"committed",createdAt:new Date()},{session});
       await receipts.updateOne({_id:idempotencyKey as never},{$set:{status:"committed",result:response,committedAt:new Date()}},{session});
     });}
-    catch(error){if((error as {code?:number}).code===11000){const duplicate=await receipts.findOne({_id:idempotencyKey as never});if(duplicate?.fingerprint!==fingerprint)return Response.json({error:message("مفتاح العملية مستخدم لطلب مختلف")},{status:409});if(duplicate?.status==="committed")return Response.json(duplicate.result);return Response.json({error:message("العملية قيد التنفيذ")},{status:409});}throw error;}
+    catch(error){if((error as {code?:number}).code===11000){const duplicate=await receipts.findOne({_id:idempotencyKey as never});if(duplicate?.fingerprint!==fingerprint)return Response.json({error:"مفتاح العملية مستخدم لطلب مختلف"},{status:409});if(duplicate?.status==="committed")return Response.json(duplicate.result);return Response.json({error:"العملية قيد التنفيذ"},{status:409});}throw error;}
     log("info","api.command.completed",{commandType:type,entityId:result});return Response.json(response);
-  }catch(error){const status=error instanceof CommandError?error.status:500;log("error","api.command.failed",{commandType:type,error});return Response.json({error:message(error instanceof CommandError?error.message:"تعذر تنفيذ العملية")},{status});}
+  }catch(error){const status=error instanceof CommandError?error.status:500;log("error","api.command.failed",{commandType:type,error});return Response.json({error:error instanceof CommandError?error.message:"تعذر تنفيذ العملية"},{status});}
 }

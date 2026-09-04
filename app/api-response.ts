@@ -1,5 +1,4 @@
 export type ApiPayload = Record<string, unknown>;
-import { tr } from "./i18n/messages";
 
 const statusMessage = (status: number) => {
   if (status === 413) return "حجم الملف تجاوز الحد المسموح به في خادم الويب.";
@@ -21,8 +20,8 @@ export async function readApiResponse(response: Response): Promise<ApiPayload> {
   }
   if (!response.ok) {
     const apiError = typeof payload.error === "string" ? payload.error : "";
-    throw new Error(apiError || tr(statusMessage(response.status)));
+    throw new Error(apiError || statusMessage(response.status));
   }
-  if (!contentType.includes("application/json")) throw new Error(tr(statusMessage(response.status)));
+  if (!contentType.includes("application/json")) throw new Error(statusMessage(response.status));
   return payload;
 }

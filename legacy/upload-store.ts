@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { detectLegacyDatabase, MAX_LEGACY_BYTES } from "./dataacc-sqlite.ts";
 
 export const LEGACY_CHUNK_BYTES = 512 * 1024;
 export const MAX_LEGACY_CHUNKS = Math.ceil(MAX_LEGACY_BYTES / LEGACY_CHUNK_BYTES);
-export const LEGACY_UPLOAD_MAX_AGE_MS = 6 * 60 * 60 * 1000;
-const root = join(tmpdir(), "conta-legacy-uploads");
+export const LEGACY_UPLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+// The upload is staging for a resumable import, not a disposable request temp file.
+// Desktop sets ALKARNA_USER_DATA to Electron's userData directory.
+const root = join(process.env.ALKARNA_USER_DATA || join(process.cwd(), ".dev-data"), "legacy-import-staging");
 type Meta = { id: string; size: number; chunks: number; nextIndex: number; createdAt: number };
 const validId = (id: string) => /^[0-9a-f-]{36}$/.test(id);
 const paths = (id: string) => { if (!validId(id)) throw new Error("معرف الرفع غير صالح"); return { meta: join(root, `${id}.json`), data: join(root, `${id}.sqlite`) }; };

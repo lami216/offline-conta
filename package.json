@@ -64,7 +64,8 @@
     ],
     "files": [
       "desktop/main.cjs",
-      "desktop/close-flow.cjs"
+      "desktop/close-flow.cjs",
+      "desktop/preload.cjs"
     ],
     "directories": {
       "output": "dist"

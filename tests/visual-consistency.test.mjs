@@ -132,7 +132,7 @@ test("invoice editors expose explicit new, edit, void, history routing and autho
   assert.match(purchase, /type: "purchase\.void"/);
   assert.match(app, /setSaleEditRequest\(id\); setView\("pos"\)/);
   assert.match(app, /setPurchaseEditRequest\(id\); setView\("purchases"\)/);
-  assert.match(app, /root\.classList\.add\("print-document-mode"\); window\.print\(\)/);
+  assert.match(app, /printPreparedDocument\(await loadPrintSettings\(\), true\)/);
 });
 
 test("compact dates, explicit action order, and idle discovery remain structural", () => {

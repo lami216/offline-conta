@@ -46,6 +46,6 @@ jobs:
           git config user.name "OpenAI"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm scripts/apply-printing-v2.py .github/workflows/apply-printing-v2.yml
-          git add app/conta-app.tsx tests/printing.test.mjs
+          git add app/conta-app.tsx tests/printing.test.mjs tests/visual-consistency.test.mjs
           git commit -m "Add configurable A4 and thermal printing"
           git push origin HEAD:printing-profiles-v2-20260905

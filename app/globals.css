@@ -1003,7 +1003,7 @@ th {
 }
 @media print {
   .sidebar,
-  header,
+  .page-bar,
   .doc-actions,
   .panel:not(.document) {
     display: none !important;

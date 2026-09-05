@@ -6,6 +6,7 @@ const {spawn}=require('node:child_process');const {join}=require('node:path');co
 let window,server,quitting=false,ready=false,logStream,logPath,closeFlow,serverUrl;const desktopToken=crypto.randomBytes(32).toString('base64url');
 const PRINT_PROFILES=new Set(['a4','thermal80','thermal58']);
 const DEFAULT_PRINT_SETTINGS={deviceName:null,profile:'a4'};
+const THERMAL_PAPER_WIDTH_MICRONS={thermal80:80000,thermal58:58000};
 const lock=app.requestSingleInstanceLock();if(!lock)app.quit();
 app.on('second-instance',()=>{if(window){if(window.isMinimized())window.restore();window.focus()}});
 const freePort=()=>new Promise((resolve,reject)=>{const s=net.createServer();s.listen(0,'127.0.0.1',()=>{const p=s.address().port;s.close(()=>resolve(p))});s.on('error',reject)});
@@ -19,7 +20,18 @@ function registerPrintingHandlers(){if(printingHandlersRegistered)return;printin
  ipcMain.handle('alkarna:printing:list',async event=>(await event.sender.getPrintersAsync()).map(printer=>({name:printer.name,displayName:printer.displayName||printer.name,description:printer.description||'',status:printer.status,isDefault:Boolean(printer.isDefault)})));
  ipcMain.handle('alkarna:printing:get-settings',()=>getPrintingSettings());
  ipcMain.handle('alkarna:printing:set-settings',(_event,value)=>savePrintingSettings(value));
- ipcMain.handle('alkarna:printing:print',async(event,value)=>{const settings=normalizePrintSettings(value),silent=Boolean(value?.silent),printers=await event.sender.getPrintersAsync();if(settings.deviceName&&!printers.some(printer=>printer.name===settings.deviceName))return{ok:false,error:'printer-not-found'};const options={silent,printBackground:true,deviceName:settings.deviceName||undefined,usePrinterDefaultPageSize:settings.profile!=='a4',pageSize:settings.profile==='a4'?'A4':undefined};return new Promise(resolve=>event.sender.print(options,(success,failureReason)=>{stamp(`print profile=${settings.profile} printer=${settings.deviceName||'windows-default'} silent=${silent} success=${success}${failureReason?` reason=${failureReason}`:''}`);resolve(success?{ok:true}:{ok:false,error:failureReason||'print-failed'})}))});
+ ipcMain.handle('alkarna:printing:print',async(event,value)=>{
+  const settings=normalizePrintSettings(value),silent=Boolean(value?.silent),printers=await event.sender.getPrintersAsync();
+  if(settings.deviceName&&!printers.some(printer=>printer.name===settings.deviceName))return{ok:false,error:'printer-not-found'};
+  const thermalWidth=THERMAL_PAPER_WIDTH_MICRONS[settings.profile],rawHeight=Number(value?.paperHeightMicrons),thermalHeight=Number.isFinite(rawHeight)?Math.max(50000,Math.min(1000000,Math.round(rawHeight))):null;
+  const baseOptions={silent,printBackground:true,deviceName:settings.deviceName||undefined};
+  const options=settings.profile==='a4'?{...baseOptions,pageSize:'A4'}:thermalWidth&&thermalHeight?{...baseOptions,pageSize:{width:thermalWidth,height:thermalHeight},margins:{marginType:'none'},landscape:false}:{...baseOptions,usePrinterDefaultPageSize:true};
+  const runPrint=printOptions=>new Promise(resolve=>event.sender.print(printOptions,(success,failureReason)=>{stamp(`print profile=${settings.profile} printer=${settings.deviceName||'windows-default'} silent=${silent} success=${success}${failureReason?` reason=${failureReason}`:''}`);resolve(success?{ok:true}:{ok:false,error:failureReason||'print-failed'})}));
+  const result=await runPrint(options);
+  if(result.ok||!thermalWidth||!thermalHeight||!/invalid printer settings/i.test(result.error))return result;
+  stamp(`retry print profile=${settings.profile} with printer default page size`);
+  return runPrint({...baseOptions,usePrinterDefaultPageSize:true});
+ });
 }
 const stopServer=()=>new Promise(resolve=>{if(!server||server.exitCode!==null)return resolve();const timer=setTimeout(()=>{server?.kill('SIGKILL');resolve()},5000);server.once('exit',()=>{clearTimeout(timer);resolve()});server.kill()});
 async function failStartup(){ready=false;stamp(`health timeout; log=${logPath}`);await stopServer();logStream?.end();dialog.showErrorBox(PRODUCT_NAME,`تعذر تشغيل الكرنه.\nراجع سجل التشغيل:\n${logPath}`);app.quit()}

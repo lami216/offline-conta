@@ -36,12 +36,27 @@ jobs:
           path: printing-test-output.txt
       - if: steps.tests.outputs.status == '0'
         run: npx tsc --noEmit
-      - if: steps.tests.outputs.status == '0'
-        run: npm run lint
-      - if: steps.tests.outputs.status == '0'
+      - name: Run lint with diagnostics
+        id: lint
+        if: steps.tests.outputs.status == '0'
+        shell: bash
+        run: |
+          set +e
+          npm run lint 2>&1 | tee printing-lint-output.txt
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit $status
+      - name: Upload lint diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: printing-lint-diagnostics-${{ github.run_number }}
+          path: printing-lint-output.txt
+          if-no-files-found: ignore
+      - if: steps.tests.outputs.status == '0' && steps.lint.outputs.status == '0'
         run: npm run build
       - name: Commit validated printer integration
-        if: steps.tests.outputs.status == '0'
+        if: steps.tests.outputs.status == '0' && steps.lint.outputs.status == '0'
         run: |
           git config user.name "OpenAI"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

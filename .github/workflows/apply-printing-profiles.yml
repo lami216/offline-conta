@@ -18,8 +18,28 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Make the row-label patch resilient
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/apply-printing-profiles.py')
+          lines=p.read_text(encoding='utf-8').splitlines()
+          lines=[line for line in lines if not ('replace_once("app/conta-app.tsx"' in line and 'presentation.rows?.map' in line)]
+          p.write_text('\n'.join(lines)+'\n',encoding='utf-8')
+          PY
       - name: Apply source patch
         run: python scripts/apply-printing-profiles.py
+      - name: Add thermal row labels
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app/conta-app.tsx')
+          text=p.read_text(encoding='utf-8')
+          old='<td key={j}>{v}</td>'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one invoice-cell renderer, got {text.count(old)}')
+          p.write_text(text.replace(old,'<td key={j} data-label={presentation.columns?.[j]}>{v}</td>',1),encoding='utf-8')
+          PY
       - run: npm ci
       - run: npm test
       - run: npx tsc --noEmit

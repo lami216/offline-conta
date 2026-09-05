@@ -29,7 +29,7 @@ jobs:
           PY
       - name: Apply source patch
         run: python scripts/apply-printing-profiles.py
-      - name: Add thermal row labels
+      - name: Add thermal row labels and normalize async UI state
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -39,6 +39,26 @@ jobs:
           if text.count(old) != 1:
               raise SystemExit(f'expected one invoice-cell renderer, got {text.count(old)}')
           p.write_text(text.replace(old,'<td key={j} data-label={presentation.columns?.[j]}>{v}</td>',1),encoding='utf-8')
+
+          p=Path('app/print-settings-panel.tsx')
+          text=p.read_text(encoding='utf-8')
+          replacements=[
+            ('const [busy, setBusy] = useState(""), [message, setMessage] = useState(""), [error, setError] = useState(""), [testPortal, setTestPortal] = useState(false);','const [loadingPrinters, setLoadingPrinters] = useState(false), [saving, setSaving] = useState(false), [testing, setTesting] = useState(false), [message, setMessage] = useState(""), [error, setError] = useState(""), [testPortal, setTestPortal] = useState(false);'),
+            ('const refresh = async () => { setBusy("load"); setError(""); try {','const refresh = async () => { setLoadingPrinters(true); setError(""); try {'),
+            ('} catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(""); } };\n  useEffect(() => { void refresh(); }, []);','} catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setLoadingPrinters(false); } };\n  useEffect(() => { void refresh(); }, []);'),
+            ('const save = async () => { setBusy("save"); setError(""); setMessage(""); try {','const save = async () => { setSaving(true); setError(""); setMessage(""); try {'),
+            ('} catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setBusy(""); } };\n  const test = async () => { setBusy("test");','} catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); } finally { setSaving(false); } };\n  const test = async () => { setTesting(true);'),
+            ('setBusy(""); };\n  const options = useMemo','setTesting(false); };\n  const options = useMemo'),
+            ('busy === "load"','loadingPrinters'),
+            ('busy !== "load"','!loadingPrinters'),
+            ('busy === "save"','saving'),
+            ('busy === "test"','testing'),
+          ]
+          for old,new in replacements:
+              if old not in text:
+                  raise SystemExit(f'missing print-panel replacement: {old[:100]}')
+              text=text.replace(old,new)
+          p.write_text(text,encoding='utf-8')
           PY
       - run: npm ci
       - run: npm test

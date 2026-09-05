@@ -19,11 +19,29 @@ jobs:
       - name: Apply focused source integration
         run: python scripts/apply-printing-v2.py
       - run: npm ci
-      - run: npm test
-      - run: npx tsc --noEmit
-      - run: npm run lint
-      - run: npm run build
+      - name: Run tests with diagnostics
+        id: tests
+        shell: bash
+        run: |
+          set +e
+          npm test 2>&1 | tee printing-test-output.txt
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit $status
+      - name: Upload test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: printing-test-diagnostics-${{ github.run_number }}
+          path: printing-test-output.txt
+      - if: steps.tests.outputs.status == '0'
+        run: npx tsc --noEmit
+      - if: steps.tests.outputs.status == '0'
+        run: npm run lint
+      - if: steps.tests.outputs.status == '0'
+        run: npm run build
       - name: Commit validated printer integration
+        if: steps.tests.outputs.status == '0'
         run: |
           git config user.name "OpenAI"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

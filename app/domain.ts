@@ -143,6 +143,7 @@ export const invoiceFonts = ["tahoma", "arial", "segoe-ui", "times-new-roman"] a
 export type InvoiceFont = typeof invoiceFonts[number];
 export type InvoiceBrandingSettings = {
   storeName: string;
+  storeLogoDataUrl: string;
   storePhone: string;
   storeAddress: string;
   registrationNumber: string;

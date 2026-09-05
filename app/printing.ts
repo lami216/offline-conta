@@ -19,7 +19,7 @@ type PrintingBridge = {
   list: () => Promise<PrinterInfo[]>;
   getSettings: () => Promise<PrintSettings>;
   saveSettings: (settings: PrintSettings) => Promise<PrintSettings>;
-  print: (options: PrintSettings & { silent: boolean }) => Promise<PrintResult>;
+  print: (options: PrintSettings & { silent: boolean; paperHeightMicrons?: number }) => Promise<PrintResult>;
 };
 
 declare global {
@@ -71,6 +71,66 @@ async function waitForPrintAssets() {
   await nextFrame();
 }
 
+const MICRONS_PER_CSS_PIXEL = 25400 / 96;
+
+function thermalPaperHeightMicrons(profile: PrintProfile) {
+  if (profile === "a4") return undefined;
+  const sheet = document.querySelector<HTMLElement>(".document-print-portal .official-record-sheet");
+  if (!sheet) return undefined;
+  const heightPx = Math.max(sheet.scrollHeight, sheet.getBoundingClientRect().height);
+  if (!Number.isFinite(heightPx) || heightPx <= 0) return undefined;
+  return Math.max(50000, Math.min(1000000, Math.ceil((heightPx + 24) * MICRONS_PER_CSS_PIXEL)));
+}
+
+let previewLightboxInstalled = false;
+function installPrintProfilePreviewLightbox() {
+  if (previewLightboxInstalled || typeof document === "undefined") return;
+  previewLightboxInstalled = true;
+  document.addEventListener("click", event => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const preview = target.closest<HTMLElement>(".print-profile-preview");
+    if (!preview || preview.closest(".print-preview-lightbox")) return;
+    if (!preview.querySelector(".official-record-sheet")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const profile: PrintProfile = preview.classList.contains("profile-thermal80") ? "thermal80" : preview.classList.contains("profile-thermal58") ? "thermal58" : "a4";
+    const overlay = document.createElement("div");
+    overlay.className = `print-preview-lightbox profile-${profile}`;
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-label", "Invoice print preview");
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "print-preview-lightbox-close";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "Close preview");
+    const clonedPreview = preview.cloneNode(true) as HTMLElement;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    let closed = false;
+    const cleanup = () => {
+      if (closed) return;
+      closed = true;
+      document.removeEventListener("keydown", onKeyDown, true);
+      overlay.remove();
+      previousFocus?.focus();
+    };
+    const onKeyDown = (keyEvent: KeyboardEvent) => {
+      if (keyEvent.key !== "Escape") return;
+      keyEvent.preventDefault();
+      cleanup();
+    };
+    close.addEventListener("click", cleanup);
+    overlay.addEventListener("click", overlayEvent => { if (overlayEvent.target === overlay) cleanup(); });
+    overlay.append(close, clonedPreview);
+    document.body.appendChild(overlay);
+    document.addEventListener("keydown", onKeyDown, true);
+    close.focus();
+  }, true);
+}
+
+if (typeof window !== "undefined") installPrintProfilePreviewLightbox();
+
 async function browserPrintFallback() {
   await new Promise<void>(resolve => {
     let settled = false;
@@ -102,7 +162,8 @@ export async function printPreparedDocument(settings: PrintSettings, silent: boo
   try {
     await waitForPrintAssets();
     if (window.alkarnaPrinting) {
-      const result = await window.alkarnaPrinting.print({ ...normalized, silent });
+      const paperHeightMicrons = thermalPaperHeightMicrons(normalized.profile);
+      const result = await window.alkarnaPrinting.print({ ...normalized, silent, ...(paperHeightMicrons ? { paperHeightMicrons } : {}) });
       if (!result.ok) throw new Error(result.error || "print-failed");
     } else {
       await browserPrintFallback();

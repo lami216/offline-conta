@@ -30,3 +30,22 @@ html.print-document-mode:is([data-print-profile="thermal80"],[data-print-profile
 html.print-document-mode:is([data-print-profile="thermal80"],[data-print-profile="thermal58"]) .official-record-sheet footer{margin-top:3mm;padding-top:1.5mm;border-top:1px dashed #777;font-size:7pt}
 
 @media(max-width:760px){.print-settings-row,.print-profile-grid{grid-template-columns:1fr}.print-profile-card{grid-template-rows:120px auto}}
+
+
+/* Preview fidelity v2 */
+.print-profile-preview{position:relative;display:block;height:150px;min-width:0;overflow:hidden;border:1px solid #cbd1d7;background:#e8ebee;padding:0;cursor:zoom-in}
+.print-profile-preview .official-record-sheet{position:absolute;inset:50% auto auto 50%;box-sizing:border-box;margin:0;box-shadow:none;transform-origin:center center!important;pointer-events:none}
+.print-profile-preview.profile-a4 .official-record-sheet{width:760px!important;min-height:1075px;padding:26px 30px!important;transform:translate(-50%,-50%) scale(.105)!important}
+.print-profile-preview.profile-thermal80 .official-record-sheet{width:302px!important;min-height:540px;padding:10px 11px!important;transform:translate(-50%,-50%) scale(.235)!important}
+.print-profile-preview.profile-thermal58 .official-record-sheet{width:219px!important;min-height:520px;padding:8px!important;transform:translate(-50%,-50%) scale(.245)!important}
+html.print-document-mode body>.document-print-portal{display:block!important;position:fixed!important;left:-100000px!important;top:0!important;width:max-content!important;visibility:hidden!important;pointer-events:none!important}
+.print-preview-lightbox{position:fixed;inset:0;z-index:1200;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:28px;background:rgba(20,28,32,.78);cursor:default}
+.print-preview-lightbox-close{position:fixed;top:18px;right:22px;z-index:1202;width:42px;height:42px;border:1px solid #cbd5dc;border-radius:50%;background:#fff;color:#1f2937;font:700 28px/1 Arial,sans-serif;box-shadow:0 8px 24px #0003;cursor:pointer}
+.print-preview-lightbox .print-profile-preview{position:relative;display:block;height:auto;min-height:0;width:auto;overflow:visible;border:0;background:transparent;padding:24px;cursor:default}
+.print-preview-lightbox .print-profile-preview .official-record-sheet{position:static!important;inset:auto!important;margin:0 auto!important;transform:none!important;transform-origin:initial!important;background:#fff;box-shadow:0 18px 55px #0004;pointer-events:none}
+.print-preview-lightbox .print-profile-preview.profile-a4 .official-record-sheet{width:760px!important;min-height:1075px;padding:26px 30px!important}
+.print-preview-lightbox .print-profile-preview.profile-thermal80 .official-record-sheet{width:302px!important;min-height:0;padding:10px 11px!important}
+.print-preview-lightbox .print-profile-preview.profile-thermal58 .official-record-sheet{width:219px!important;min-height:0;padding:8px!important}
+@media(max-width:900px){.print-preview-lightbox{padding:64px 12px 20px}.print-preview-lightbox .print-profile-preview{padding:0}.print-preview-lightbox .print-profile-preview.profile-a4{width:100%;overflow:auto}.print-preview-lightbox-close{top:12px;right:12px}}
+@media(max-width:760px){.print-profile-preview{height:120px}.print-profile-preview.profile-a4 .official-record-sheet{transform:translate(-50%,-50%) scale(.083)!important}.print-profile-preview.profile-thermal80 .official-record-sheet{transform:translate(-50%,-50%) scale(.19)!important}.print-profile-preview.profile-thermal58 .official-record-sheet{transform:translate(-50%,-50%) scale(.205)!important}}
+@media print{html.print-document-mode body>.document-print-portal{position:static!important;left:auto!important;top:auto!important;width:auto!important;visibility:visible!important}}

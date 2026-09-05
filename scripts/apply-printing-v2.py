@@ -55,12 +55,17 @@ function PrintSettingsPanel({branding}:{branding:InvoiceBrandingSettings}) {
   </FramedSection>;
 }
 '''
-replace_once('function GeneralSettings({data,reload}:{data:BootstrapData;reload:()=>Promise<void>}) {', panel + '\nfunction GeneralSettings({data,reload}:{data:BootstrapData;reload:()=>Promise<void>}) {', 'print settings panel')
+
 replace_once(
     '    <FramedSection title={tr("معلومات المستند")} className="document-info-settings"><label>{tr("ملاحظة التذييل")}<textarea maxLength={160} disabled={!canBrand} value={branding.footerNote} onChange={e=>setBranding({...branding,footerNote:e.target.value})}/></label></FramedSection>\n    {canBrand&&<button className="primary settings-save"',
     '    <FramedSection title={tr("معلومات المستند")} className="document-info-settings"><label>{tr("ملاحظة التذييل")}<textarea maxLength={160} disabled={!canBrand} value={branding.footerNote} onChange={e=>setBranding({...branding,footerNote:e.target.value})}/></label></FramedSection>\n    <PrintSettingsPanel branding={branding}/>\n    {canBrand&&<button className="primary settings-save"',
     'general settings print panel placement',
 )
+
+# Keep the UsersPermissions -> GeneralSettings structural boundary intact for the
+# existing regression tests: the printer panel is a sibling declared after the
+# GeneralSettings implementation and before DataSettings.
+replace_once('function DataSettings', panel + '\nfunction DataSettings', 'print settings panel declaration')
 
 replace_once(
     'const print=()=>{const root=document.documentElement,cleanup=()=>root.classList.remove("print-document-mode");root.classList.add("print-document-mode");window.addEventListener("afterprint",cleanup,{once:true});window.print();window.setTimeout(cleanup,1500)};',
@@ -75,6 +80,14 @@ replace_once(
 replace_once('<td key={j}>{v}</td>', '<td key={j} data-label={presentation.columns?.[j]??""}>{v}</td>', 'thermal table labels')
 
 path.write_text(text, encoding='utf-8')
+
+visual_path = Path('tests/visual-consistency.test.mjs')
+visual = visual_path.read_text(encoding='utf-8')
+old_print_assert = '  assert.match(app, /root\\.classList\\.add\\("print-document-mode"\\); window\\.print\\(\\)/);\n'
+new_print_assert = '  assert.match(app, /printPreparedDocument\\(await loadPrintSettings\\(\\), true\\)/);\n'
+if visual.count(old_print_assert) != 1:
+    raise SystemExit(f'visual print lifecycle assertion: expected exactly one match, found {visual.count(old_print_assert)}')
+visual_path.write_text(visual.replace(old_print_assert, new_print_assert, 1), encoding='utf-8')
 
 Path('tests/printing.test.mjs').write_text(r'''import test from "node:test";import assert from "node:assert/strict";import {readFileSync} from "node:fs";
 const app=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),printing=readFileSync(new URL("../app/printing.ts",import.meta.url),"utf8"),css=readFileSync(new URL("../app/printing.css",import.meta.url),"utf8"),main=readFileSync(new URL("../desktop/main.cjs",import.meta.url),"utf8"),preload=readFileSync(new URL("../desktop/preload.cjs",import.meta.url),"utf8"),pkg=JSON.parse(readFileSync(new URL("../package.json",import.meta.url),"utf8"));

@@ -1,0 +1,33 @@
+name: Apply printer profiles v2
+on:
+  push:
+    branches: [printing-profiles-v2-20260905]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply focused source integration
+        run: python scripts/apply-printing-v2.py
+      - run: npm ci
+      - run: npm test
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build
+      - name: Commit validated printer integration
+        run: |
+          git config user.name "OpenAI"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm scripts/apply-printing-v2.py .github/workflows/apply-printing-v2.yml
+          git add app/conta-app.tsx tests/printing.test.mjs
+          git commit -m "Add configurable A4 and thermal printing"
+          git push origin HEAD:printing-profiles-v2-20260905

@@ -23,7 +23,7 @@ jobs:
           node-version: 22
           cache: npm
       - name: Apply focused fixes
-        run: python scripts/apply-validation-guidance-a4.py
+        run: python scripts/apply-validation-guidance-a4-v2.py
       - name: Check diff
         run: git diff --check
       - name: Install dependencies
@@ -41,7 +41,7 @@ jobs:
         run: |
           git config user.name "OpenAI"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm .github/workflows/apply-validation-guidance-a4.yml scripts/apply-validation-guidance-a4.py
+          git rm .github/workflows/apply-validation-guidance-a4.yml scripts/apply-validation-guidance-a4.py scripts/apply-validation-guidance-a4-v2.py
           git add app/conta-app.tsx app/app-confirm.tsx app/globals.css app/printing.css tests/printing.test.mjs tests/validation-guidance.test.mjs
           git commit -m "Refine missing-field guidance and A4 thumbnail"
           git push origin HEAD:validation-guidance-a4-20260906

@@ -35,7 +35,7 @@ html.print-document-mode:is([data-print-profile="thermal80"],[data-print-profile
 /* Preview fidelity v2 */
 .print-profile-preview{position:relative;display:block;height:150px;min-width:0;overflow:hidden;border:1px solid #cbd1d7;background:#e8ebee;padding:0;cursor:zoom-in}
 .print-profile-preview .official-record-sheet{position:absolute;inset:50% auto auto 50%;box-sizing:border-box;margin:0;box-shadow:none;transform-origin:center center!important;pointer-events:none}
-.print-profile-preview.profile-a4 .official-record-sheet{width:760px!important;min-height:1075px;padding:26px 30px!important;transform:translate(-50%,-50%) scale(.132)!important}
+.print-profile-preview.profile-a4 .official-record-sheet{width:760px!important;min-width:760px!important;max-width:none!important;min-height:1075px;padding:26px 30px!important;top:6px!important;left:50%!important;transform:translateX(-50%) scale(.165)!important;transform-origin:top center!important}
 .print-profile-preview.profile-thermal80 .official-record-sheet{width:302px!important;min-height:540px;padding:10px 11px!important;transform:translate(-50%,-50%) scale(.235)!important}
 .print-profile-preview.profile-thermal58 .official-record-sheet{width:219px!important;min-height:520px;padding:8px!important;transform:translate(-50%,-50%) scale(.245)!important}
 html.print-document-mode body>.document-print-portal{display:block!important;position:fixed!important;left:-100000px!important;top:0!important;width:max-content!important;visibility:hidden!important;pointer-events:none!important}
@@ -47,7 +47,7 @@ html.print-document-mode body>.document-print-portal{display:block!important;pos
 .print-preview-lightbox .print-profile-preview.profile-thermal80 .official-record-sheet{width:302px!important;min-height:0;padding:10px 11px!important}
 .print-preview-lightbox .print-profile-preview.profile-thermal58 .official-record-sheet{width:219px!important;min-height:0;padding:8px!important}
 @media(max-width:900px){.print-preview-lightbox{padding:64px 12px 20px}.print-preview-lightbox .print-profile-preview{padding:0}.print-preview-lightbox .print-profile-preview.profile-a4{width:100%;overflow:auto}.print-preview-lightbox-close{top:12px;right:12px}}
-@media(max-width:760px){.print-profile-preview{height:120px}.print-profile-preview.profile-a4 .official-record-sheet{transform:translate(-50%,-50%) scale(.105)!important}.print-profile-preview.profile-thermal80 .official-record-sheet{transform:translate(-50%,-50%) scale(.19)!important}.print-profile-preview.profile-thermal58 .official-record-sheet{transform:translate(-50%,-50%) scale(.205)!important}}
+@media(max-width:760px){.print-profile-preview{height:120px}.print-profile-preview.profile-a4 .official-record-sheet{top:4px!important;transform:translateX(-50%) scale(.135)!important}.print-profile-preview.profile-thermal80 .official-record-sheet{transform:translate(-50%,-50%) scale(.19)!important}.print-profile-preview.profile-thermal58 .official-record-sheet{transform:translate(-50%,-50%) scale(.205)!important}}
 @media print{html.print-document-mode body>.document-print-portal{position:static!important;left:auto!important;top:auto!important;width:auto!important;visibility:visible!important}}
 
 

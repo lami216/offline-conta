@@ -27,5 +27,11 @@ if old not in s:
     raise SystemExit('French insertion anchor not found')
 s = s.replace(old, new, 1)
 
+old = "const cleanCategories = clean(categories).map(category => ({ id: String(category.id), name: String(category.name ?? \"\") })).filter(category => category.name);"
+new = "const cleanCategories = clean(categories).map(category => { const item = category as Record<string, unknown>; return { id: String(item.id ?? \"\"), name: String(item.name ?? \"\") }; }).filter(category => category.id && category.name);"
+if old not in s:
+    raise SystemExit('bootstrap category typing anchor not found')
+s = s.replace(old, new, 1)
+
 p.write_text(s, encoding='utf-8')
-print('Adjusted report wrapper plus Arabic/French message insertion commas.')
+print('Adjusted report wrapper, message insertion commas, and bootstrap category typing.')

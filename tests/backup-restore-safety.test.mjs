@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { BACKUP_COLLECTIONS, parseAndValidateBackup, restoreNativeBackup, stringifyBackup } from "../lib/backup.ts";
+import { BACKUP_COLLECTIONS, createNativeBackup, parseAndValidateBackup, restoreNativeBackup, stringifyBackup } from "../lib/backup.ts";
 import { nextDocumentSequence } from "../lib/document-sequences.ts";
 import { sqliteHarness } from "./sqlite-harness.mjs";
 
@@ -52,4 +52,24 @@ test("failed restore rolls back all replaced collections and strict EJSON values
   const product=await h.db.collection("products").findOne({id:"legacy-product"});
   assert.equal(product.cost,2147483648);
   assert.equal(new Date(product.createdAt).toISOString(),"2024-01-02T03:04:05.000Z");
+});
+
+test("product categories survive backup/restore and pre-category backups remain compatible",async t=>{
+  const h=await sqliteHarness();t.after(()=>h.close());
+  await h.db.collection("productCategories").insertOne({id:"cat-drinks",name:"Drinks"});
+  await h.db.collection("products").insertOne({id:"categorized-product",sku:"501",name:"Juice",categoryId:"cat-drinks",stocks:{}});
+  const current=await createNativeBackup(h.db);
+  assert.equal(current.collections.productCategories[0].name,"Drinks");
+  await h.db.transaction(session=>restoreNativeBackup(h.db,current,session));
+  assert.equal((await h.db.collection("products").findOne({id:"categorized-product"})).categoryId,"cat-drinks");
+  assert.equal((await h.db.collection("productCategories").findOne({id:"cat-drinks"})).name,"Drinks");
+
+  const old=legacyBackup();
+  delete old.collections.productCategories;
+  delete old.counts.productCategories;
+  const parsed=parseAndValidateBackup(JSON.stringify(old));
+  assert.deepEqual(parsed.collections.productCategories,[]);
+  await h.db.transaction(session=>restoreNativeBackup(h.db,parsed,session));
+  assert.equal(await h.db.collection("productCategories").countDocuments(),0);
+  assert.ok(await h.db.collection("products").findOne({id:"legacy-product"}));
 });

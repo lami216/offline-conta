@@ -28,8 +28,8 @@ await replaceOnce(
 
 await replaceOnce(
   'lib/backup.ts',
-  '  if (!b.collections || typeof b.collections !== "object" || Array.isArray(b.collections)) throw new Error("بنية collections غير صالحة");\n  const keys = Object.keys(b.collections);',
-  '  if (!b.collections || typeof b.collections !== "object" || Array.isArray(b.collections)) throw new Error("بنية collections غير صالحة");\n  // Backups created before product categories existed have no productCategories collection.\n  // Normalize them to an empty collection so old customer backups remain restorable.\n  if (!Array.isArray(b.collections.productCategories)) b.collections.productCategories = [];\n  const keys = Object.keys(b.collections);',
+  '  const keys = Object.keys(b.collections);',
+  '  // Backups created before product categories existed have no productCategories collection.\n  // Normalize them to an empty collection so old customer backups remain restorable.\n  if (!Array.isArray(b.collections.productCategories)) b.collections.productCategories = [];\n  const keys = Object.keys(b.collections);',
 );
 
 await replaceOnce(

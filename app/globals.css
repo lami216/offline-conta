@@ -2385,3 +2385,14 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
   background: #1967d2;
 }
 .combobox-results button:focus-visible { outline: 2px solid #8eb2ef; outline-offset: -2px; }
+
+
+/* Final combobox option interaction color authority. */
+.combobox-results [role="option"].selected,
+.combobox-results [role="option"][aria-selected="true"],
+.combobox-results [role="option"]:hover,
+.combobox-results [role="option"].highlighted,
+.combobox-results [role="option"]:focus-visible {
+  color: #fff !important;
+  background: #1967d2 !important;
+}

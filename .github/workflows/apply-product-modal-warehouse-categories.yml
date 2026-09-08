@@ -1,0 +1,33 @@
+name: Apply product modal warehouse and category fixes
+on:
+  push:
+    branches: [fix/product-modal-warehouse-categories-20260908]
+permissions:
+  contents: write
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/product-modal-warehouse-categories-20260908
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply scoped UI patch
+        run: python scripts/apply-product-modal-warehouse-categories.py
+      - name: Validate patch shape
+        run: git diff --check
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - name: Commit validated source changes and remove temporary automation
+        run: |
+          git config user.name "lami216"
+          git config user.email "iiyad21694@gmail.com"
+          rm scripts/apply-product-modal-warehouse-categories.py
+          rm .github/workflows/apply-product-modal-warehouse-categories.yml
+          git add -A
+          git commit -m "Refine product modal warehouse and category layout"
+          git push origin HEAD:fix/product-modal-warehouse-categories-20260908

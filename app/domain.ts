@@ -35,6 +35,7 @@ export function activeWarehouses<T extends Pick<Warehouse, "isArchived">>(wareho
 export interface ProductCategory {
   id: string;
   name: string;
+  createdAt?: string;
 }
 export interface Product {
   id: string;

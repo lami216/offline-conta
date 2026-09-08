@@ -14,8 +14,8 @@ const categoryDialogStyles = `
 .product-category-create input,.product-category-create button{height:34px;min-height:34px}
 .product-category-create button{display:flex;align-items:center;gap:5px}.product-category-create button svg{width:15px;height:15px}
 .product-category-list{display:grid;gap:7px;min-height:90px;padding:8px;border:1px solid var(--line);border-radius:6px;background:#fff}
-.product-category-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));align-items:start;gap:7px;max-height:190px;overflow:auto;padding:2px}
-.product-category-grid.wide-names{grid-template-columns:repeat(3,minmax(0,1fr))}
+.product-category-grid{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important;align-items:start;gap:7px;max-height:190px;overflow:auto;padding:2px}
+.product-category-grid.wide-names{grid-template-columns:repeat(3,minmax(0,1fr))!important}
 .product-category-card{position:relative;display:grid;place-items:center;width:100%;min-width:0;max-width:none;min-height:34px;padding:6px 31px;border:1px solid var(--line);border-radius:10px;background:#fff;box-shadow:0 1px 2px rgba(20,49,47,.04);transition:border-color .15s ease,background .15s ease,box-shadow .15s ease}
 .product-category-card:hover,.product-category-card:focus-within{border-color:#a9c9c5;background:#fbfdfd;box-shadow:0 3px 10px rgba(20,49,47,.08);outline:none}
 .product-category-name{display:block;width:100%;overflow:hidden;color:var(--ink);font-size:10px;font-weight:800;line-height:1.25;text-align:center;text-overflow:ellipsis;white-space:nowrap}
@@ -29,7 +29,7 @@ const categoryDialogStyles = `
 .product-category-edit-card input{height:28px;min-height:28px;padding:4px 8px;border-radius:7px;font-size:10px;font-weight:800;text-align:center}
 .product-category-list p{margin:0;color:var(--muted);font-size:10px}
 @media(max-width:1050px){.product-category-create{grid-template-columns:1fr}}
-@media(max-width:520px){.product-category-grid,.product-category-grid.wide-names{grid-template-columns:repeat(2,minmax(0,1fr))}.product-category-card{width:100%;min-width:0;max-width:none}.product-category-edit-card{min-width:0}}
+@media(max-width:420px){.product-category-grid,.product-category-grid.wide-names{grid-template-columns:repeat(2,minmax(0,1fr))!important}.product-category-card{width:100%;min-width:0;max-width:none}.product-category-edit-card{min-width:0}}
 `;
 
 export default function ProductCategoryDialog({ categories, run, close }: { categories: ProductCategory[]; run: RunCommand; close: () => void }) {
@@ -39,10 +39,15 @@ export default function ProductCategoryDialog({ categories, run, close }: { cate
   const [busyId, setBusyId] = useState("");
   const [editingId, setEditingId] = useState("");
   const [editingName, setEditingName] = useState("");
+  const originalOrder = new Map(categories.map((category, index) => [category.id, index]));
   const sortedCategories = [...categories].sort((a, b) => {
-    const aTime = a.createdAt ? Date.parse(a.createdAt) : Number.NaN, bTime = b.createdAt ? Date.parse(b.createdAt) : Number.NaN;
-    if (Number.isFinite(aTime) && Number.isFinite(bTime) && aTime !== bTime) return bTime - aTime;
-    return categories.indexOf(b) - categories.indexOf(a);
+    const aTime = a.createdAt ? Date.parse(a.createdAt) : Number.NaN;
+    const bTime = b.createdAt ? Date.parse(b.createdAt) : Number.NaN;
+    const aHasTime = Number.isFinite(aTime);
+    const bHasTime = Number.isFinite(bTime);
+    if (aHasTime && bHasTime && aTime !== bTime) return bTime - aTime;
+    if (aHasTime !== bHasTime) return aHasTime ? -1 : 1;
+    return (originalOrder.get(b.id) ?? 0) - (originalOrder.get(a.id) ?? 0);
   });
   const hasWideCategoryNames = sortedCategories.some(category => category.name.trim().length > 14);
 

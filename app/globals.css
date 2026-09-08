@@ -2373,3 +2373,15 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 .modal-overlay:has(.product-modal){padding:6px;overflow:hidden}
 .modal-card.product-modal{max-height:calc(100vh - 12px);overscroll-behavior:contain}
 .combobox-popover-floating .combobox-results{max-height:min(260px,calc(100vh - 110px));overflow-y:auto;overscroll-behavior:contain}
+
+
+/* Category picker option states use one consistent blue interaction color. */
+.combobox-results button.selected,
+.combobox-results button[aria-selected="true"],
+.combobox-results button:hover,
+.combobox-results button.highlighted,
+.combobox-results button:focus-visible {
+  color: #fff;
+  background: #1967d2;
+}
+.combobox-results button:focus-visible { outline: 2px solid #8eb2ef; outline-offset: -2px; }

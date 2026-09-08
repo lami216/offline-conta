@@ -588,9 +588,9 @@ export type MissingRequirement={id:string;label:string};
 function BlockedAction({reasons,children}:{reasons:MissingRequirement[];children:ReactNode}){const tooltipId=useId(),blocked=reasons.length>0;return <span className={`blocked-action${blocked?" is-blocked":""}`} tabIndex={blocked?0:undefined} aria-describedby={blocked?tooltipId:undefined}>{children}{blocked&&<span id={tooltipId} role="tooltip" className="blocked-action-tooltip"><b>{tr("ناقص:")}</b>{reasons.map(reason=><span key={reason.id} data-missing-requirement={reason.id}>• {reason.label}</span>)}</span>}</span>}
 type SelectOption = { value: string; label: string; search?: string };
 export const normalizeSearch = (value: string) => value.trim().toLocaleLowerCase().normalize("NFD").replace(/[\u0640\u064b-\u065f\u0670]/g, "").replace(/\s+/g, " ");
-function SearchableSelect({ value, onChange, options, placeholder, searchPlaceholder, disabled = false, allowEmpty = false, floating = false, variant = "normal", ariaLabel, triggerRef, onOpenChange }: {
+function SearchableSelect({ value, onChange, options, placeholder, searchPlaceholder, disabled = false, allowEmpty = false, floating = false, variant = "normal", ariaLabel, triggerRef, onOpenChange, preferUp = false, resultsMaxHeight }: {
   value: string; onChange: (value: string) => void; options: SelectOption[];
-  placeholder: string; searchPlaceholder: string; disabled?: boolean; allowEmpty?: boolean; floating?: boolean; variant?: "normal" | "compact" | "pos-customer"; ariaLabel?: string; triggerRef?: Ref<HTMLButtonElement>; onOpenChange?: (open: boolean) => void;
+  placeholder: string; searchPlaceholder: string; disabled?: boolean; allowEmpty?: boolean; floating?: boolean; variant?: "normal" | "compact" | "pos-customer"; ariaLabel?: string; triggerRef?: Ref<HTMLButtonElement>; onOpenChange?: (open: boolean) => void; preferUp?: boolean; resultsMaxHeight?: number;
 }) {
   const [open, setOpen] = useState(false), [query, setQuery] = useState(""), [highlightedIndex, setHighlightedIndex] = useState<number|null>(null);
   const [floatingStyle, setFloatingStyle] = useState<CSSProperties>({});
@@ -605,14 +605,14 @@ function SearchableSelect({ value, onChange, options, placeholder, searchPlaceho
     }).map(x => x.option);
   const position = useCallback(() => {
     if (!floating || !root.current) return;
-    const rect = root.current.getBoundingClientRect(), margin = 8, posCustomer = variant === "pos-customer", desiredHeight = Math.min(variant === "normal" ? 330 : 235, window.innerHeight - margin * 2);
-    const below = window.innerHeight - rect.bottom - margin, above = rect.top - margin, opensUp = below < 220 && above > below;
+    const rect = root.current.getBoundingClientRect(), margin = 8, posCustomer = variant === "pos-customer", desiredHeight = Math.min(resultsMaxHeight ? resultsMaxHeight + 62 : variant === "normal" ? 330 : 235, window.innerHeight - margin * 2);
+    const below = window.innerHeight - rect.bottom - margin, above = rect.top - margin, opensUp = preferUp ? above >= Math.min(desiredHeight, 120) : below < 220 && above > below;
     const width = posCustomer
       ? Math.min(rect.width, window.innerWidth - margin * 2)
       : Math.min(Math.max(rect.width, variant === "compact" ? 220 : 280), variant === "compact" ? 300 : window.innerWidth - margin * 2, window.innerWidth - margin * 2);
     const left = Math.min(Math.max(margin, rect.right - width), window.innerWidth - width - margin);
     setFloatingStyle({ position: "fixed", zIndex: 1000, width, maxWidth: width, left, right: "auto", top: opensUp ? Math.max(margin, rect.top - Math.min(desiredHeight, above) - 5) : rect.bottom + 5, maxHeight: opensUp ? above : below });
-  }, [floating, variant]);
+  }, [floating, variant, preferUp, resultsMaxHeight]);
   const closeSelect = useCallback((restoreFocus = false) => { setOpen(false); setQuery(""); setHighlightedIndex(null); setFloatingStyle({}); onOpenChange?.(false); if (restoreFocus) window.requestAnimationFrame(() => ownTriggerRef.current?.focus()); }, [onOpenChange]);
   const openSelect = () => { position(); setHighlightedIndex(null); setOpen(true); onOpenChange?.(true); };
   useEffect(() => {
@@ -636,7 +636,7 @@ function SearchableSelect({ value, onChange, options, placeholder, searchPlaceho
       if (e.key === "ArrowUp") { e.preventDefault(); setHighlightedIndex(x => x === null ? matches.length - 1 : Math.max(x - 1, 0)); }
       if (e.key === "Enter" && highlightedIndex !== null && matches[highlightedIndex]) { e.preventDefault(); choose(matches[highlightedIndex].value); }
     }} /></label>
-    <div id={listId} className="combobox-results" role="listbox" aria-labelledby={searchId}>
+    <div id={listId} className="combobox-results" role="listbox" aria-labelledby={searchId} style={resultsMaxHeight ? { maxHeight: resultsMaxHeight, overflowY: "auto", overscrollBehavior: "contain" } : undefined}>
       {allowEmpty && <button type="button" onPointerDown={event => { event.preventDefault(); choose(""); }}>{placeholder}</button>}
       {matches.map((option, index) => <button id={`${listId}-option-${index}`} type="button" data-hover-enter="select" role="option" aria-selected={highlightedIndex === index} className={[option.value === value && "selected", highlightedIndex === index && "highlighted"].filter(Boolean).join(" ")} key={option.value} onMouseEnter={() => setHighlightedIndex(index)} onMouseLeave={() => setHighlightedIndex(null)} onPointerDown={event => { event.preventDefault(); choose(option.value); }}>{option.label}</button>)}
       {!matches.length && <div className="combobox-empty">{tr("لا توجد نتائج")}</div>}
@@ -1111,7 +1111,7 @@ function Products({ data, run }: { data: BootstrapData; run: RunCommand }) {
       </tbody></table></div>
     </FramedSection>
     {categoryDialogOpen && <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={tr("إضافة فئة")}><ProductCategoryDialog categories={data.categories} run={run} close={() => setCategoryDialogOpen(false)} /></div>}
-    {formOpen && <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={editing ? `تعديل ${editing.name}` : tr("إضافة منتج")}><div className="modal-card product-modal"><ProductForm run={run} product={editing} warehouses={activeWarehouses(data.warehouses)} categories={data.categories} close={() => setFormOpen(false)} /></div></div>}
+    {formOpen && <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={editing ? `تعديل ${editing.name}` : tr("إضافة منتج")}><style>{`.product-modal{scrollbar-width:none;-ms-overflow-style:none}.product-modal::-webkit-scrollbar{display:none}`}</style><div className="modal-card product-modal"><ProductForm run={run} product={editing} warehouses={activeWarehouses(data.warehouses)} categories={data.categories} close={() => setFormOpen(false)} /></div></div>}
   </section>;
 }
 
@@ -1136,7 +1136,7 @@ function ProductForm({ run, close, product, warehouses, categories }: { run: Run
       <FramedSection title={tr("الأسعار والمخزون")} className="product-form-group">
         <label>{tr("سعر الشراء للفرد")}<Num value={cost} onChange={setCost} /></label><label>{tr("سعر البيع للفرد")}<Num value={price} onChange={setPrice} /></label><label>{tr("سعر البيع بالجملة")}<Num value={wholesalePrice} onChange={setWholesalePrice} /></label>
         <label>{product ? tr("إضافة رصيد افتتاحي") : tr("رصيد البداية")}<Num value={openingStock} onChange={value => { setOpeningStock(value); if (!value || Number(value) <= 0) setOpeningWarehouseId(""); else if (!openingWarehouseId) setOpeningWarehouseId(warehouses.find(warehouse => warehouse.isSalesDefault)?.id ?? ""); }} /></label>
-        {val(openingStock) > 0 && <label>{tr("مخزن رصيد البداية")}<SearchableSelect value={openingWarehouseId} onChange={setOpeningWarehouseId} placeholder={tr("اختر المخزن")} searchPlaceholder={tr("ابحث عن مخزن")} options={warehouses.map(warehouse => ({ value: warehouse.id, label: warehouse.name }))} floating /></label>}
+        {val(openingStock) > 0 && <label>{tr("مخزن رصيد البداية")}<SearchableSelect value={openingWarehouseId} onChange={setOpeningWarehouseId} placeholder={tr("اختر المخزن")} searchPlaceholder={tr("ابحث عن مخزن")} options={warehouses.map(warehouse => ({ value: warehouse.id, label: warehouse.name }))} floating preferUp resultsMaxHeight={126} /></label>}
       </FramedSection>
     </div><div className="product-form-actions"><button type="button" className="soft" onClick={close}>{tr("إلغاء")}</button><button className="primary">{product ? tr("حفظ التعديلات") : tr("حفظ المنتج")}</button></div>
   </form>;

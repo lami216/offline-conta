@@ -2366,3 +2366,10 @@ textarea:focus { outline:3px solid rgba(11,109,103,.17); outline-offset:1px; bor
 .overview-summary-group .report-kpi{min-width:0}
 @media(max-width:1050px){.product-category-create{grid-template-columns:1fr}.report-category-filter{flex:1 1 190px;max-width:none}.overview-summary-groups{grid-template-columns:1fr}.overview-summary-group .report-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.overview-summary-group .report-kpis{grid-template-columns:1fr}}
+
+
+/* Product modal scroll ownership and floating option lists. */
+html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
+.modal-overlay:has(.product-modal){padding:6px;overflow:hidden}
+.modal-card.product-modal{max-height:calc(100vh - 12px);overscroll-behavior:contain}
+.combobox-popover-floating .combobox-results{max-height:min(260px,calc(100vh - 110px));overflow-y:auto;overscroll-behavior:contain}

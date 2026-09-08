@@ -188,15 +188,27 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const referenced=await db.collection("documents").findOne({$or:[{warehouseId},{destinationWarehouseId:warehouseId}]},{session})||await db.collection("stockMovements").findOne({warehouseId},{session});
     if(referenced)await warehouses(db).updateOne({_id:warehouseId},{$set:{isArchived:true,archivedAt:new Date(),isSalesDefault:false}},{session});else await warehouses(db).deleteOne({_id:warehouseId},{session}); return warehouseId;
   }
-  if (type === "product-category.create") {
-    const name = text(body.name);
+  if (type === "product-category.create" || type === "product-category.update") {
+    const categoryId = text(body.id), name = text(body.name);
     if (!name) throw new CommandError("اسم الفئة مطلوب");
     if (name.length > 80) throw new CommandError("اسم الفئة طويل جدًا");
-    const duplicate = await db.collection("productCategories").findOne({ name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" } }, { session });
+    const duplicate = await db.collection("productCategories").findOne({ name: { $regex: `^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" }, ...(type === "product-category.update" ? { id: { $ne: categoryId } } : {}) }, { session });
     if (duplicate) throw new CommandError("هذه الفئة موجودة بالفعل", 409);
+    if (type === "product-category.update") {
+      const result = await db.collection("productCategories").updateOne({ id: categoryId }, { $set: { name, updatedAt: new Date() } }, { session });
+      if (!result.matchedCount) throw new CommandError("الفئة غير موجودة", 404);
+      return categoryId;
+    }
     const category = { id: id("category"), name, createdAt: new Date() };
     await db.collection("productCategories").insertOne(category, { session });
     return category.id;
+  }
+  if (type === "product-category.delete") {
+    const categoryId = text(body.id), category = await db.collection("productCategories").findOne({ id: categoryId }, { session });
+    if (!category) throw new CommandError("الفئة غير موجودة", 404);
+    await db.collection("products").updateMany({ categoryId }, { $set: { categoryId: null } }, { session });
+    await db.collection("productCategories").deleteOne({ id: categoryId }, { session });
+    return categoryId;
   }
   if (type === "product.create" || type === "product.update") {
     const name = text(body.name), barcode = text(body.barcode);
@@ -391,7 +403,7 @@ export async function POST(request: Request) {const licenseDenied=await requireV
   let type = "unknown";
   try {
     const body = await request.json() as Input; type = text(body.type);
-    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","adjustment.post":"warehouses.adjust","payment.post":text(body.side)==="receivable"?"customers.collect":"suppliers.pay","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","settlement.post":"customers.edit","offset.post":"customers.edit","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-transfer.post":"banks.transfer","account-opening-balance-correction.post":"banks.balance_correct","party.create":body.partyType==="customer"?"customers.create":"suppliers.create"};
+    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","adjustment.post":"warehouses.adjust","payment.post":text(body.side)==="receivable"?"customers.collect":"suppliers.pay","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","settlement.post":"customers.edit","offset.post":"customers.edit","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-transfer.post":"banks.transfer","account-opening-balance-correction.post":"banks.balance_correct","party.create":body.partyType==="customer"?"customers.create":"suppliers.create"};
     const capability=map[type];if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;if(!validSameOrigin(request))return Response.json({error:"طلب غير صالح"},{status:403});
     const idempotencyKey=text(request.headers.get("Idempotency-Key"));
     if(!idempotencyKey||idempotencyKey.length>200)return Response.json({error:"مفتاح العملية مطلوب"},{status:400});

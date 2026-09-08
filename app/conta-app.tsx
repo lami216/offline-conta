@@ -588,9 +588,9 @@ export type MissingRequirement={id:string;label:string};
 function BlockedAction({reasons,children}:{reasons:MissingRequirement[];children:ReactNode}){const tooltipId=useId(),blocked=reasons.length>0;return <span className={`blocked-action${blocked?" is-blocked":""}`} tabIndex={blocked?0:undefined} aria-describedby={blocked?tooltipId:undefined}>{children}{blocked&&<span id={tooltipId} role="tooltip" className="blocked-action-tooltip"><b>{tr("ناقص:")}</b>{reasons.map(reason=><span key={reason.id} data-missing-requirement={reason.id}>• {reason.label}</span>)}</span>}</span>}
 type SelectOption = { value: string; label: string; search?: string };
 export const normalizeSearch = (value: string) => value.trim().toLocaleLowerCase().normalize("NFD").replace(/[\u0640\u064b-\u065f\u0670]/g, "").replace(/\s+/g, " ");
-function SearchableSelect({ value, onChange, options, placeholder, searchPlaceholder, disabled = false, allowEmpty = false, floating = false, variant = "normal", ariaLabel, triggerRef }: {
+function SearchableSelect({ value, onChange, options, placeholder, searchPlaceholder, disabled = false, allowEmpty = false, floating = false, variant = "normal", ariaLabel, triggerRef, onOpenChange }: {
   value: string; onChange: (value: string) => void; options: SelectOption[];
-  placeholder: string; searchPlaceholder: string; disabled?: boolean; allowEmpty?: boolean; floating?: boolean; variant?: "normal" | "compact" | "pos-customer"; ariaLabel?: string; triggerRef?: Ref<HTMLButtonElement>;
+  placeholder: string; searchPlaceholder: string; disabled?: boolean; allowEmpty?: boolean; floating?: boolean; variant?: "normal" | "compact" | "pos-customer"; ariaLabel?: string; triggerRef?: Ref<HTMLButtonElement>; onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false), [query, setQuery] = useState(""), [highlightedIndex, setHighlightedIndex] = useState<number|null>(null);
   const [floatingStyle, setFloatingStyle] = useState<CSSProperties>({});
@@ -613,8 +613,8 @@ function SearchableSelect({ value, onChange, options, placeholder, searchPlaceho
     const left = Math.min(Math.max(margin, rect.right - width), window.innerWidth - width - margin);
     setFloatingStyle({ position: "fixed", zIndex: 1000, width, maxWidth: width, left, right: "auto", top: opensUp ? Math.max(margin, rect.top - Math.min(desiredHeight, above) - 5) : rect.bottom + 5, maxHeight: opensUp ? above : below });
   }, [floating, variant]);
-  const closeSelect = useCallback((restoreFocus = false) => { setOpen(false); setQuery(""); setHighlightedIndex(null); setFloatingStyle({}); if (restoreFocus) window.requestAnimationFrame(() => ownTriggerRef.current?.focus()); }, []);
-  const openSelect = () => { position(); setHighlightedIndex(null); setOpen(true); };
+  const closeSelect = useCallback((restoreFocus = false) => { setOpen(false); setQuery(""); setHighlightedIndex(null); setFloatingStyle({}); onOpenChange?.(false); if (restoreFocus) window.requestAnimationFrame(() => ownTriggerRef.current?.focus()); }, [onOpenChange]);
+  const openSelect = () => { position(); setHighlightedIndex(null); setOpen(true); onOpenChange?.(true); };
   useEffect(() => {
     const close = (event: PointerEvent) => { const node = event.target as Node; if (!root.current?.contains(node) && !popover.current?.contains(node)) closeSelect(); };
     document.addEventListener("pointerdown", close); return () => document.removeEventListener("pointerdown", close);
@@ -653,13 +653,15 @@ function ProductSearchPicker({ data, query, setQuery, onPick, mode = "sale", war
   data: BootstrapData; query: string; setQuery: (value: string) => void; onPick: (product: Product) => void;
   mode?: "sale" | "purchase" | "transfer" | "adjustment" | "inventory"; warehouseId?: string; priceMode?: PriceMode; collapseResultsWhenIdle?: boolean; stockScope?: "selected-warehouse" | "all-warehouses"; inputRef?: Ref<HTMLInputElement>;
 }) {
-  const [selected, setSelected] = useState<string | null>(null), listId = useId();
+  const [selected, setSelected] = useState<string | null>(null), [categoryId, setCategoryId] = useState(""), [categoryOpen, setCategoryOpen] = useState(false), listId = useId();
   const term = query.trim().toLocaleLowerCase();
-  const results = useMemo(() => term ? data.products.filter(product => !product.isArchived).map((product, index) => {
+  const categoryFiltering = mode === "sale" || mode === "purchase";
+  const categoryOptions = useMemo(() => data.categories.map(category => ({ value: category.id, label: category.name, search: category.name })), [data.categories]);
+  const results = useMemo(() => term ? data.products.filter(product => !product.isArchived && (!categoryFiltering || !categoryId || product.categoryId === categoryId)).map((product, index) => {
     const name = product.name.toLocaleLowerCase(), sku = (product.sku ?? "").toLocaleLowerCase(), barcode = (product.barcode ?? "").toLocaleLowerCase();
     const score = barcode === term || sku === term ? 0 : barcode.startsWith(term) || sku.startsWith(term) ? 1 : name.startsWith(term) ? 2 : name.includes(term) ? 3 : 4;
     return { product, index, score, matches: `${name} ${sku} ${barcode}`.includes(term) };
-  }).filter(item => item.matches).sort((a, b) => a.score - b.score || a.index - b.index).slice(0, 30).map(item => item.product) : [], [data.products, term]);
+  }).filter(item => item.matches).sort((a, b) => a.score - b.score || a.index - b.index).slice(0, 30).map(item => item.product) : [], [data.products, term, categoryFiltering, categoryId]);
   const add = (product: Product) => {
     const stock = stockScope === "selected-warehouse" ? stockInWarehouse(product, warehouseId) : totalProductStock(product);
     if (mode === "sale" && (stock <= 0 || isProductExpired(product))) return;
@@ -672,8 +674,11 @@ function ProductSearchPicker({ data, query, setQuery, onPick, mode = "sale", war
     else if (event.key === "Escape") setSelected(null);
   };
   return <div className="product-picker product-search-grid">
-    <label className="search compact-search"><Search /><input ref={inputRef} role="combobox" aria-label={tr("بحث المنتج")} aria-autocomplete="list" aria-expanded={results.length > 0} aria-controls={listId} aria-activedescendant={selected ? `product-result-${selected}` : undefined} disabled={stockScope === "selected-warehouse" && !warehouseId} value={query} onChange={event => { setQuery(event.target.value); setSelected(null); }} onKeyDown={onSearchKeyDown} placeholder={stockScope === "selected-warehouse" && !warehouseId ? tr("اختر المخزن أولًا") : tr("ابحث بالاسم أو الكود أو الباركود")} /></label>
-    {(!collapseResultsWhenIdle || term) && (results.length ? <div id={listId} className="erp-table-wrap picker-results" role="listbox"><table className="erp-table" aria-label={tr("نتائج بحث المنتجات")}><colgroup><col style={{width:"16%"}}/><col style={{width:"36%"}}/><col style={{width:"18%"}}/><col style={{width:"16%"}}/><col style={{width:"14%"}}/></colgroup><thead><tr><th>{tr("رقم")}</th><th>{tr("المنتج")}</th><th>{mode === "purchase" ? tr("آخر شراء") : tr("السعر")}</th><th>{tr("المتوفر")}</th><th>{tr("إضافة")}</th></tr></thead><tbody>
+    <div style={{display:"grid",gridTemplateColumns:categoryFiltering?"minmax(0,1fr) minmax(170px,0.42fr)":"minmax(0,1fr)",gap:8,alignItems:"start"}}>
+      <label className="search compact-search"><Search /><input ref={inputRef} role="combobox" aria-label={tr("بحث المنتج")} aria-autocomplete="list" aria-expanded={!categoryOpen && results.length > 0} aria-controls={listId} aria-activedescendant={selected ? `product-result-${selected}` : undefined} disabled={stockScope === "selected-warehouse" && !warehouseId} value={query} onChange={event => { setQuery(event.target.value); setSelected(null); }} onKeyDown={onSearchKeyDown} placeholder={stockScope === "selected-warehouse" && !warehouseId ? tr("اختر المخزن أولًا") : tr("ابحث بالاسم أو الكود أو الباركود")} /></label>
+      {categoryFiltering&&<SearchableSelect value={categoryId} onChange={value=>{setCategoryId(value);setCategoryOpen(false);setSelected(null)}} options={categoryOptions} placeholder={tr("الفئات")} searchPlaceholder={tr("ابحث عن فئة")} allowEmpty floating variant="compact" ariaLabel={tr("الفئة")} onOpenChange={open=>{setCategoryOpen(open);if(!open)setCategoryId("")}}/>}
+    </div>
+    {!categoryOpen && (!collapseResultsWhenIdle || term) && (results.length ? <div id={listId} className="erp-table-wrap picker-results" role="listbox"><table className="erp-table" aria-label={tr("نتائج بحث المنتجات")}><colgroup><col style={{width:"16%"}}/><col style={{width:"36%"}}/><col style={{width:"18%"}}/><col style={{width:"16%"}}/><col style={{width:"14%"}}/></colgroup><thead><tr><th>{tr("رقم")}</th><th>{tr("المنتج")}</th><th>{mode === "purchase" ? tr("آخر شراء") : tr("السعر")}</th><th>{tr("المتوفر")}</th><th>{tr("إضافة")}</th></tr></thead><tbody>
       {results.map((product, index) => { const stock = stockScope === "selected-warehouse" ? stockInWarehouse(product, warehouseId) : totalProductStock(product), expired = isProductExpired(product), disabled = mode === "sale" && (stock <= 0 || expired); return <tr id={`product-result-${product.id}`} data-hover-enter="select" role="option" aria-selected={selected === product.id} key={product.id} className={selected === product.id ? "selected" : ""} onClick={() => add(product)}><td className="num-cell">{number(index + 1)}</td><td className="name-cell">{product.name}{expired && <small className="expired-badge">{tr("منتهي الصلاحية")}</small>}</td><td className="num-cell">{number(mode === "purchase" ? product.lastPurchaseCost ?? product.pieceCost ?? 0 : sellingPrice(product, priceMode))}</td><td className="num-cell">{number(stock)}</td><td className="action-cell"><button type="button" className="soft" disabled={disabled} onClick={event => { event.stopPropagation(); add(product); }}>{tr("إضافة")}</button></td></tr>; })}
     </tbody></table></div> : <div className="picker-no-results">{tr("لا توجد نتائج")}</div>)}
   </div>;

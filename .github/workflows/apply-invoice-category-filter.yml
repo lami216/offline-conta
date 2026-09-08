@@ -1,0 +1,34 @@
+name: Apply invoice category filter
+on:
+  push:
+    branches: [feature/invoice-category-filter-20260908]
+permissions:
+  contents: write
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/invoice-category-filter-20260908
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply scoped UI patch
+        run: python scripts/apply-invoice-category-filter.py
+      - name: Validate patch shape
+        run: git diff --check
+      - run: npm ci
+      - run: npm test
+      - run: npm run lint
+      - name: Commit final source change and remove temporary automation
+        run: |
+          git config user.name "lami216"
+          git config user.email "iiyad21694@gmail.com"
+          rm scripts/apply-invoice-category-filter.py
+          rm .github/workflows/apply-invoice-category-filter.yml
+          git add -A
+          git commit -m "Filter sale and purchase product search by category"
+          git push origin HEAD:feature/invoice-category-filter-20260908

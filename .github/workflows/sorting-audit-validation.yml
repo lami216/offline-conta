@@ -1,0 +1,35 @@
+name: Sorting audit validation
+on:
+  push:
+    branches: [fix/central-natural-sorting-20260909]
+permissions:
+  contents: write
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply scoped app patch
+        run: node scripts/apply-sorting-audit-fix.mjs
+      - run: npm ci
+      - run: npm test
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build
+      - name: Commit validated app patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f scripts/apply-sorting-audit-fix.mjs .github/workflows/sorting-audit-validation.yml
+          git add app/conta-app.tsx
+          git diff --cached --check
+          git commit -m "Centralize natural table sorting [skip ci]"
+          git push

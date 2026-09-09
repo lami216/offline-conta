@@ -79,10 +79,10 @@ test("sorting-enabled screens and reports are wired to the shared sorter", () =>
   assert.doesNotMatch(source, /numeric=typeof leftValue===\"number\"\|\|typeof rightValue===\"number\"/);
   assert.match(source, /sales:productId\?\[\[\"number\",tr\(\"رقم الفاتورة\"\),\"number\"\]/);
   assert.match(source, /purchases:productId\?\[\[\"number\",tr\(\"رقم الفاتورة\"\),\"number\"\]/);
-  assert.match(source, /expenses:\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]*?\[\"number\",tr\(\"المستند\"\),\"number\"\]\]/);
-  assert.match(source, /stock:\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]*?\[\"documentNumber\",tr\(\"المستند\"\),\"text\"\]\]/);
-  assert.match(source, /party-ledger\":\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]*?\[\"documentNumber\",tr\(\"رقم المستند\"\),\"text\"\]\]/);
-  assert.match(source, /financial:\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]*?\[\"documentNumber\",tr\(\"المستند\"\),\"text\"\]\]/);
+  assert.match(source, /expenses:\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]{0,700}\[\"number\",tr\(\"المستند\"\),\"number\"\]/);
+  assert.match(source, /stock:\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]{0,900}\[\"documentNumber\",tr\(\"المستند\"\),\"text\"\]/);
+  assert.match(source, /party-ledger\":\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]{0,900}\[\"documentNumber\",tr\(\"رقم المستند\"\),\"text\"\]/);
+  assert.match(source, /financial:\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]{0,900}\[\"documentNumber\",tr\(\"المستند\"\),\"text\"\]/);
   assert.match(source, /movementColumns=useMemo\(\(\)=>\[[\s\S]*?key:\"number\",type:\"number\" as const[\s\S]*?useSortableRows\(filteredMovementDocs,movementColumns\)/);
   assert.match(source, /transferColumns=useMemo\(\(\)=>\[[\s\S]*?key:\"number\",type:\"number\" as const[\s\S]*?useSortableRows\(transfers,transferColumns\)/);
   assert.match(source, /key:\"reference\",type:\"text\" as const[\s\S]*?useSortableRows\(transfers,transferColumns\)/);

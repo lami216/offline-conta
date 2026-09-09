@@ -34,6 +34,6 @@ export function reportDateQuery(allTime: boolean, from: string, to: string) {
 }
 
 /** Columns remain presentation metadata before a query has returned rows. */
-export function reportTableModel(columns: Array<[string, string]>, result: ReportResponse | null) {
+export function reportTableModel<Column extends [string, string, ...unknown[]]>(columns: Column[], result: ReportResponse | null) {
   return { columns, rows: result?.rows ?? [] };
 }

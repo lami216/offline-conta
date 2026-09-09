@@ -1081,7 +1081,6 @@ function Products({ data, run }: { data: BootstrapData; run: RunCommand }) {
   const [sort, setSort] = useState<{ key: "price" | "cost" | "stock"; direction: "asc" | "desc" } | null>(null);
   const normalized = query.trim().toLocaleLowerCase();
   const filteredProducts = useMemo(() => data.products.filter(product => showArchived || !product.isArchived).filter(product => !normalized || `${product.name} ${product.sku} ${product.barcode}`.toLocaleLowerCase().includes(normalized)), [data.products, normalized, showArchived]);
-  const stockOf = (product: Product) => Object.values(product.stocks).reduce((sum, value) => sum + Number(value), 0);
   const productSortColumns=useMemo(()=>[
     {key:"price",type:"money" as const,get:(product:Product)=>product.piecePrice},
     {key:"cost",type:"money" as const,get:(product:Product)=>product.lastPurchaseCost},

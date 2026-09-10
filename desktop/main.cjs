@@ -47,7 +47,14 @@ async function start(){
  closeFlow=createCloseFlow({dialog,window:()=>window,fetchBackup:async()=>{const response=await fetch(`${serverUrl}/api/desktop/backup`,{headers:{'x-alkarna-desktop-token':desktopToken}});if(!response.ok)throw Error(`backup HTTP ${response.status}`);return Buffer.from(await response.arrayBuffer())},writeBackup:writeFile,onFailure:async error=>{stamp(`backup failed: ${error.stack||error}`);await dialog.showMessageBox(window,{type:'error',title:PRODUCT_NAME,message:'تعذر إنشاء النسخة الاحتياطية. لم يتم إغلاق البرنامج.',buttons:['حسنًا']})},approveQuit:async()=>{quitting=true;await stopServer();logStream?.end();app.quit()}});
  window.on('close',event=>{if(quitting||closeFlow.isApproved())return;event.preventDefault();void closeFlow.requestClose().then(closed=>{if(!closed&&window&&!window.isDestroyed()){window.focus();window.webContents.focus()}})});
  await session.defaultSession.cookies.remove(url,'conta_session');
- await window.loadURL(url);window.maximize();
+ await window.loadURL(url);
+ window.webContents.on('did-fail-load',(_event,errorCode,errorDescription,validatedURL,isMainFrame)=>{
+  if(!isMainFrame||quitting||!isLocal(validatedURL))return;
+  stamp(`main-frame load failed code=${errorCode} description=${errorDescription} url=${validatedURL}`);
+  const recovery=`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><title>${PRODUCT_NAME}</title><style>body{font-family:Tahoma,Arial,sans-serif;margin:0;display:grid;place-items:center;min-height:100vh;background:#f7f8fa;color:#1f2937}.card{width:min(520px,88vw);background:white;border:1px solid #ddd;border-radius:14px;padding:28px;text-align:center;box-shadow:0 12px 36px #0002}button{border:0;border-radius:9px;padding:10px 18px;background:#1967d2;color:white;font-weight:700;cursor:pointer}</style><body><div class="card"><h2>تعذر تحميل الصفحة داخل الكرنه</h2><p>لم يتم إغلاق البرنامج أو تغيير البيانات. اضغط إعادة المحاولة للرجوع إلى النظام.</p><button onclick="location.replace('${url}')">إعادة المحاولة</button></div></body></html>`;
+  void window.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(recovery)}`).catch(error=>stamp(`recovery page failed: ${error.stack||error}`));
+ });
+ window.maximize();
 }
 app.whenReady().then(start).catch(async error=>{stamp(`startup error: ${error.stack||error}`);await failStartup()});
 app.on('before-quit',event=>{if(quitting)return;if(!ready||!closeFlow){quitting=true;return}event.preventDefault();void closeFlow.requestClose().then(closed=>{if(!closed&&window&&!window.isDestroyed()){window.focus();window.webContents.focus()}})});app.on('window-all-closed',()=>{if(quitting)app.quit()});

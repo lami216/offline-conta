@@ -8,10 +8,10 @@ on:
       - .ci/run-pr58-completion
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  complete:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -21,16 +21,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: node scripts/pr58-complete.mjs
-      - name: Persist completion patch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "Apply PR58 completion draft"
-            git push origin HEAD:fix/opening-stock-integrity-20260910
-          fi
       - run: npm ci
       - run: npm test
       - run: npx tsc --noEmit

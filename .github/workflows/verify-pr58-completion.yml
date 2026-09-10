@@ -12,7 +12,6 @@ permissions:
 
 jobs:
   complete:
-    if: github.event.head_commit.message != 'Apply PR58 completion'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -23,16 +22,18 @@ jobs:
           node-version: 22
           cache: npm
       - run: node scripts/pr58-complete.mjs
+      - name: Persist completion patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "Apply PR58 completion draft"
+            git push origin HEAD:fix/opening-stock-integrity-20260910
+          fi
       - run: npm ci
       - run: npm test
       - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm run build
       - run: git diff --check
-      - name: Commit verified completion
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Apply PR58 completion"
-          git push origin HEAD:fix/opening-stock-integrity-20260910

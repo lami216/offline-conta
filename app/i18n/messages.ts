@@ -884,6 +884,17 @@ export const arMessages = {
   "الوضع الحالي": "الوضع الحالي",
   "أداء الفترة": "أداء الفترة",
   "صافي الربح": "صافي الربح",
+  "party.deleteBalancedConfirm": "هل تريد حذف {party} «{name}»؟ ستبقى الفواتير والمعاملات السابقة باسمه كما هي.",
+  "party.deleteBalanceConfirm": "حذف {party} «{name}» سيصفي رصيده الحالي ويجعله صفرًا (مستحق لنا: {receivable}، مستحق علينا: {payable}). ستبقى الفواتير والمعاملات السابقة باسمه كما هي. هل تريد المتابعة؟",
+  "party.currentBalanceWillBeCleared": "عند الحذف ستُصفّر المستحقات الحالية: لنا {receivable}، علينا {payable}. لن تتغير الفواتير والمعاملات السابقة.",
+  "party.savedCustomer": "تم حفظ تعديل العميل",
+  "party.savedSupplier": "تم حفظ تعديل المورد",
+  "party.deletedCustomer": "تم حذف العميل",
+  "party.deletedSupplier": "تم حذف المورد",
+  "تصفية الحساب والحذف": "تصفية الحساب والحذف",
+  "رقم الهاتف مستخدم لحساب آخر من النوع نفسه": "رقم الهاتف مستخدم لحساب آخر من النوع نفسه",
+  "يجب تأكيد تصفية رصيد الطرف قبل الحذف": "يجب تأكيد تصفية رصيد الطرف قبل الحذف",
+  "تنبيه": "تنبيه",
 } as const;
 
 export type MessageKey = keyof typeof arMessages;
@@ -1775,6 +1786,17 @@ export const frMessages: Record<MessageKey, string> = {
   "الوضع الحالي": "Situation actuelle",
   "أداء الفترة": "Performance sur la période",
   "صافي الربح": "Résultat net de la période",
+  "party.deleteBalancedConfirm": "Supprimer {party} « {name} » ? Les factures et opérations antérieures conserveront son nom.",
+  "party.deleteBalanceConfirm": "La suppression de {party} « {name} » ramènera son solde actuel à zéro (à recevoir : {receivable}, à payer : {payable}). Les factures et opérations antérieures conserveront son nom. Continuer ?",
+  "party.currentBalanceWillBeCleared": "La suppression ramènera les montants actuels à zéro : à recevoir {receivable}, à payer {payable}. Les factures et opérations antérieures resteront inchangées.",
+  "party.savedCustomer": "Modification du client enregistrée",
+  "party.savedSupplier": "Modification du fournisseur enregistrée",
+  "party.deletedCustomer": "Client supprimé",
+  "party.deletedSupplier": "Fournisseur supprimé",
+  "تصفية الحساب والحذف": "Régler le compte et supprimer",
+  "رقم الهاتف مستخدم لحساب آخر من النوع نفسه": "Ce numéro de téléphone est déjà utilisé par un autre compte du même type",
+  "يجب تأكيد تصفية رصيد الطرف قبل الحذف": "La remise à zéro du solde doit être confirmée avant la suppression",
+  "تنبيه": "Attention",
 };
 export const messages = { ar: arMessages, fr: frMessages } as const;
 export function translate(locale: "ar" | "fr", key: MessageKey, params: TranslationParams = {}) { let value: string = messages[locale][key]; for (const [name,replacement] of Object.entries(params)) value=value.replaceAll(`{${name}}`,String(replacement)); return value; }

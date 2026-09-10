@@ -2,7 +2,10 @@ name: Build Windows desktop
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/accounting-audit-20260910]
+    branches:
+      - main
+      - "fix/**"
+      - "feat/**"
 permissions:
   contents: read
 jobs:

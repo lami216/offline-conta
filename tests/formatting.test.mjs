@@ -10,6 +10,7 @@ import {
   stockInWarehouse,
   totalProductStock,
 } from "../app/domain.ts";
+import { belowCostConfirmation } from "../app/sale-draft.ts";
 
 const nonLatinDigit = /[٠-٩۰-۹]/;
 
@@ -23,7 +24,7 @@ test("shared display formatters always emit Latin digits", () => {
   ];
 
   assert.equal(formatNumber(1211), "1 211");
-  assert.equal(formatMoney(17700), "17 700 MRU");
+  assert.equal(formatMoney(17700), "17 700");
   assert.match(formatDate(new Date(2026, 7, 18)), /18\/08\/2026/);
   assert.equal(values.some((value) => nonLatinDigit.test(value)), false);
 });
@@ -34,6 +35,12 @@ test("quantity has no unit suffix and warehouse stock never falls back globally"
   assert.equal(stockInWarehouse(product, "warehouseB"), 0);
   assert.equal(stockInWarehouse(product, "warehouseA"), 10);
   assert.equal(totalProductStock(product), 10);
+});
+
+test("money displays and sale warnings contain no currency suffix", () => {
+  const warning=belowCostConfirmation("ar",[{productId:"p",productName:"Tea",salePrice:10,purchaseCost:12}]);
+  assert.equal(formatMoney(12),"12");
+  assert.equal(warning.includes(["M","R","U"].join("")),false);
 });
 
 test("commercial documents display their numeric sequence while technical references remain hidden", async () => {

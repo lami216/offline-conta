@@ -7,7 +7,9 @@ const output = path.join(repositoryRoot, "desktop-dist", "app");
 
 await rm(path.dirname(output), {recursive: true, force: true});
 await mkdir(output, {recursive: true});
-await cp(path.join(repositoryRoot, ".next", "standalone"), output, {recursive: true});
+// Materialize traced links so staging also works without Windows symlink privileges.
+// The external aliases below are then replaced with relocatable local shims.
+await cp(path.join(repositoryRoot, ".next", "standalone"), output, {recursive: true, dereference: true});
 await mkdir(path.join(output, ".next"), {recursive: true});
 await cp(path.join(repositoryRoot, ".next", "static"), path.join(output, ".next", "static"), {recursive: true});
 await cp(path.join(repositoryRoot, "public"), path.join(output, "public"), {recursive: true});

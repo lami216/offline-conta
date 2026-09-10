@@ -3,9 +3,12 @@ import type { SqliteSession as ClientSession, SqliteDatabase as Db } from "../..
 import { getDatabase } from "../../../lib/sqlite.ts";
 import { log } from "../../../lib/log.ts";
 import { requireCapability, validSameOrigin, type Capability } from "../../../lib/auth.ts";
-import { isProductExpired } from "../../domain.ts";
+import { isProductExpired, resolvePartyType } from "../../domain.ts";
 import { normalizePartyNet, partyCashDelta, partyNet } from "../../party-balance.ts";
 import { nextDocumentSequence, type SequencedDocumentKind } from "../../../lib/document-sequences.ts";
+import { deriveOpeningStockState, planOpeningStockCorrection } from "../../../lib/opening-stock.ts";
+
+import { currentProductCost, resolveProductCost } from "../../../lib/product-cost.ts";
 
 type Input = Record<string, unknown>;
 type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; purchaseCost?: number | null; costAtSale?: number | null; grossProfit?: number | null };
@@ -27,7 +30,8 @@ const optionalNumber = (v: unknown, label: string, integer = false) => {
 const optionalDate = (value: unknown) => {
   const date = text(value);
   if (!date) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) !== date) throw new CommandError("تاريخ انتهاء الصلاحية غير صالح");
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== date) throw new CommandError("تاريخ انتهاء الصلاحية غير صالح");
   return date;
 };
 async function nextProductCode(db: Db, session: ClientSession) {
@@ -78,22 +82,14 @@ async function financialMovement(db: Db, session: ClientSession, document: Recor
   await db.collection("financialMovements").insertOne({ id: id("fin"), paymentMethod: account.id, paymentCode: account.code, direction, amount, documentId: document.id, documentNumber: document.number, partyId: document.partyId ?? null, partyName: document.partyName ?? null, type, occurredAt: document.occurredAt, transferId: document.transferId ?? null, note: document.note ?? null }, { session });
 }
 async function authoritativeCost(db: Db, session: ClientSession, product: Record<string, unknown>) {
-  if (Number.isFinite(product.lastPurchaseCost)) return Number(product.lastPurchaseCost);
-  const latest = await db.collection("documents").findOne({ kind: "purchase", status: "posted", "lines.productId": product.id }, { session, sort: { occurredAt: -1 }, projection: { lines: 1, occurredAt: 1 } });
-  const line = (latest?.lines as Line[] | undefined)?.find(item => item.productId === product.id);
-  if (!line || !Number.isFinite(Number(line.unitPrice))) return null;
-  const cost = Number(line.unitPrice);
-  await db.collection("products").updateOne({ id: product.id, lastPurchaseCost: { $exists: false } }, { $set: { lastPurchaseCost: cost, lastPurchaseAt: latest?.occurredAt } }, { session });
-  product.lastPurchaseCost = cost;
-  return cost;
+  return currentProductCost(db, session, product);
 }
 async function historicalCost(db: Db, session: ClientSession, productId: string, occurredAt: string) {
-  const purchase = await db.collection("documents").findOne(
-    { kind: "purchase", status: "posted", occurredAt: { $lte: occurredAt }, "lines.productId": productId },
-    { session, sort: { occurredAt: -1 } },
-  );
-  const line = (purchase?.lines as Line[] | undefined)?.find(item => item.productId === productId);
-  return line && Number.isFinite(Number(line.unitPrice)) ? Number(line.unitPrice) : null;
+  const documents = await db.collection("documents").find(
+    { status: "posted", occurredAt: { $lte: occurredAt }, "lines.productId": productId }, { session },
+  ).toArray();
+  // Do not pass today's product metadata into a historical invoice correction.
+  return resolveProductCost({ id: productId }, documents).cost;
 }
 async function changePartyDebt(db: Db, session: ClientSession, partyId: unknown, kind: "sale" | "purchase", delta: number, reversing = false) {
   if (!delta) return;
@@ -103,8 +99,6 @@ async function applyPartyNetDelta(db: Db, session: ClientSession, partyId: unkno
   const party = await db.collection("parties").findOne({ id: String(partyId) }, { session });
   if (!party) { if (reversing) throw new CommandError("لا يمكن تعديل رصيد الطرف", 409); return null; }
   const before = partyNet(party as {receivable?:unknown;payable?:unknown});
-  // Invoice corrections reconcile against the current net ledger. Independent party
-  // settlements remain historical facts, so reversing an invoice may cross zero.
   const after = before + delta;
   await db.collection("parties").updateOne({ _id: party._id }, { $set: { ...normalizePartyNet(after), lastMovementAt: new Date() } }, { session });
   return { before, delta, after };
@@ -115,17 +109,13 @@ async function reverseInvoicePayment(db: Db, session: ClientSession, document: R
   const movement = await db.collection("financialMovements").findOne({ documentId: document.id, type: kind }, { session });
   if (!movement) throw new CommandError("تعذر العثور على حركة الدفع الأصلية للفاتورة", 409);
   const account = await paymentAccount(db, session, movement.paymentMethod, false);
-  // Reversals correct posted history and may make a balance negative; this is not a new discretionary outflow.
   await db.collection("paymentAccounts").updateOne({ id: account.id }, { $inc: { balance: kind === "sale" ? -amount : amount } }, { session });
   await db.collection("financialMovements").deleteOne({ _id: movement._id }, { session });
 }
 async function recomputePurchaseCosts(db: Db, session: ClientSession, productIds: string[]) {
   for (const productId of new Set(productIds)) {
-    const latest = await db.collection("documents").findOne(
-      { kind: "purchase", status: "posted", "lines.productId": productId }, { session, sort: { occurredAt: -1 } },
-    );
-    const line = (latest?.lines as Line[] | undefined)?.find(item => item.productId === productId);
-    await db.collection("products").updateOne({ id: productId }, { $set: { lastPurchaseCost: line ? Number(line.unitPrice) : null, lastPurchaseAt: latest?.occurredAt ?? null } }, { session });
+    const product = await db.collection("products").findOne({ id: productId }, { session });
+    if (product) await currentProductCost(db, session, product);
   }
 }
 async function refs(db: Db, session: ClientSession, body: Input, requireParty = false) {
@@ -224,26 +214,59 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
       if (!Number.isInteger(openingStock)) throw new CommandError("رصيد البداية غير صالح");
       if (openingStock > 0 && (!pieceCost || pieceCost <= 0)) throw new CommandError("سعر الشراء للفرد مطلوب عند إدخال رصيد بداية");
       let warehouse = null;
+      let openingWarehouseId: string | null = null;
       if (openingStock > 0) {
-        const openingWarehouseId = text(body.openingWarehouseId);
+        openingWarehouseId = text(body.openingWarehouseId);
         if (!openingWarehouseId) throw new CommandError("مخزن رصيد البداية مطلوب");
         warehouse = await warehouses(db).findOne({ _id: openingWarehouseId, isArchived: { $ne: true } }, { session });
         if (!warehouse) throw new CommandError("مخزن رصيد البداية مطلوب");
       }
-      const sku = await nextProductCode(db, session), now = new Date(), product = { id: id("product"), sku, ...values, ...(openingStock > 0 ? { lastPurchaseCost: pieceCost, lastPurchaseAt: now.toISOString() } : {}), stocks: {}, createdAt: now };
+      const sku = await nextProductCode(db, session), now = new Date(), product = { id: id("product"), sku, ...values, openingStock, openingCost: openingStock > 0 ? pieceCost : null, openingWarehouseId, ...(openingStock > 0 ? { lastPurchaseCost: pieceCost, lastPurchaseAt: null, lastPurchaseCostSource: "opening" } : { lastPurchaseCost: null, lastPurchaseAt: null, lastPurchaseCostSource: null }), stocks: {}, createdAt: now };
       await db.collection("products").insertOne(product, { session });
       if (openingStock > 0 && warehouse) {
-        const doc = { ...baseDocument("adjustment", "OPEN"), partyId: null, partyName: null, warehouseId: warehouse._id, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: null, title: "رصيد بداية", total: 0, dueTotal: 0, paidTotal: 0, lines: [{ id: id("line"), productId: product.id, description: name, quantity: openingStock, unitPrice: pieceCost, lineTotal: 0 }] };
+        const doc = { ...baseDocument("adjustment", "OPEN"), partyId: null, partyName: null, warehouseId: warehouse._id, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: null, title: "رصيد بداية", openingStockAfter: openingStock, openingCostAfter: pieceCost, total: 0, dueTotal: 0, paidTotal: 0, lines: [{ id: id("line"), productId: product.id, description: name, quantity: openingStock, unitPrice: pieceCost, lineTotal: 0 }] };
         await changeStock(db, session, product, warehouse, openingStock, doc, "opening");
         await db.collection("documents").insertOne(doc, { session });
       }
       return product.id;
     }
     const product=await db.collection("products").findOne({id:productId},{session}); if(!product)throw new CommandError("المنتج غير موجود",404);
-    const openingStock=optionalNumber(body.openingStock,"رصيد البداية")??0; if(!Number.isInteger(openingStock))throw new CommandError("رصيد البداية غير صالح");
-    let openingWarehouse=null; if(openingStock>0){if(!pieceCost||pieceCost<=0)throw new CommandError("سعر الشراء للفرد مطلوب عند إدخال رصيد بداية"); openingWarehouse=await warehouses(db).findOne({_id:text(body.openingWarehouseId),isArchived:{$ne:true}},{session});if(!openingWarehouse)throw new CommandError("مخزن رصيد البداية مطلوب");}
-    await db.collection("products").updateOne({id:productId},{$set:values},{session});
-    if(openingStock>0&&openingWarehouse){const doc={...baseDocument("adjustment","OPEN"),partyId:null,partyName:null,warehouseId:openingWarehouse._id,warehouseName:openingWarehouse.name,destinationWarehouseId:null,destinationWarehouseName:null,parentDocumentId:null,paymentMethod:null,title:"إضافة رصيد افتتاحي",total:0,dueTotal:0,paidTotal:0,lines:[{id:id("line"),productId,description:name,quantity:openingStock,unitPrice:pieceCost,lineTotal:0}]};await changeStock(db,session,product,openingWarehouse,openingStock,doc,"opening");await db.collection("documents").insertOne(doc,{session});}
+    const replaceOpeningStock = body.replaceOpeningStock === true;
+    if (!replaceOpeningStock) {
+      if (Number(body.openingStock ?? 0) > 0 && Number(body.openingStock) !== Number(product.openingStock ?? 0)) throw new CommandError("تعديل رصيد البداية يحتاج طلب تصحيح صريح", 409);
+      await db.collection("products").updateOne({id:productId},{$set:values},{session});
+      return productId;
+    }
+    const state = await deriveOpeningStockState(db, session, product);
+    const openingStock = optionalNumber(body.openingStock,"رصيد البداية") ?? 0;
+    if (!state.hasNativeOpening && (state.hasStockHistory || Object.values(product.stocks ?? {}).some(quantity => Number(quantity) !== 0)) && openingStock > 0) throw new CommandError("لا يمكن إنشاء رصيد بداية رجعي بعد وجود حركات مخزون. استخدم تصحيح المخزون بدلًا من ذلك.", 409);
+    if(!Number.isInteger(openingStock))throw new CommandError("رصيد البداية غير صالح");
+    const requestedOpeningCost = optionalNumber(body.openingCost, "تكلفة رصيد البداية") ?? state.cost ?? pieceCost;
+    if(openingStock>0&&(!requestedOpeningCost||requestedOpeningCost<=0))throw new CommandError("تكلفة رصيد البداية مطلوبة");
+    const openingWarehouseId = text(body.openingWarehouseId) || state.warehouseId;
+    let targetWarehouse: WarehouseDoc | null = null;
+    if (openingWarehouseId) targetWarehouse = await warehouses(db).findOne({ _id: openingWarehouseId, isArchived: { $ne: true } }, { session }) ?? null;
+    const relocateOpeningStock = body.relocateOpeningStock === true;
+    let plan;
+    try { plan = planOpeningStockCorrection(state, openingStock, targetWarehouse?._id ?? openingWarehouseId ?? null, relocateOpeningStock); }
+    catch (error) { throw new CommandError(error instanceof Error ? error.message : "رصيد البداية غير صالح", 409); }
+    const openingCost = openingStock > 0 ? requestedOpeningCost : null;
+    const costChanged = Number(state.cost ?? 0) !== Number(openingCost ?? 0);
+    const warehouseChanged = Boolean(relocateOpeningStock && openingStock > state.consumed && openingWarehouseId !== state.warehouseId);
+    if (plan.deltas.length || costChanged || warehouseChanged || !Number.isFinite(Number(product.openingStock))) {
+      const correction = { ...baseDocument("adjustment", "OPEN-COR"), openingCorrection: true, openingStockBefore: state.total, openingStockAfter: openingStock, openingCostBefore: state.cost, openingCostAfter: openingCost, partyId: null, partyName: null, warehouseId: state.warehouseId, warehouseName: state.warehouseId ? (await warehouses(db).findOne({ _id: state.warehouseId }, { session }))?.name ?? null : null, destinationWarehouseId: targetWarehouse?._id ?? null, destinationWarehouseName: targetWarehouse?.name ?? null, parentDocumentId: null, paymentMethod: null, title: "تصحيح رصيد البداية", total: 0, dueTotal: 0, paidTotal: 0, lines: [] as Record<string, unknown>[] };
+      for (const item of plan.deltas) {
+        const warehouse = item.delta > 0 ? await warehouses(db).findOne({ _id: item.warehouseId, isArchived: { $ne: true } }, { session }) : await warehouses(db).findOne({ _id: item.warehouseId }, { session });
+        if (!warehouse || String(warehouse._id) !== item.warehouseId) throw new CommandError(item.delta > 0 ? "مخزن رصيد البداية غير متاح" : "تعذر تحديد مخزن رصيد البداية", 409);
+        try { await changeStock(db, session, product, warehouse, item.delta, correction, "opening-correction"); }
+        catch (error) { if (error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("تعذر تصحيح رصيد البداية لأن الرصيد الحالي لا يطابق سجل الحركات. راجع حركة المنتج أولًا.", 409); throw error; }
+        correction.lines.push({ id: id("line"), productId, description: `${name} — ${warehouse.name}`, quantity: item.delta, unitPrice: openingCost ?? state.cost ?? 0, lineTotal: 0 });
+      }
+      if (!correction.lines.length) correction.lines.push({ id: id("line"), productId, description: `${name} — تصحيح تكلفة رصيد البداية`, quantity: 0, unitPrice: openingCost ?? 0, lineTotal: 0 });
+      await db.collection("documents").insertOne(correction,{session});
+    }
+    await db.collection("products").updateOne({id:productId},{$set:{...values,openingStock,openingCost,openingWarehouseId:openingStock>state.consumed?(targetWarehouse?._id??state.warehouseId):state.warehouseId??targetWarehouse?._id??null}},{session});
+    await recomputePurchaseCosts(db,session,[productId]);
     return productId;
   }
   if (["sale.update", "purchase.update"].includes(type)) {
@@ -327,7 +350,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const doc = { ...await numberedDocument(db, session, isSale ? "sale" : "purchase", isSale ? "SAL" : "PUR"), businessDate, ...(isSale ? { dailySequence, pricingMode } : {}), partyId: partyId || null, partyName: party?.name ?? (isSale ? "بيع مباشر" : "شراء مباشر"), warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod, title: null, total, dueTotal: due, paidTotal: requestedPaid, cashAmount, ...(snapshot ? { partyBalanceBefore:snapshot.before, partyBalanceDelta:snapshot.delta, partyBalanceAfter:snapshot.after } : {}), lines: calculated };
     for (const line of input) await changeStock(db, session, map.get(line.productId)!, warehouse, isSale ? -line.quantity : line.quantity, doc, isSale ? "sale" : "purchase");
     await db.collection("documents").insertOne(doc, { session });
-    if (!isSale) for (const line of calculated) await db.collection("products").updateOne({ id: line.productId }, { $set: { lastPurchaseCost: line.unitPrice, lastPurchaseAt: doc.occurredAt } }, { session });
+    if (!isSale) for (const line of calculated) await db.collection("products").updateOne({ id: line.productId }, { $set: { lastPurchaseCost: line.unitPrice, lastPurchaseAt: doc.occurredAt, lastPurchaseCostSource: "purchase" } }, { session });
     if (cashAmount) await financialMovement(db, session, doc, isSale ? "in" : "out", cashAmount, isSale ? "sale" : "purchase");
     return doc.id;
   }
@@ -345,7 +368,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const effectiveInput=input.filter(line=>line.actualQuantity!==Number((map.get(line.productId)!.stocks as Record<string,number>|undefined)?.[warehouseId]??0));
     if(!effectiveInput.length)throw new CommandError("لا يوجد تغيير في المخزون لاعتماده",409);
     const doc = { ...baseDocument("adjustment", "ADJ"), partyId: null, partyName: null, warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: null, title: reason, total: 0, dueTotal: 0, paidTotal: 0, lines: [] as Record<string, unknown>[] };
-    for (const line of effectiveInput) { const p = map.get(line.productId)!, before = Number((p.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0), after = line.actualQuantity!; if (after > before && p.lastPurchaseCost == null && line.purchaseCost != null) { await db.collection("products").updateOne({ id: p.id }, { $set: { lastPurchaseCost: line.purchaseCost, lastPurchaseAt: doc.occurredAt } }, { session }); p.lastPurchaseCost = line.purchaseCost; } await changeStock(db, session, p, warehouse, after - before, doc, "adjustment"); doc.lines.push({ id: id("line"), productId: line.productId, description: `${p.name} — ${reason} (قبل ${before}، بعد ${after})`, quantity: after - before, unitPrice: Number(p.lastPurchaseCost ?? 0), lineTotal: 0, balanceBefore: before, balanceAfter: after }); } await db.collection("documents").insertOne(doc, { session }); return doc.id;
+    for (const line of effectiveInput) { const p = map.get(line.productId)!, before = Number((p.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0), after = line.actualQuantity!; if (after > before && p.lastPurchaseCost == null && line.purchaseCost != null) { await db.collection("products").updateOne({ id: p.id }, { $set: { lastPurchaseCost: line.purchaseCost, lastPurchaseAt: doc.occurredAt, lastPurchaseCostSource: "adjustment" } }, { session }); p.lastPurchaseCost = line.purchaseCost; p.lastPurchaseCostSource = "adjustment"; } await changeStock(db, session, p, warehouse, after - before, doc, "adjustment"); doc.lines.push({ id: id("line"), productId: line.productId, description: `${p.name} — ${reason} (قبل ${before}، بعد ${after})`, quantity: after - before, unitPrice: Number(p.lastPurchaseCost ?? 0), lineTotal: 0, balanceBefore: before, balanceAfter: after }); } await db.collection("documents").insertOne(doc, { session }); return doc.id;
   }
   if (type === "party-cash.post") {
     const partyId=text(body.partyId), party=await db.collection("parties").findOne({id:partyId},{session}); if(!party) throw new CommandError("الطرف غير موجود",404);
@@ -404,7 +427,14 @@ export async function POST(request: Request) {const licenseDenied=await requireV
   try {
     const body = await request.json() as Input; type = text(body.type);
     const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","adjustment.post":"warehouses.adjust","payment.post":text(body.side)==="receivable"?"customers.collect":"suppliers.pay","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","settlement.post":"customers.edit","offset.post":"customers.edit","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-transfer.post":"banks.transfer","account-opening-balance-correction.post":"banks.balance_correct","party.create":body.partyType==="customer"?"customers.create":"suppliers.create"};
-    const capability=map[type];if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;if(!validSameOrigin(request))return Response.json({error:"طلب غير صالح"},{status:403});
+    let capability=map[type];
+    if(["party-cash.post","payment.post","settlement.post","offset.post"].includes(type)){
+      const party=await getDatabase().collection("parties").findOne({id:text(body.partyId)});
+      if(party){const supplier=resolvePartyType(party)==="supplier";capability=type==="party-cash.post"||type==="payment.post"?(supplier?"suppliers.pay":"customers.collect"):(supplier?"suppliers.edit":"customers.edit");}
+    }
+    if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;
+    if((type==="product.update"&&body.replaceOpeningStock===true)||(type==="product.create"&&Number(body.openingStock??0)>0)){const stockDenied=await requireCapability(request,"warehouses.adjust");if(stockDenied)return stockDenied;}
+    if(!validSameOrigin(request))return Response.json({error:"طلب غير صالح"},{status:403});
     const idempotencyKey=text(request.headers.get("Idempotency-Key"));
     if(!idempotencyKey||idempotencyKey.length>200)return Response.json({error:"مفتاح العملية مطلوب"},{status:400});
     const fingerprint=Buffer.from(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(JSON.stringify(body)))).toString("hex");

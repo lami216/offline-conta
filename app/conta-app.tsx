@@ -572,6 +572,7 @@ function Num(props: {
   onChange: (v: string) => void;
   placeholder?: string;
   min?: number;
+  disabled?: boolean;
 }) {
   return (
     <input
@@ -580,6 +581,7 @@ function Num(props: {
       inputMode="decimal"
       value={props.value}
       min={props.min ?? 0}
+      disabled={props.disabled}
       placeholder={props.placeholder}
       onChange={(e) => props.onChange(e.target.value.replace(/[^0-9.]/g, ""))}
     />
@@ -1115,44 +1117,65 @@ function Products({ data, run }: { data: BootstrapData; run: RunCommand }) {
           const stock = Object.values(product.stocks).reduce((sum, value) => sum + Number(value), 0);
           return <tr key={product.id}><td className="num-cell">{number(index + 1)}</td><td className="name-cell">{product.name}{product.isArchived&&<small>{tr("مؤرشف")}</small>}{isProductExpired(product)&&<small className="expired-badge">{tr("منتهي — غير قابل للبيع")}</small>}</td><td className="num-cell">{product.piecePrice == null ? "—" : number(product.piecePrice)}</td><td className="num-cell">{product.wholesalePrice == null ? "—" : number(product.wholesalePrice)}</td><td className="num-cell">{product.lastPurchaseCost == null ? "—" : number(product.lastPurchaseCost)}</td><td className="num-cell">{number(stock)}</td><td className="action-cell"><button className="soft" onClick={() => openForm(product)}>{tr("تعديل")}</button><button className="soft" onClick={() => showTransientNotice(`${product.name}\nالباركود: ${product.barcode || "—"}\nتاريخ الانتهاء: ${product.expiryDate || tr("بدون تاريخ")}\nالحالة: ${isProductExpired(product) ? tr("منتهي — غير قابل للبيع") : tr("صالح للبيع")}${product.note ? `\nملاحظة: ${product.note}` : ""}\nسعر الشراء: ${product.pieceCost == null ? "—" : number(product.pieceCost)}\nسعر البيع للفرد: ${product.piecePrice == null ? "—" : number(product.piecePrice)}\nسعر البيع بالجملة: ${product.wholesalePrice == null ? "—" : number(product.wholesalePrice)}\nالمخزون: ${number(stock)}`)}>{tr("عرض التفاصيل")}</button>{product.isArchived?<button className="soft" onClick={()=>void run({type:"product.restore",id:product.id},tr("تمت استعادة المنتج"))}>{tr("استعادة")}</button>:<button className="danger compact-delete" onClick={() => void remove(product)}>{tr("حذف")}</button>}</td></tr>;
         })}
-        {!products.length && <Empty text={tr("لا توجد منتجات مطابقة للبحث")} />}
+        {!products.length && <tr><td colSpan={7}><Empty text={tr("لا توجد منتجات مطابقة للبحث")} /></td></tr>}
       </tbody></table></div>
     </FramedSection>
     {categoryDialogOpen && <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={tr("إضافة فئة")}><ProductCategoryDialog categories={data.categories} run={run} close={() => setCategoryDialogOpen(false)} /></div>}
-    {formOpen && <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={editing ? `تعديل ${editing.name}` : tr("إضافة منتج")}><style>{`.product-modal{scrollbar-width:none;-ms-overflow-style:none}.product-modal::-webkit-scrollbar{display:none}`}</style><div className="modal-card product-modal"><ProductForm run={run} product={editing} warehouses={activeWarehouses(data.warehouses)} categories={data.categories} close={() => setFormOpen(false)} /></div></div>}
+    {formOpen && <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={editing ? `تعديل ${editing.name}` : tr("إضافة منتج")}><style>{`.product-modal{scrollbar-width:none;-ms-overflow-style:none}.product-modal::-webkit-scrollbar{display:none}`}</style><div className="modal-card product-modal"><ProductForm key={editing?.id??"new"} run={run} product={editing} warehouses={activeWarehouses(data.warehouses)} categories={data.categories} canAdjustOpening={data.principal.principalType === "owner" || data.principal.permissions.includes("warehouses.adjust")} close={() => setFormOpen(false)} /></div></div>}
   </section>;
 }
 
-function ProductForm({ run, close, product, warehouses, categories }: { run: RunCommand; close: () => void; product: Product | null; warehouses: BootstrapData["warehouses"]; categories: BootstrapData["categories"] }) {
+type ProductOpeningView = { total:number; remaining:number; consumed:number; allocations:Record<string,number>; warehouseId:string|null; warehouseName?:string|null; cost:number|null; hasNativeOpening:boolean; hasStockHistory:boolean; legacySnapshot:boolean };
+function ProductForm({ run, close, product, warehouses, categories, canAdjustOpening }: { run: RunCommand; close: () => void; product: Product | null; warehouses: BootstrapData["warehouses"]; categories: BootstrapData["categories"]; canAdjustOpening:boolean }) {
   const confirmAction=useAppConfirm();
-  const [name, setName] = useState(product?.name ?? ""), [cost, setCost] = useState(String(product?.pieceCost ?? "")),
-    [price, setPrice] = useState(String(product?.piecePrice ?? "")), [wholesalePrice, setWholesalePrice] = useState(String(product?.wholesalePrice ?? "")),
-    [openingStock, setOpeningStock] = useState(""), [openingWarehouseId, setOpeningWarehouseId] = useState(warehouses.find(warehouse => warehouse.isSalesDefault)?.id ?? ""),
-    [barcode, setBarcode] = useState(product?.barcode ?? ""), [categoryId, setCategoryId] = useState(product?.categoryId ?? ""), [expiryDate, setExpiryDate] = useState(product?.expiryDate ?? ""), [note, setNote] = useState(product?.note ?? "");
-  const barcodeInput = useRef<HTMLInputElement>(null);
-  return <form className="panel product-form" onSubmit={async event => { event.preventDefault(); const sensitive = product && (name.trim() !== product.name || (cost === "" ? null : val(cost)) !== product.pieceCost); const confirmed = sensitive ? await confirmAction({message:tr("product.sensitiveChangeConfirm",{name:product.name})}) : true; if (!confirmed) return;
-    await run({ type: product ? "product.update" : "product.create", id: product?.id, name, barcode, expiryDate, note, pieceCost: cost, piecePrice: price, wholesalePrice, categoryId, openingStock, openingWarehouseId, confirmSensitive: confirmed }, product ? tr("تم تعديل المنتج") : tr("تم إنشاء المنتج")); close(); }}>
-    <div className="product-form-head"><div><small>{product ? tr("بيانات المنتج") : tr("منتج جديد")}</small><h2>{product ? tr("تعديل المنتج") : tr("إضافة منتج جديد")}</h2></div><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}><X /></button></div>
+  const defaultWarehouseId=warehouses.find(warehouse=>warehouse.isSalesDefault)?.id??"";
+  const [name,setName]=useState(product?.name??""),[cost,setCost]=useState(String(product?.pieceCost??"")),[price,setPrice]=useState(String(product?.piecePrice??"")),[wholesalePrice,setWholesalePrice]=useState(String(product?.wholesalePrice??"")),
+    [openingStock,setOpeningStock]=useState(product?String(product.openingStock??""):""),[openingCost,setOpeningCost]=useState(String(product?.openingCost??"")),[openingWarehouseId,setOpeningWarehouseId]=useState(product?.openingWarehouseId??defaultWarehouseId),
+    [openingState,setOpeningState]=useState<ProductOpeningView|null>(null),[openingLoading,setOpeningLoading]=useState(Boolean(product)),[openingError,setOpeningError]=useState(""),
+    [barcode,setBarcode]=useState(product?.barcode??""),[categoryId, setCategoryId] = useState(product?.categoryId ?? ""),[expiryDate,setExpiryDate]=useState(product?.expiryDate??""),[note,setNote]=useState(product?.note??"");
+  const barcodeInput=useRef<HTMLInputElement>(null);
+  const openingProductId=product?.id;
+  useEffect(()=>{
+    if(!openingProductId)return;
+    const controller=new AbortController();
+    void fetch("/api/product-opening?productId="+encodeURIComponent(openingProductId),{signal:controller.signal}).then(readApiResponse).then(value=>{if(controller.signal.aborted)return;const state=value as ProductOpeningView;setOpeningState(state);setOpeningStock(String(state.total));setOpeningCost(state.cost==null?"":String(state.cost));setOpeningWarehouseId(state.warehouseId??"")}).catch(error=>{if((error as Error).name!=="AbortError")setOpeningError(error instanceof Error?error.message:"تعذر تحميل رصيد البداية")}).finally(()=>{if(!controller.signal.aborted)setOpeningLoading(false)});
+    return()=>controller.abort();
+  },[openingProductId]);
+  const historyLocked=Boolean(product&&openingState&&!openingState.hasNativeOpening&&openingState.hasStockHistory),openingEditable=canAdjustOpening&&(!product||Boolean(openingState&&!openingLoading&&!openingError&&!historyLocked));
+  const desiredOpening=val(openingStock),costInput=product&&openingState?.hasNativeOpening?openingCost:cost,desiredOpeningCost=costInput===""?null:val(costInput),openingWarehouseChanged=Boolean(product&&openingState&&desiredOpening>0&&openingWarehouseId!==(openingState.warehouseId??""));
+  const openingDirty=Boolean(product&&openingState&&openingEditable&&(desiredOpening!==openingState.total||(desiredOpening>0&&Number(desiredOpeningCost??0)!==Number(openingState.cost??0))||openingWarehouseChanged));
+  const openingInvalid=openingEditable&&desiredOpening>0&&(!openingWarehouseId||!desiredOpeningCost||desiredOpeningCost<=0)||(openingState?desiredOpening<openingState.consumed:false);
+  const openingWarehouseOptions=[...(openingState?.warehouseId&&!warehouses.some(warehouse=>warehouse.id===openingState.warehouseId)?[{value:openingState.warehouseId,label:openingState.warehouseName||tr("opening.oldWarehouse")}]:[]),...warehouses.map(warehouse=>({value:warehouse.id,label:warehouse.name}))];
+  return <form className="panel product-form" onSubmit={async event=>{event.preventDefault();const sensitive=Boolean(product&&(name.trim()!==product.name||(cost===""?null:val(cost))!==product.pieceCost||openingDirty));const confirmed=sensitive?await confirmAction({message:tr("product.sensitiveChangeConfirm",{name:product?.name??name})}):true;if(!confirmed)return;
+    await run({type:product?"product.update":"product.create",id:product?.id,name,barcode,expiryDate,note,pieceCost:cost,piecePrice:price,wholesalePrice, categoryId, openingStock,openingWarehouseId,...(product?{replaceOpeningStock:openingDirty,relocateOpeningStock:openingDirty&&openingWarehouseChanged,openingCost:desiredOpeningCost}:{}) ,confirmSensitive:confirmed},product?tr("تم تعديل المنتج"):tr("تم إنشاء المنتج"));close()}}>
+    <div className="product-form-head"><div><small>{product?tr("بيانات المنتج"):tr("منتج جديد")}</small><h2>{product?tr("تعديل المنتج"):tr("إضافة منتج جديد")}</h2></div><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}><X /></button></div>
     <div className="product-form-halves">
       <FramedSection title={tr("المعلومات الأساسية")} className="product-form-group">
-        <label>{tr("اسم المنتج")}<input required value={name} onChange={event => setName(event.target.value)} /></label>
-        <label>{tr("الفئة")}<SearchableSelect value={categoryId} onChange={setCategoryId} options={categories.map(category => ({ value: category.id, label: category.name }))} placeholder={tr("بدون فئة")} searchPlaceholder={tr("ابحث عن فئة")} allowEmpty floating /></label>
-        <label className="barcode-field">{tr("الباركود")}<input ref={barcodeInput} dir="ltr" autoComplete="off" value={barcode} onChange={event => setBarcode(event.target.value)} onKeyDown={event => { if (event.key === "Enter") event.preventDefault(); }} /><button type="button" className="soft" onClick={() => barcodeInput.current?.focus()}>{tr("مسح الباركود")}</button></label>
-        <label>{tr("تاريخ انتهاء الصلاحية — اختياري")}<input type="date" dir="ltr" value={expiryDate} onChange={event => setExpiryDate(event.target.value)} /></label>
-        <label>{tr("ملاحظة عن المنتج — اختياري")}<textarea maxLength={1000} rows={2} value={note} onChange={event => setNote(event.target.value)} /></label>
+        <label>{tr("اسم المنتج")}<input required value={name} onChange={event=>setName(event.target.value)}/></label>
+        <label>{tr("الفئة")}<SearchableSelect value={categoryId} onChange={setCategoryId} options={categories.map(category=>({value:category.id,label:category.name}))} placeholder={tr("بدون فئة")} searchPlaceholder={tr("ابحث عن فئة")} allowEmpty floating/></label>
+        <label className="barcode-field">{tr("الباركود")}<input ref={barcodeInput} dir="ltr" autoComplete="off" value={barcode} onChange={event=>setBarcode(event.target.value)} onKeyDown={event=>{if(event.key==="Enter")event.preventDefault()}}/><button type="button" className="soft" onClick={()=>barcodeInput.current?.focus()}>{tr("مسح الباركود")}</button></label>
+        <label>{tr("تاريخ انتهاء الصلاحية — اختياري")}<input type="date" dir="ltr" value={expiryDate} onChange={event=>setExpiryDate(event.target.value)}/></label>
+        <label>{tr("ملاحظة عن المنتج — اختياري")}<textarea maxLength={1000} rows={2} value={note} onChange={event=>setNote(event.target.value)}/></label>
       </FramedSection>
       <FramedSection title={tr("الأسعار والمخزون")} className="product-form-group">
-        <label>{tr("سعر الشراء للفرد")}<Num value={cost} onChange={setCost} /></label><label>{tr("سعر البيع للفرد")}<Num value={price} onChange={setPrice} /></label><label>{tr("سعر البيع بالجملة")}<Num value={wholesalePrice} onChange={setWholesalePrice} /></label>
-        <label>{product ? tr("إضافة رصيد افتتاحي") : tr("رصيد البداية")}<Num value={openingStock} onChange={value => { setOpeningStock(value); if (!value || Number(value) <= 0) setOpeningWarehouseId(""); else if (!openingWarehouseId) setOpeningWarehouseId(warehouses.find(warehouse => warehouse.isSalesDefault)?.id ?? ""); }} /></label>
-        {val(openingStock) > 0 && <label>{tr("مخزن رصيد البداية")}<SearchableSelect value={openingWarehouseId} onChange={setOpeningWarehouseId} placeholder={tr("اختر المخزن")} searchPlaceholder={tr("ابحث عن مخزن")} options={warehouses.map(warehouse => ({ value: warehouse.id, label: warehouse.name }))} floating preferUp resultsMaxHeight={126} /></label>}
+        <label>{tr("سعر الشراء للفرد")}<Num value={cost} onChange={setCost}/></label><label>{tr("سعر البيع للفرد")}<Num value={price} onChange={setPrice}/></label><label>{tr("سعر البيع بالجملة")}<Num value={wholesalePrice} onChange={setWholesalePrice}/></label>
+        <label>{tr("رصيد البداية")}<Num value={openingStock} disabled={!openingEditable} onChange={value=>{setOpeningStock(value);if(!value||Number(value)<=0)setOpeningWarehouseId("");else if(!openingWarehouseId)setOpeningWarehouseId(defaultWarehouseId)}} /></label>
+        {product&&openingLoading&&<small>{tr("opening.loading")}</small>}
+        {product&&openingError&&<small className="error">{openingError} — {tr("opening.failed")}</small>}
+        {product&&openingState&&<small>{tr("opening.consumed")}: <b>{number(openingState.consumed)}</b> · {tr("opening.remaining")}: <b>{number(openingState.remaining)}</b>{desiredOpening>=openingState.consumed&&desiredOpening!==openingState.total?<> · {tr("opening.after")}: <b>{number(desiredOpening-openingState.consumed)}</b></>:null}</small>}
+        {historyLocked&&<small className="error">{tr("opening.locked")}</small>}
+        {product&&openingState?.legacySnapshot&&!openingState.hasNativeOpening&&<small>{tr("opening.legacy")}</small>}
+        {product&&openingState?.hasNativeOpening&&<label>{tr("opening.cost")}<Num value={openingCost} disabled={!openingEditable} onChange={setOpeningCost}/></label>}
+        {!product&&desiredOpening>0&&<small>{tr("opening.cardCost")}</small>}
+        {desiredOpening>0&&<label>{tr("مخزن رصيد البداية")}<SearchableSelect value={openingWarehouseId} onChange={setOpeningWarehouseId} disabled={!openingEditable||openingLoading} placeholder={tr("اختر المخزن")} searchPlaceholder={tr("ابحث عن مخزن")} options={openingWarehouseOptions} floating preferUp resultsMaxHeight={126}/></label>}
+        {product&&!canAdjustOpening&&<small>{tr("opening.permission")}</small>}
       </FramedSection>
-    </div><div className="product-form-actions"><button type="button" className="soft" onClick={close}>{tr("إلغاء")}</button><button className="primary">{product ? tr("حفظ التعديلات") : tr("حفظ المنتج")}</button></div>
+    </div><div className="product-form-actions"><button type="button" className="soft" onClick={close}>{tr("إلغاء")}</button><button className="primary" disabled={Boolean(product&&openingLoading)||Boolean((!product||openingDirty)&&openingInvalid)}>{product?tr("حفظ التعديلات"):tr("حفظ المنتج")}</button></div>
   </form>;
 }
-
 function StockDraftTable({ mode, lines, products, warehouseId, onChange, onRemove }: { mode: "transfer" | "adjust"; lines: DraftLine[]; products: Product[]; warehouseId: string; onChange: (line: DraftLine) => void; onRemove: (id: string) => void }) {
   const adjustment = mode === "adjust";
-  return <div className="erp-table-wrap stock-draft"><table className="erp-table" aria-label={tr("المنتجات الجاري تنفيذ العملية عليها")}><colgroup><col style={{width:"7%"}}/><col style={{width:adjustment?"27%":"37%"}}/><col style={{width:"18%"}}/><col style={{width:"20%"}}/>{adjustment&&<col style={{width:"20%"}}/>}<col style={{width:"8%"}}/></colgroup><thead><tr><th>{tr("رقم")}</th><th>{tr("المنتج")}</th><th>{adjustment ? tr("المخزون الحالي") : tr("المتوفر")}</th><th>{adjustment ? tr("الكمية الفعلية") : tr("الكمية للتحويل")}</th>{adjustment&&<th>{tr("تكلفة الوحدة")}</th>}<th>{tr("حذف")}</th></tr></thead><tbody>{lines.map((line,index)=>{const product=products.find(item=>item.id===line.productId)!;const available=Number(product?.stocks[warehouseId]??0);const increasing=adjustment&&line.actualQuantity!==""&&val(line.actualQuantity)>available;return <tr key={line.productId}><td className="num-cell">{number(index+1)}</td><td>{product.name}</td><td className="num-cell">{number(available)}</td><td><Num value={adjustment?line.actualQuantity:line.quantity} onChange={value=>onChange(adjustment?{...line,actualQuantity:value}:{...line,quantity:value})}/></td>{adjustment&&<td>{increasing&&product.lastPurchaseCost==null?<Num value={line.unitPrice} onChange={value=>onChange({...line,unitPrice:value})} placeholder={tr("مطلوب")}/>:<span className="draft-cost">{number(inventoryUnitCost(product))}</span>}</td>}<td className="action-cell"><button type="button" className="icon danger" aria-label={tr("ui.deleteItem",{name:product.name})} onClick={()=>onRemove(line.productId)}><X/></button></td></tr>})}{!lines.length&&<tr><td colSpan={adjustment?6:5} className="draft-empty">{tr("أضف منتجًا لبدء العملية")}</td></tr>}</tbody></table></div>;
+  return <div className="erp-table-wrap stock-draft"><table className="erp-table" aria-label={tr("المنتجات الجاري تنفيذ العملية عليها")}><colgroup><col style={{width:"7%"}}/><col style={{width:adjustment?"27%":"37%"}}/><col style={{width:"18%"}}/><col style={{width:"20%"}}/>{adjustment&&<col style={{width:"20%"}}/>}<col style={{width:"8%"}}/></colgroup><thead><tr><th>{tr("رقم")}</th><th>{tr("المنتج")}</th><th>{adjustment ? tr("المخزون الحالي") : tr("المتوفر")}</th><th>{adjustment ? tr("الكمية الفعلية") : tr("الكمية للتحويل")}</th>{adjustment&&<th>{tr("تكلفة الوحدة")}</th>}<th>{tr("حذف")}</th></tr></thead><tbody>{lines.map((line,index)=>{const product=products.find(item=>item.id===line.productId)!;const available=Number(product?.stocks[warehouseId]??0);const increasing=adjustment&&line.actualQuantity!==""&&val(line.actualQuantity)>available;return <tr key={line.productId}><td className="num-cell">{number(index+1)}</td><td>{product.name}</td><td className="num-cell">{number(available)}</td><td><Num value={adjustment?line.actualQuantity:line.quantity} onChange={value=>onChange(adjustment?{...line,actualQuantity:value}:{...line,quantity:value})}/></td>{adjustment&&<td>{increasing&&inventoryUnitCost(product)<=0?<Num value={line.unitPrice} onChange={value=>onChange({...line,unitPrice:value})} placeholder={tr("مطلوب")}/>:<span className="draft-cost">{number(inventoryUnitCost(product))}</span>}</td>}<td className="action-cell"><button type="button" className="icon danger" aria-label={tr("ui.deleteItem",{name:product.name})} onClick={()=>onRemove(line.productId)}><X/></button></td></tr>})}{!lines.length&&<tr><td colSpan={adjustment?6:5} className="draft-empty">{tr("أضف منتجًا لبدء العملية")}</td></tr>}</tbody></table></div>;
 }
 
 function MultiStockForm({
@@ -1220,7 +1243,7 @@ function MultiStockForm({
   const invalidAdjustment = mode === "adjust" && lines.some(line => {
     const product = data.products.find(item => item.id === line.productId);
     const before = Number(product?.stocks[from] ?? 0);
-    return line.actualQuantity === "" || (val(line.actualQuantity) > before && product?.lastPurchaseCost == null && val(line.unitPrice) <= 0);
+    return line.actualQuantity === "" || (val(line.actualQuantity) > before && (!product || inventoryUnitCost(product) <= 0) && val(line.unitPrice) <= 0);
   });
   return (
     <div className="form-stack stock-operation-panel">

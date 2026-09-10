@@ -1,4 +1,16 @@
 export const arMessages = {
+  "opening.cost": "تكلفة رصيد البداية",
+  "opening.loading": "جاري تحميل رصيد البداية من سجل المخزون الكامل…",
+  "opening.failed": "يمكن تعديل بيانات المنتج، لكن تعديل رصيد البداية متوقف.",
+  "opening.consumed": "تم التصرف سابقًا من رصيد البداية",
+  "opening.remaining": "المتبقي الحالي منه",
+  "opening.after": "المتبقي بعد التعديل",
+  "opening.locked": "هذا المنتج لديه سجل مخزون سابق بدون رصيد بداية أصلي قابل للتعديل. استخدم شاشة تصحيح المخزون حتى لا نعيد كتابة التاريخ.",
+  "opening.legacy": "الرصيد المرحل من DataAcc لقطة حالية محفوظة، وليس رصيد بداية أصليًا يمكن نقله رجعيًا.",
+  "opening.cardCost": "تكلفة رصيد البداية عند الإنشاء هي سعر الشراء للفرد أعلاه.",
+  "opening.permission": "تعديل رصيد البداية يحتاج صلاحية تصحيح المخزون. يمكنك تعديل بيانات المنتج والأسعار فقط.",
+  "opening.oldWarehouse": "مخزن سابق",
+
   "nav.pos": "نقطة البيع",
   "nav.invoices": "الفواتير",
   "nav.stock": "المخازن",
@@ -878,6 +890,18 @@ export type MessageKey = keyof typeof arMessages;
 export type TranslationParams = Record<string, string | number>;
 
 export const frMessages: Record<MessageKey, string> = {
+  "opening.cost": "Coût du stock initial",
+  "opening.loading": "Chargement du stock initial depuis son historique complet…",
+  "opening.failed": "Les informations du produit restent modifiables, mais pas le stock initial.",
+  "opening.consumed": "Quantité initiale déjà utilisée",
+  "opening.remaining": "Quantité initiale restante",
+  "opening.after": "Reste après correction",
+  "opening.locked": "Ce produit possède un historique sans stock initial modifiable. Utilisez la correction de stock pour préserver cet historique.",
+  "opening.legacy": "Le solde importé de DataAcc est un état du stock à la migration, et ne peut pas être déplacé rétroactivement.",
+  "opening.cardCost": "Le coût initial à la création est le prix d’achat unitaire indiqué ci-dessus.",
+  "opening.permission": "La correction du stock initial nécessite la permission de corriger le stock. Vous pouvez modifier les informations et les prix du produit.",
+  "opening.oldWarehouse": "Ancien dépôt",
+
   "nav.pos": "Point de vente",
   "nav.invoices": "Factures",
   "nav.stock": "Dépôts",

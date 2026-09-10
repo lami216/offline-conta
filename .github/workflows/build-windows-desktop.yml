@@ -2,7 +2,9 @@ name: Build Windows desktop
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, fix/accounting-audit-20260910]
+permissions:
+  contents: read
 jobs:
   build:
     # Native better-sqlite3 Electron rebuild currently requires the VS2022 toolchain.
@@ -22,8 +24,10 @@ jobs:
           "GYP_MSVS_VERSION=2022" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: npm ci
       - run: npm test
+      - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm run build
+      - run: npm run test:production-legacy
       - run: npm run desktop:prepare
       - run: npm run desktop:rebuild-native
       - run: npm run desktop:test-native

@@ -1,3 +1,4 @@
+import { productsWithCurrentCosts } from "./product-cost.ts";
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import type { SqliteDatabase as Db, DbDocument as Document } from "./sqlite.ts";
 type FindCursor<T> = ReturnType<Db["collection"]>["find"] extends (...args:any[])=>infer R ? R : never;
@@ -41,28 +42,30 @@ const productConstraint = (f: ReportFilters, categoryScope: ProductScope) => f.p
 export const OPERATING_FINANCIAL_TYPES = new Set(["sale", "purchase", "expense", "party-receipt", "party-payment"]);
 export const isOperatingFinancialMovement = (type: unknown) => OPERATING_FINANCIAL_TYPES.has(String(type));
 
-type Cost = { unit: number | null; source: "snapshot" | "historical-purchase" | "unknown" };
+type Cost = { unit: number | null; source: "snapshot" | "historical-purchase" | "historical-opening" | "unknown" };
 
 /** Applies persisted legacy sale adjustments read-only so historical accounting remains stable. */
 async function saleFacts(db: Db, documents: Document[], f: ReportFilters, categoryScope: ProductScope = null) {
   const facts: ReportRow[] = [];
   const productIds = [...new Set(documents.flatMap(document => ((document.lines ?? []) as Document[]).map(line => String(line.productId ?? "")).filter(Boolean)))];
   const parentIds=[...new Set(documents.filter(document=>document.kind==="return"&&document.parentDocumentId).map(document=>String(document.parentDocumentId)))];
-  const [identityRows,parentRows,purchaseRows]=await Promise.all([
+  const [identityRows,parentRows,purchaseRows,openingRows]=await Promise.all([
     db.collection("products").find({ id: { $in: productIds } }).project({ id: 1, name: 1, sku: 1 }).toArray(),
     db.collection("documents").find({id:{$in:parentIds},kind:"sale"}).project({id:1,occurredAt:1}).toArray(),
     productIds.length?db.collection("documents").find({kind:"purchase",status:"posted","lines.productId":{$in:productIds}}).project({occurredAt:1,lines:1}).sort({occurredAt:1}).toArray():Promise.resolve([]),
+    productIds.length?db.collection("documents").find({kind:"adjustment",status:"posted","lines.productId":{$in:productIds}}).project({number:1,openingCorrection:1,occurredAt:1,lines:1}).sort({occurredAt:1}).toArray():Promise.resolve([]),
   ]);
-  const identities = new Map(identityRows.map(product => [String(product.id), product])),parentDates=new Map(parentRows.map(document=>[String(document.id),String(document.occurredAt)])),purchaseHistory=new Map<string,Array<{at:string;unit:number}>>();
+  const identities = new Map(identityRows.map(product => [String(product.id), product])),parentDates=new Map(parentRows.map(document=>[String(document.id),String(document.occurredAt)])),purchaseHistory=new Map<string,Array<{at:string;unit:number}>>(),openingHistory=new Map<string,Array<{at:string;unit:number}>>();
   for(const purchase of purchaseRows)for(const purchaseLine of (purchase.lines??[]) as Document[]){const key=String(purchaseLine.productId);if(!productIds.includes(key)||!Number.isFinite(Number(purchaseLine.unitPrice)))continue;const rows=purchaseHistory.get(key)??[];rows.push({at:String(purchase.occurredAt),unit:n(purchaseLine.unitPrice)});purchaseHistory.set(key,rows)}
+  for(const opening of openingRows){if(!(opening.openingCorrection===true||String(opening.number??"").startsWith("OPEN-")))continue;for(const openingLine of (opening.lines??[]) as Document[]){const key=String(openingLine.productId),unit=Number(openingLine.unitPrice);if(!productIds.includes(key)||!Number.isFinite(unit)||unit<=0)continue;const rows=openingHistory.get(key)??[];rows.push({at:String(opening.occurredAt),unit});openingHistory.set(key,rows)}}
   for (const document of documents) for (const line of (document.lines ?? []) as Document[]) {
     if (!lineMatches(line, f, categoryScope)) continue;
     const sign = document.kind === "return" ? -1 : 1;
     // Legacy read-only adjustments normally carry the original line cost. Records that do
     // not carry it must resolve at the original sale date, never the return date.
     const costDate=document.kind==="return"&&document.parentDocumentId?parentDates.get(String(document.parentDocumentId))??String(document.occurredAt):String(document.occurredAt);
-    const historical=[...(purchaseHistory.get(String(line.productId))??[])].reverse().find(row=>row.at<=costDate);
-    const cost:Cost=line.costAtSale!==null&&line.costAtSale!==undefined&&Number.isFinite(Number(line.costAtSale))?{unit:n(line.costAtSale),source:"snapshot"}:historical?{unit:historical.unit,source:"historical-purchase"}:{unit:null,source:"unknown"};
+    const historical=[...(purchaseHistory.get(String(line.productId))??[])].reverse().find(row=>row.at<=costDate),historicalOpening=[...(openingHistory.get(String(line.productId))??[])].reverse().find(row=>row.at<=costDate);
+    const cost:Cost=line.costAtSale!==null&&line.costAtSale!==undefined&&Number.isFinite(Number(line.costAtSale))?{unit:n(line.costAtSale),source:"snapshot"}:historical?{unit:historical.unit,source:"historical-purchase"}:historicalOpening?{unit:historicalOpening.unit,source:"historical-opening"}:{unit:null,source:"unknown"};
     const revenue = sign * n(line.lineTotal), quantity = sign * n(line.quantity), costKnown = cost.unit !== null, cogs = sign * n(line.quantity) * (cost.unit ?? 0), profit = revenue - cogs;
     const identity = identities.get(String(line.productId));
     const productName = String(identity?.name ?? line.description ?? "").trim() || "منتج غير متاح";
@@ -80,11 +83,11 @@ function profitSummary(facts: ReportRow[]) {
 /** Current expired stock is a non-cash inventory exposure: reporting never mutates stock or accounts. */
 async function expiredInventoryLoss(db: Db) {
   const today = new Date().toISOString().slice(0, 10);
-  const products = await db.collection("products").find({ expiryDate: { $type: "string", $lt: today }, isArchived: { $ne: true } }).toArray();
+  const products = await productsWithCurrentCosts(db, await db.collection("products").find({ expiryDate: { $type: "string", $lt: today }, isArchived: { $ne: true } }).toArray());
   return products.reduce((total, product) => {
     if (!isProductExpired(product, today)) return total;
     const remaining = Object.values((product.stocks ?? {}) as Record<string, number>).reduce((sum, quantity) => sum + Math.max(0, n(quantity)), 0);
-    const cost = Number.isFinite(product.lastPurchaseCost) ? n(product.lastPurchaseCost) : Number.isFinite(product.pieceCost) ? n(product.pieceCost) : 0;
+    const cost = inventoryUnitCost(product);
     return total + remaining * cost;
   }, 0);
 }
@@ -184,7 +187,7 @@ export async function buildReport(db: Db, f: ReportFilters): Promise<ReportRespo
     db.collection("parties").find().sort({name:1}).toArray(),
     db.collection("paymentAccounts").find({isActive:{$ne:false},isArchived:{$ne:true}}).sort({createdAt:1,name:1}).toArray(),
     // Archived products remain here because their on-hand stock still has value.
-    db.collection("products").find().project({stocks:1,lastPurchaseCost:1,pieceCost:1}).toArray(),
+    db.collection("products").find().toArray().then(rows => productsWithCurrentCosts(db, rows)),
     db.collection("warehouses").find().sort({createdAt:1,name:1}).toArray(),
   ]);
   const factsByDocument=new Map<string,{cost:number;profit:number}>();for(const fact of facts){const key=String(fact.documentId),current=factsByDocument.get(key)??{cost:0,profit:0};current.cost+=n(fact.cost);current.profit+=n(fact.profit);factsByDocument.set(key,current)}
@@ -196,7 +199,7 @@ export async function buildReport(db: Db, f: ReportFilters): Promise<ReportRespo
   const currentAccountsBalance=bankAccounts.reduce((v,a)=>v+a.balance,0);
   const warehouseValues=warehouses.map(warehouse=>{
     const id=String(warehouse.id??warehouse._id);
-    const value=products.reduce((sum,product)=>sum+n(product.stocks?.[id])*inventoryUnitCost({lastPurchaseCost:Number.isFinite(product.lastPurchaseCost)?n(product.lastPurchaseCost):null,pieceCost:Number.isFinite(product.pieceCost)?n(product.pieceCost):null}),0);
+    const value=products.reduce((sum,product)=>sum+n(product.stocks?.[id])*inventoryUnitCost({lastPurchaseCost:Number.isFinite(product.lastPurchaseCost)?n(product.lastPurchaseCost):null,openingCost:Number.isFinite(product.openingCost)?n(product.openingCost):null,legacyOpeningCost:Number.isFinite(product.legacyOpeningCost)?n(product.legacyOpeningCost):null}),0);
     return {id,name:String(warehouse.name),value,archived:warehouse.isArchived===true};
   }).filter(warehouse=>!warehouse.archived||warehouse.value!==0);
   const currentInventoryValue=warehouseValues.reduce((sum,warehouse)=>sum+warehouse.value,0);

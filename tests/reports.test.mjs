@@ -26,10 +26,10 @@ test("overview current position is netted, complete, finite, and independent of 
   await db.collection("parties").insertMany([{id:"a",name:"A",receivable:100,payable:20},{id:"b",name:"B",receivable:10,payable:50}]);
   await db.collection("warehouses").insertMany([{_id:"wa",name:"Warehouse A"},{_id:"wb",name:"Warehouse B"},{_id:"zero",name:"Zero"},{_id:"old",name:"Old",isArchived:true}]);
   await db.collection("products").insertMany([
-    {id:"p1",stocks:{wa:10,wb:2},lastPurchaseCost:20,pieceCost:999},
-    {id:"p2",stocks:{wa:5},lastPurchaseCost:30},
-    {id:"archived-product",isArchived:true,stocks:{wa:4},lastPurchaseCost:50},
-    {id:"legacy-cost",stocks:{old:3},pieceCost:10},
+    {id:"p1",stocks:{wa:10,wb:2},openingCost:20,lastPurchaseCost:20,pieceCost:999},
+    {id:"p2",stocks:{wa:5},openingCost:30,lastPurchaseCost:30},
+    {id:"archived-product",isArchived:true,stocks:{wa:4},openingCost:50,lastPurchaseCost:50},
+    {id:"legacy-cost",stocks:{old:3},pieceCost:999,legacyOpeningCost:10},
   ]);
   await db.collection("paymentAccounts").insertMany([{id:"cash",name:"Cash",balance:100,isActive:true},{id:"bankily",name:"Bankily",balance:50},{id:"bank",name:"Bank",balance:-20},{id:"zero",name:"Zero",balance:0},{id:"archived",name:"Archived",balance:999,isArchived:true}]);
   await db.collection("financialMovements").insertOne({id:"period",occurredAt:"2026-08-10T12:00:00Z",amount:7,direction:"in"});
@@ -84,7 +84,7 @@ test("purchase summary exposes total paid and due and expiry loss is non-cash st
   const purchase=await buildReport(db,filters("purchases",{unpaged:true})); assert.deepEqual([purchase.summary.total,purchase.summary.paid,purchase.summary.due],[170,110,60]);
   const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10); await db.collection("products").insertOne({id:"a",name:"A",expiryDate:yesterday,lastPurchaseCost:12,pieceCost:3,stocks:{one:4,two:1}});
   const before=await db.collection("financialMovements").countDocuments(); const stock=await buildReport(db,filters("stock",{unpaged:true}));
-  assert.equal(stock.summary.expiredInventoryLoss,60); assert.equal(await db.collection("financialMovements").countDocuments(),before); assert.equal((await db.collection("products").findOne({id:"a"})).stocks.one,4);
+  assert.equal(stock.summary.expiredInventoryLoss,350, "five units use the latest posted purchase cost of 70, not the stale cache of 12"); assert.equal(await db.collection("financialMovements").countDocuments(),before); assert.equal((await db.collection("products").findOne({id:"a"})).stocks.one,4);
 });
 
 test("party ledger preserves historical totals for legacy sale adjustments",async()=>{
@@ -119,3 +119,17 @@ test("product movement combines period commerce with current active-warehouse st
 test("financial operating summary classifies sales and expenses but not transfers",async()=>{await db.collection("financialMovements").insertMany([{id:"sale",occurredAt:"2026-08-10T12:00:00Z",type:"sale",direction:"in",amount:1000},{id:"expense",occurredAt:"2026-08-10T13:00:00Z",type:"expense",direction:"out",amount:200},{id:"ti",occurredAt:"2026-08-10T14:00:00Z",type:"transfer-in",direction:"in",amount:1000},{id:"to",occurredAt:"2026-08-10T14:00:00Z",type:"transfer-out",direction:"out",amount:1000}]);const report=await buildReport(db,filters("financial"));assert.deepEqual([report.summary.businessIncoming,report.summary.businessOutgoing,report.summary.businessNet,report.summary.balanceNet],[1000,200,800,800]);});
 test("expense summary splits only materialized recurring documents",async()=>{await db.collection("documents").insertMany([doc("rec","expense","2026-08-10",[],{total:300,recurringId:"rent"}),doc("once","expense","2026-08-11",[],{total:200})]);const report=await buildReport(db,filters("expenses"));assert.deepEqual([report.summary.total,report.summary.recurringTotal,report.summary.oneOffTotal,report.summary.count],[500,300,200,2]);});
 test("party ledger summary reuses row effects for debit and credit totals",async()=>{await db.collection("parties").insertOne({id:"c",name:"Customer",partyType:"customer",receivable:0,payable:0});await db.collection("documents").insertMany([doc("sale","sale","2026-08-10",[],{partyId:"c",total:100,dueTotal:100}),doc("pay","payment","2026-08-11",[],{partyId:"c",total:100,partyCashDirection:"receive"})]);const report=await buildReport(db,filters("party-ledger",{partyId:"c"}));assert.deepEqual([report.summary.debitTotal,report.summary.creditTotal,report.summary.net],[100,100,0]);});
+
+
+test("historical report cost falls back to native opening but never invents DataAcc snapshot cost",async()=>{
+  await db.collection("products").insertMany([{id:"native",name:"Native",sku:"N",openingCost:55},{id:"legacy",name:"Legacy",sku:"L",legacyOpeningCost:80}]);
+  await db.collection("documents").insertMany([
+    {id:"open",number:"OPEN-1",kind:"adjustment",status:"posted",occurredAt:"2026-08-01T09:00:00.000Z",total:0,paidTotal:0,dueTotal:0,lines:[line("ol","native",10,55)]},
+    doc("native-sale","sale","2026-08-10",[line("ns","native",2,100)]),
+    doc("legacy-sale","sale","2026-08-10",[line("ls","legacy",2,100)]),
+  ]);
+  const report=await buildReport(db,filters("profit",{groupBy:"product"}));
+  const native=report.rows.find(row=>row.productId==="native"),legacy=report.rows.find(row=>row.productId==="legacy");
+  assert.deepEqual([native.cost,native.profit,native.costKnown],[110,90,true]);
+  assert.deepEqual([legacy.cost,legacy.profit,legacy.costKnown],[0,200,false]);
+});

@@ -1,0 +1,19 @@
+name: Opening stock audit
+on:
+  push:
+    branches: ["fix/editable-opening-stock-cost-basis-20260910"]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Audit related code
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== opening / cost / profit references ==='
+          grep -RInE 'openingStock|openingWarehouse|openingUnitCost|lastPurchaseCost|pieceCost|costAtSale|grossProfit|inventoryUnitCost|historicalCost|authoritativeCost|recomputePurchaseCosts|legacyOpeningCost|legacy-opening|type: ?"opening"|type === ?"opening"' app lib legacy migration tests scripts --exclude-dir=node_modules || true
+          echo '=== stock writes ==='
+          grep -RInE 'stocks\.|changeStock\(|quantityDelta|stockMovements|adjustment\.post|transfer\.post|purchase\.post|sale\.post|product\.update' app lib legacy migration tests scripts --exclude-dir=node_modules || true

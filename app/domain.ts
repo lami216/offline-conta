@@ -42,10 +42,18 @@ export interface Product {
   name: string;
   sku: string;
   barcode: string;
+  /** Editable product-card purchase price; never an accounting cost authority by itself. */
   pieceCost: number | null;
-  /** Cost from the newest posted purchase; manual pieceCost is never authoritative. */
+  /** Effective accounting cost: newest posted purchase, otherwise an opening-cost fallback. */
   lastPurchaseCost?: number | null;
   lastPurchaseAt?: string | null;
+  lastPurchaseCostSource?: "purchase" | "opening" | "legacy-opening" | "adjustment" | null;
+  /** Native opening balance metadata. Historical movement replay remains authoritative for consumed quantity. */
+  openingStock?: number | null;
+  openingCost?: number | null;
+  openingWarehouseId?: string | null;
+  /** Imported DataAcc cost fallback. The imported stock row is a snapshot, not an editable native opening balance. */
+  legacyOpeningCost?: number | null;
   piecePrice: number | null;
   /** Optional wholesale selling price per individual unit. */
   wholesalePrice: number | null;
@@ -256,9 +264,9 @@ export function formatMoney(value: number) {
 export function displayDocumentNumber(document: Pick<DocumentRecord, "number" | "sequence" | "kind">) {
   return ["sale", "purchase", "expense"].includes(document.kind) && Number.isSafeInteger(Number(document.sequence)) && Number(document.sequence) > 0 ? String(document.sequence) : document.number;
 }
-/** Presentation-only inventory valuation; it does not change accounting cost policy. */
-export function inventoryUnitCost(product: Pick<Product, "lastPurchaseCost" | "pieceCost">) {
-  return product.lastPurchaseCost ?? product.pieceCost ?? 0;
+/** Accounting-backed inventory valuation. Manual pieceCost never silently becomes historical cost. */
+export function inventoryUnitCost(product: Pick<Product, "lastPurchaseCost" | "openingCost" | "legacyOpeningCost">) {
+  return product.lastPurchaseCost ?? product.openingCost ?? product.legacyOpeningCost ?? 0;
 }
 export function formatDate(
   value: Date | string | number,

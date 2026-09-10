@@ -16,6 +16,9 @@ export type OpeningStockState = {
   allocations: Record<string, number>;
   warehouseId: string | null;
   cost: number | null;
+  hasNativeOpening: boolean;
+  hasStockHistory: boolean;
+  legacySnapshot: boolean;
 };
 
 function take(allocation: Record<string, number>, warehouseId: string, quantity: number) {
@@ -36,8 +39,11 @@ function add(allocation: Record<string, number>, warehouseId: string, quantity: 
  */
 export async function deriveOpeningStockState(db: Db, session: ClientSession | undefined, product: Document): Promise<OpeningStockState> {
   const productId = String(product.id ?? "");
-  if (!productId) return { total: 0, remaining: 0, consumed: 0, allocations: {}, warehouseId: null, cost: null };
+  if (!productId) return { total: 0, remaining: 0, consumed: 0, allocations: {}, warehouseId: null, cost: null, hasNativeOpening: false, hasStockHistory: false, legacySnapshot: false };
   const movements = await db.collection("stockMovements").find({ productId }, { session }).sort({ occurredAt: 1 }).toArray();
+  const hasNativeOpening = movements.some(movement => movement.type === "opening" || movement.type === "opening-correction");
+  const hasStockHistory = movements.length > 0;
+  const legacySnapshot = movements.some(movement => movement.type === "legacy-opening") || positive(product.legacyOpeningCost) !== null;
   const openingDocumentIds = [...new Set(movements.filter(movement => movement.type === "opening").map(movement => String(movement.documentId ?? "")).filter(Boolean))];
   const openingDocuments = openingDocumentIds.length
     ? await db.collection("documents").find({ id: { $in: openingDocumentIds } }, { session }).sort({ occurredAt: 1 }).toArray()
@@ -118,28 +124,45 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
   // Prefer explicit metadata written by the fixed workflow, but retain the complete
   // movement replay as the quantity authority for pre-fix products.
   const metadataTotal = finite(product.openingStock);
-  if (metadataTotal !== null && metadataTotal >= 0 && movements.some(movement => movement.type === "opening-correction")) total = metadataTotal;
+  if (metadataTotal !== null && metadataTotal >= 0 && hasNativeOpening) total = metadataTotal;
   total = Math.max(total, remaining);
   const consumed = Math.max(0, total - remaining);
   const explicitWarehouseId = typeof product.openingWarehouseId === "string" && product.openingWarehouseId ? product.openingWarehouseId : null;
   const warehouseId = explicitWarehouseId ?? Object.keys(allocations)[0] ?? firstWarehouseId;
   const explicitCost = positive(product.openingCost);
   const cost = explicitCost ?? inferredCost ?? null;
-  return { total, remaining, consumed, allocations, warehouseId, cost };
+  return { total, remaining, consumed, allocations, warehouseId, cost, hasNativeOpening, hasStockHistory, legacySnapshot };
 }
 
-export function planOpeningStockCorrection(state: OpeningStockState, desiredTotal: number, targetWarehouseId: string | null) {
+export function planOpeningStockCorrection(state: OpeningStockState, desiredTotal: number, targetWarehouseId: string | null, relocateRemaining = false) {
   if (!Number.isInteger(desiredTotal) || desiredTotal < 0) throw new Error("رصيد البداية غير صالح");
   if (desiredTotal < state.consumed) throw new Error(`لا يمكن خفض رصيد البداية عن ${state.consumed} لأن هذه الكمية تم التصرف بها سابقًا`);
   const desiredRemaining = desiredTotal - state.consumed;
-  if (desiredRemaining > 0 && !targetWarehouseId) throw new Error("مخزن رصيد البداية مطلوب");
+  const fallbackWarehouseId = targetWarehouseId ?? state.warehouseId ?? Object.keys(state.allocations).sort()[0] ?? null;
+  if (desiredRemaining > 0 && !fallbackWarehouseId) throw new Error("مخزن رصيد البداية مطلوب");
   const desiredAllocations: Record<string, number> = {};
-  if (desiredRemaining > 0 && targetWarehouseId) desiredAllocations[targetWarehouseId] = desiredRemaining;
-  const warehouses = new Set([...Object.keys(state.allocations), ...Object.keys(desiredAllocations)]);
-  const deltas = [...warehouses].map(warehouseId => ({
-    warehouseId,
-    delta: Number(desiredAllocations[warehouseId] ?? 0) - Number(state.allocations[warehouseId] ?? 0),
-  })).filter(item => item.delta !== 0);
+  if (relocateRemaining) {
+    if (desiredRemaining > 0 && fallbackWarehouseId) desiredAllocations[fallbackWarehouseId] = desiredRemaining;
+  } else {
+    for (const [warehouseId, quantity] of Object.entries(state.allocations)) if (quantity > 0) desiredAllocations[warehouseId] = quantity;
+    const change = desiredRemaining - state.remaining;
+    if (change > 0 && fallbackWarehouseId) desiredAllocations[fallbackWarehouseId] = Number(desiredAllocations[fallbackWarehouseId] ?? 0) + change;
+    if (change < 0) {
+      let reduction = -change;
+      const order = [...new Set([fallbackWarehouseId, ...Object.keys(desiredAllocations).sort()].filter((value): value is string => Boolean(value)))];
+      for (const warehouseId of order) {
+        if (reduction <= 0) break;
+        const available = Number(desiredAllocations[warehouseId] ?? 0);
+        const removed = Math.min(available, reduction);
+        desiredAllocations[warehouseId] = available - removed;
+        reduction -= removed;
+      }
+      if (reduction > 1e-9) throw new Error("تعذر مطابقة رصيد البداية مع سجل الحركات");
+    }
+    for (const warehouseId of Object.keys(desiredAllocations)) if (desiredAllocations[warehouseId] <= 0) delete desiredAllocations[warehouseId];
+  }
+  const warehouseIds = new Set([...Object.keys(state.allocations), ...Object.keys(desiredAllocations)]);
+  const deltas = [...warehouseIds].map(warehouseId => ({ warehouseId, delta: Number(desiredAllocations[warehouseId] ?? 0) - Number(state.allocations[warehouseId] ?? 0) })).filter(item => item.delta !== 0);
   return { desiredRemaining, desiredAllocations, deltas };
 }
 

@@ -115,9 +115,7 @@ async function historicalCost(db: Db, session: ClientSession, productId: string,
     const openingLine = (document.lines as Line[] | undefined)?.find(item => item.productId === productId);
     if (openingLine && Number.isFinite(Number(openingLine.unitPrice)) && Number(openingLine.unitPrice) > 0) return Number(openingLine.unitPrice);
   }
-  const product = await db.collection("products").findOne({ id: productId }, { session });
-  const legacy = Number(product?.legacyOpeningCost);
-  return Number.isFinite(legacy) && legacy > 0 ? legacy : null;
+  return null;
 }
 async function changePartyDebt(db: Db, session: ClientSession, partyId: unknown, kind: "sale" | "purchase", delta: number, reversing = false) {
   if (!delta) return;
@@ -275,23 +273,25 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     }
     const state = await deriveOpeningStockState(db, session, product);
     const openingStock = optionalNumber(body.openingStock,"رصيد البداية") ?? 0;
+    if (!state.hasNativeOpening && state.hasStockHistory && openingStock > 0) throw new CommandError("لا يمكن إنشاء رصيد بداية رجعي بعد وجود حركات مخزون. استخدم تصحيح المخزون بدلًا من ذلك.", 409);
     if(!Number.isInteger(openingStock))throw new CommandError("رصيد البداية غير صالح");
     const requestedOpeningCost = optionalNumber(body.openingCost, "تكلفة رصيد البداية") ?? state.cost ?? pieceCost;
     if(openingStock>0&&(!requestedOpeningCost||requestedOpeningCost<=0))throw new CommandError("تكلفة رصيد البداية مطلوبة");
     const openingWarehouseId = text(body.openingWarehouseId) || state.warehouseId;
     let targetWarehouse: WarehouseDoc | null = null;
     if (openingWarehouseId) targetWarehouse = await warehouses(db).findOne({ _id: openingWarehouseId, isArchived: { $ne: true } }, { session }) ?? null;
+    const relocateOpeningStock = body.relocateOpeningStock === true;
     let plan;
-    try { plan = planOpeningStockCorrection(state, openingStock, targetWarehouse?._id ?? null); }
+    try { plan = planOpeningStockCorrection(state, openingStock, targetWarehouse?._id ?? openingWarehouseId ?? null, relocateOpeningStock); }
     catch (error) { throw new CommandError(error instanceof Error ? error.message : "رصيد البداية غير صالح", 409); }
     const openingCost = openingStock > 0 ? requestedOpeningCost : null;
     const costChanged = Number(state.cost ?? 0) !== Number(openingCost ?? 0);
-    const warehouseChanged = Boolean(openingStock > state.consumed && openingWarehouseId !== state.warehouseId);
+    const warehouseChanged = Boolean(relocateOpeningStock && openingStock > state.consumed && openingWarehouseId !== state.warehouseId);
     if (plan.deltas.length || costChanged || warehouseChanged || !Number.isFinite(Number(product.openingStock))) {
       const correction = { ...baseDocument("adjustment", "OPEN-COR"), openingCorrection: true, openingStockBefore: state.total, openingStockAfter: openingStock, openingCostBefore: state.cost, openingCostAfter: openingCost, partyId: null, partyName: null, warehouseId: state.warehouseId, warehouseName: state.warehouseId ? (await warehouses(db).findOne({ _id: state.warehouseId }, { session }))?.name ?? null : null, destinationWarehouseId: targetWarehouse?._id ?? null, destinationWarehouseName: targetWarehouse?.name ?? null, parentDocumentId: null, paymentMethod: null, title: "تصحيح رصيد البداية", total: 0, dueTotal: 0, paidTotal: 0, lines: [] as Record<string, unknown>[] };
       for (const item of plan.deltas) {
-        const warehouse = item.delta > 0 ? targetWarehouse : await warehouses(db).findOne({ _id: item.warehouseId }, { session });
-        if (!warehouse || String(warehouse._id) !== item.warehouseId) throw new CommandError("تعذر تحديد مخزن رصيد البداية", 409);
+        const warehouse = item.delta > 0 ? await warehouses(db).findOne({ _id: item.warehouseId, isArchived: { $ne: true } }, { session }) : await warehouses(db).findOne({ _id: item.warehouseId }, { session });
+        if (!warehouse || String(warehouse._id) !== item.warehouseId) throw new CommandError(item.delta > 0 ? "مخزن رصيد البداية غير متاح" : "تعذر تحديد مخزن رصيد البداية", 409);
         try { await changeStock(db, session, product, warehouse, item.delta, correction, "opening-correction"); }
         catch (error) { if (error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("تعذر تصحيح رصيد البداية لأن الرصيد الحالي لا يطابق سجل الحركات. راجع حركة المنتج أولًا.", 409); throw error; }
         correction.lines.push({ id: id("line"), productId, description: `${name} — ${warehouse.name}`, quantity: item.delta, unitPrice: openingCost ?? state.cost ?? 0, lineTotal: 0 });
@@ -462,7 +462,7 @@ export async function POST(request: Request) {const licenseDenied=await requireV
     const body = await request.json() as Input; type = text(body.type);
     const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","adjustment.post":"warehouses.adjust","payment.post":text(body.side)==="receivable"?"customers.collect":"suppliers.pay","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","settlement.post":"customers.edit","offset.post":"customers.edit","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-transfer.post":"banks.transfer","account-opening-balance-correction.post":"banks.balance_correct","party.create":body.partyType==="customer"?"customers.create":"suppliers.create"};
     const capability=map[type];if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;
-    if(type==="product.update"&&body.replaceOpeningStock===true){const stockDenied=await requireCapability(request,"warehouses.adjust");if(stockDenied)return stockDenied;}
+    if((type==="product.update"&&body.replaceOpeningStock===true)||(type==="product.create"&&Number(body.openingStock??0)>0)){const stockDenied=await requireCapability(request,"warehouses.adjust");if(stockDenied)return stockDenied;}
     if(!validSameOrigin(request))return Response.json({error:"طلب غير صالح"},{status:403});
     const idempotencyKey=text(request.headers.get("Idempotency-Key"));
     if(!idempotencyKey||idempotencyKey.length>200)return Response.json({error:"مفتاح العملية مطلوب"},{status:400});

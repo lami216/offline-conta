@@ -5,6 +5,7 @@ import { log } from "../../../lib/log";
 import { getPrincipalFromRequest, hasCapability } from "../../../lib/auth";
 import { peekNextDocumentSequence } from "../../../lib/document-sequences";
 import { calculatePartyFinancialSummaries } from "../../party-metrics";
+import { productsWithCurrentCosts } from "../../../lib/product-cost.ts";
 import { getInvoiceBranding } from "../../../lib/invoice-branding";
 
 export async function GET(request: Request) {const licenseDenied=await requireValidLicense();if(licenseDenied)return licenseDenied;
@@ -12,31 +13,21 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
   try {
     const db = await getDatabase();
 
-    // One-time, idempotent legacy backfill. The sorted unwind makes the first line
-    // for each product the newest real posted purchase price.
-    const legacyCosts = await db.collection("documents").aggregate([
-      { $match: { kind: "purchase", status: "posted" } }, { $sort: { occurredAt: -1 } },
-      { $unwind: "$lines" }, { $match: { "lines.productId": { $type: "string" } } },
-      { $group: { _id: "$lines.productId", cost: { $first: "$lines.unitPrice" }, at: { $first: "$occurredAt" } } },
-    ]).toArray();
-    if (legacyCosts.length) await db.collection("products").bulkWrite(legacyCosts.map(cost => ({
-      updateOne: { filter: { id: cost._id, lastPurchaseCost: { $exists: false } }, update: { $set: { lastPurchaseCost: cost.cost, lastPurchaseAt: cost.at } } },
-    })));
     const [parties, warehouses, products, categories, documents, movements, financialMovements, partyMetricDocuments, partyMetricMovements, paymentAccounts, accountTransfers, productCounter, nextSale, nextPurchase, nextExpense, branding] = await Promise.all([
       db.collection("parties").find().sort({ name: 1 }).toArray(), db.collection("warehouses").find().sort({ isSalesDefault: -1, name: 1 }).toArray(),
-      db.collection("products").find().sort({ name: 1 }).toArray(), db.collection("productCategories").find().sort({ name: 1 }).toArray(), db.collection("documents").find().sort({ occurredAt: -1 }).limit(500).toArray(),
-      db.collection("stockMovements").find().sort({ occurredAt: -1 }).limit(1000).toArray(),
-      db.collection("financialMovements").find().sort({ occurredAt: -1 }).limit(2000).toArray(),
+      db.collection("products").find().sort({ name: 1 }).toArray(), db.collection("productCategories").find().sort({ name: 1 }).toArray(), db.collection("documents").find().sort({ occurredAt: -1 }).toArray(),
+      db.collection("stockMovements").find().sort({ occurredAt: -1 }).toArray(),
+      db.collection("financialMovements").find().sort({ occurredAt: -1 }).toArray(),
       // Legacy read-only adjustments remain in aggregate inputs; no creation surface exists.
       db.collection("documents").find({ kind: { $in: ["sale", "return", "purchase"] } }, { projection: { _id: 0, kind: 1, status: 1, partyId: 1, total: 1, lines: 1 } }).toArray(),
       db.collection("financialMovements").find({ partyId: { $type: "string" } }, { projection: { _id: 0, partyId: 1, direction: 1, amount: 1 } }).toArray(),
       db.collection("paymentAccounts").find().sort({ createdAt: 1 }).toArray(),
-      db.collection("accountTransfers").find().sort({ occurredAt: -1 }).limit(500).toArray(),
+      db.collection("accountTransfers").find().sort({ occurredAt: -1 }).toArray(),
       db.collection<{ _id: string; value: number }>("counters").findOne({ _id: "productSequence" }),
       peekNextDocumentSequence(db, "sale"), peekNextDocumentSequence(db, "purchase"), peekNextDocumentSequence(db, "expense"), getInvoiceBranding(db),
     ]);
     const clean = (rows: Array<Record<string, unknown>>) => rows.map(({ _id, ...row }) => ({ id: row.id ?? String(_id), ...row }));
-    const cleanProducts = clean(products).map(product => ({ ...product, wholesalePrice: (product as Record<string, unknown>).wholesalePrice ?? null, expiryDate: (product as Record<string, unknown>).expiryDate ?? null, note: (product as Record<string, unknown>).note ?? null, categoryId: (product as Record<string, unknown>).categoryId ?? null }));
+    const cleanProducts = clean(await productsWithCurrentCosts(db, products)).map(product => ({ ...product, wholesalePrice: (product as Record<string, unknown>).wholesalePrice ?? null, expiryDate: (product as Record<string, unknown>).expiryDate ?? null, note: (product as Record<string, unknown>).note ?? null, categoryId: (product as Record<string, unknown>).categoryId ?? null }));
     const cleanCategories = clean(categories).map(category => { const item = category as Record<string, unknown>; return { id: String(item.id ?? ""), name: String(item.name ?? "") }; }).filter(category => category.id && category.name);
     const nonOperatingTypes=new Set(["opening-balance","opening-balance-correction"]);
     const totalByAccount=new Map<string,{_id:string;income:number;expenses:number;purchaseTotal:number;derivedOpening:number}>();
@@ -58,7 +49,7 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
     // Keep archived accounts exposed for historical name resolution; selectors filter them centrally.
     const selectorAccounts=(clean(accountRows) as Array<Record<string,unknown>>).map(account=>bankAccess?account:{id:account.id,code:account.code,name:account.name,isActive:account.isActive,isArchived:account.isArchived,allowNegativeBalance:false});
     const allowedDocuments=(clean(documents) as Array<Record<string,unknown>>).filter(document=>hasCapability(principal,"records.view")||(hasCapability(principal,"pos.view")&&document.kind==="sale")||(hasCapability(principal,"purchases.view")&&document.kind==="purchase")||(hasCapability(principal,"expenses.view")&&document.kind==="expense"));
-    const exposedParties=partyAdmin?cleanParties:(cleanParties as Array<Record<string,unknown>>).map(({id,name,phone,partyType})=>({id,name,phone,partyType,receivable:0,payable:0,net:0}));
+    const exposedParties=(cleanParties as Array<Record<string,unknown>>).map(party=>hasCapability(principal,resolvePartyType(party)==="supplier"?"suppliers.view":"customers.view")?party:{id:party.id,name:party.name,phone:party.phone,partyType:party.partyType,receivable:0,payable:0,net:0});
     const exposedProducts=productAdmin?cleanProducts:(cleanProducts as Array<Record<string,unknown>>).map(({id,name,sku,barcode,piecePrice,wholesalePrice,expiryDate,categoryId,stocks,isArchived})=>({id,name,sku,barcode,piecePrice,wholesalePrice,expiryDate,categoryId,stocks,isArchived,pieceCost:null,lastPurchaseCost:null}));
     const visiblePartyIds=new Set(cleanParties.filter(party=>(resolvePartyType(party)==="customer"&&hasCapability(principal,"customers.view"))||(resolvePartyType(party)==="supplier"&&hasCapability(principal,"suppliers.view"))).map(party=>String(party.id)));
     const partyFinancialSummaries=partyAdmin?calculatePartyFinancialSummaries(partyMetricDocuments as never[],partyMetricMovements as never[]).filter(summary=>visiblePartyIds.has(summary.partyId)):[];

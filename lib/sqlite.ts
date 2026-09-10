@@ -15,6 +15,7 @@ const tableNames: Record<string, string> = {
   restoreSnapshots: "restore_snapshots", legacyImportRuns: "legacy_import_runs",
 };
 let connection: Database.Database | undefined;
+let database: SqliteDatabase | undefined;
 
 const encode = (value: unknown) => JSON.stringify(value, (_key, item) => item instanceof Date ? item.toISOString() : item);
 const decode = (value: string) => JSON.parse(value) as DbDocument;
@@ -63,7 +64,7 @@ class Cursor {
 }
 class Collection<T extends DbDocument=DbDocument> {
   constructor(private db: Database.Database, private table:string){}
-  private all(query?:DbDocument){const exact=query&&Object.entries(query).find(([key,value])=>["_id","id","key"].includes(key)&&(typeof value==="string"||typeof value==="number"));if(exact){const row=this.db.prepare(`SELECT data_json FROM ${this.table} WHERE record_key=?`).get(String(exact[1])) as {data_json:string}|undefined;return row?[decode(row.data_json)]:[]}return (this.db.prepare(`SELECT data_json FROM ${this.table}`).all() as {data_json:string}[]).map(x=>decode(x.data_json))}
+  private all(query?:DbDocument){const exact=query&&Object.entries(query).find(([key,value])=>["_id","id","key"].includes(key)&&(typeof value==="string"||typeof value==="number"));if(exact){const row=this.db.prepare(`SELECT data_json FROM ${this.table} WHERE record_key=?`).get(String(exact[1])) as {data_json:string}|undefined;return row?[decode(row.data_json)]:[]}return (this.db.prepare(`SELECT data_json FROM ${this.table} ORDER BY rowid`).all() as {data_json:string}[]).map(x=>decode(x.data_json))}
   private key(row:DbDocument){return String(row._id??row.id??row.key??crypto.randomUUID())}
   private save(row:DbDocument,key?:string){const id=key??this.key(row);if(row._id===undefined)row._id=id;this.db.prepare(`INSERT INTO ${this.table}(record_key,data_json) VALUES(?,?) ON CONFLICT(record_key) DO UPDATE SET data_json=excluded.data_json`).run(id,encode(row));return id}
   find(query:DbDocument={},options?:any){let rows=this.all(query).filter(row=>matches(row,query));if(options?.projection)rows=new Cursor(rows).project(options.projection) as any;return rows instanceof Cursor?rows:new Cursor(rows)}
@@ -92,9 +93,9 @@ export class SqliteDatabase {
 }
 
 export function databasePath(){return process.env.ALKARNA_DATABASE_PATH||join(process.env.ALKARNA_USER_DATA||join(process.cwd(),".dev-data"),"data","alkarna.sqlite")}
-export function initializeDatabase(){if(connection)return new SqliteDatabase(connection);const file=databasePath();mkdirSync(dirname(file),{recursive:true});connection=new Database(file);connection.pragma("foreign_keys = ON");connection.pragma("journal_mode = WAL");connection.pragma("synchronous = FULL");connection.pragma("busy_timeout = 5000");ensureDatabaseSchema(connection);return new SqliteDatabase(connection)}
+export function initializeDatabase(){if(database&&connection?.open)return database;const file=databasePath();mkdirSync(dirname(file),{recursive:true});connection=new Database(file);connection.pragma("foreign_keys = ON");connection.pragma("journal_mode = WAL");connection.pragma("synchronous = FULL");connection.pragma("busy_timeout = 5000");ensureDatabaseSchema(connection);database=new SqliteDatabase(connection);return database}
 export function getDatabase(){return initializeDatabase()}
-export function closeDatabase(){connection?.close();connection=undefined}
+export function closeDatabase(){connection?.close();connection=undefined;database=undefined}
 export function ensureDatabaseSchema(input:Database.Database|SqliteDatabase){const db=input instanceof SqliteDatabase?input.native:input;db.exec(`CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY,applied_at TEXT NOT NULL);`);let version=(db.prepare("SELECT max(version) version FROM schema_migrations").get() as any).version??0;if(version<1){db.transaction(()=>{for(const table of Object.values(tableNames))db.exec(`CREATE TABLE ${table}(record_key TEXT PRIMARY KEY,data_json TEXT NOT NULL)`);db.exec(`CREATE TABLE product_stocks(product_id TEXT NOT NULL,warehouse_id TEXT NOT NULL,quantity REAL NOT NULL,PRIMARY KEY(product_id,warehouse_id));CREATE TABLE document_lines(id TEXT PRIMARY KEY,document_id TEXT NOT NULL,product_id TEXT,quantity REAL,unit_price INTEGER,line_total INTEGER);CREATE UNIQUE INDEX products_barcode_nonempty ON products(json_extract(data_json,'$.barcode')) WHERE json_extract(data_json,'$.barcode') IS NOT NULL AND json_extract(data_json,'$.barcode')<>'';`);db.prepare("INSERT INTO schema_migrations VALUES(1,?)").run(new Date().toISOString())})();seed(db);version=1}if(version<2){const indexes=[
  ["products_sku_nonempty","products","json_extract(data_json,'$.sku')","json_extract(data_json,'$.sku') IS NOT NULL AND json_extract(data_json,'$.sku')<>''"],
  ["products_legacy_key_nonempty","products","json_extract(data_json,'$.legacyKey')","json_extract(data_json,'$.legacyKey') IS NOT NULL AND json_extract(data_json,'$.legacyKey')<>''"],

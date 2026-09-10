@@ -3,10 +3,12 @@ import type { SqliteSession as ClientSession, SqliteDatabase as Db } from "../..
 import { getDatabase } from "../../../lib/sqlite.ts";
 import { log } from "../../../lib/log.ts";
 import { requireCapability, validSameOrigin, type Capability } from "../../../lib/auth.ts";
-import { isProductExpired } from "../../domain.ts";
+import { isProductExpired, resolvePartyType } from "../../domain.ts";
 import { normalizePartyNet, partyCashDelta, partyNet } from "../../party-balance.ts";
 import { nextDocumentSequence, type SequencedDocumentKind } from "../../../lib/document-sequences.ts";
-import { deriveOpeningStockState, openingFallbackCost, planOpeningStockCorrection } from "../../../lib/opening-stock.ts";
+import { deriveOpeningStockState, planOpeningStockCorrection } from "../../../lib/opening-stock.ts";
+
+import { currentProductCost, resolveProductCost } from "../../../lib/product-cost.ts";
 
 type Input = Record<string, unknown>;
 type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; purchaseCost?: number | null; costAtSale?: number | null; grossProfit?: number | null };
@@ -28,7 +30,8 @@ const optionalNumber = (v: unknown, label: string, integer = false) => {
 const optionalDate = (value: unknown) => {
   const date = text(value);
   if (!date) return null;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) !== date) throw new CommandError("تاريخ انتهاء الصلاحية غير صالح");
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== date) throw new CommandError("تاريخ انتهاء الصلاحية غير صالح");
   return date;
 };
 async function nextProductCode(db: Db, session: ClientSession) {
@@ -78,44 +81,15 @@ async function financialMovement(db: Db, session: ClientSession, document: Recor
   if (!result.matchedCount) throw new CommandError(`الرصيد غير كافٍ في ${account.name}`);
   await db.collection("financialMovements").insertOne({ id: id("fin"), paymentMethod: account.id, paymentCode: account.code, direction, amount, documentId: document.id, documentNumber: document.number, partyId: document.partyId ?? null, partyName: document.partyName ?? null, type, occurredAt: document.occurredAt, transferId: document.transferId ?? null, note: document.note ?? null }, { session });
 }
-async function latestPurchaseCost(db: Db, session: ClientSession, productId: unknown) {
-  const latest = await db.collection("documents").findOne({ kind: "purchase", status: "posted", "lines.productId": productId }, { session, sort: { occurredAt: -1 }, projection: { lines: 1, occurredAt: 1 } });
-  const line = (latest?.lines as Line[] | undefined)?.find(item => item.productId === productId);
-  const cost = line && Number.isFinite(Number(line.unitPrice)) && Number(line.unitPrice) > 0 ? Number(line.unitPrice) : null;
-  return { cost, occurredAt: latest?.occurredAt ?? null };
-}
 async function authoritativeCost(db: Db, session: ClientSession, product: Record<string, unknown>) {
-  const purchase = await latestPurchaseCost(db, session, product.id);
-  if (purchase.cost !== null) {
-    await db.collection("products").updateOne({ id: product.id }, { $set: { lastPurchaseCost: purchase.cost, lastPurchaseAt: purchase.occurredAt, lastPurchaseCostSource: "purchase" } }, { session });
-    product.lastPurchaseCost = purchase.cost; product.lastPurchaseAt = purchase.occurredAt; product.lastPurchaseCostSource = "purchase";
-    return purchase.cost;
-  }
-  const state = await deriveOpeningStockState(db, session, product);
-  const fallback = openingFallbackCost(product, state);
-  const adjustmentCost = fallback.cost == null && product.lastPurchaseCostSource === "adjustment" && Number.isFinite(Number(product.lastPurchaseCost)) && Number(product.lastPurchaseCost) > 0 ? Number(product.lastPurchaseCost) : null;
-  const cost = fallback.cost ?? adjustmentCost;
-  const source = fallback.source ?? (adjustmentCost !== null ? "adjustment" : null);
-  await db.collection("products").updateOne({ id: product.id }, { $set: { lastPurchaseCost: cost, lastPurchaseAt: null, lastPurchaseCostSource: source, ...(state.total > 0 && state.cost != null && !Number.isFinite(Number(product.openingCost)) ? { openingStock: state.total, openingCost: state.cost, openingWarehouseId: state.warehouseId } : {}) } }, { session });
-  product.lastPurchaseCost = cost; product.lastPurchaseAt = null; product.lastPurchaseCostSource = source;
-  return cost;
+  return currentProductCost(db, session, product);
 }
 async function historicalCost(db: Db, session: ClientSession, productId: string, occurredAt: string) {
-  const purchase = await db.collection("documents").findOne(
-    { kind: "purchase", status: "posted", occurredAt: { $lte: occurredAt }, "lines.productId": productId },
-    { session, sort: { occurredAt: -1 } },
-  );
-  const line = (purchase?.lines as Line[] | undefined)?.find(item => item.productId === productId);
-  if (line && Number.isFinite(Number(line.unitPrice)) && Number(line.unitPrice) > 0) return Number(line.unitPrice);
-  const openingDocuments = await db.collection("documents").find(
-    { kind: "adjustment", status: "posted", occurredAt: { $lte: occurredAt }, "lines.productId": productId }, { session },
-  ).sort({ occurredAt: -1 }).toArray();
-  for (const document of openingDocuments) {
-    if (!(document.openingCorrection === true || String(document.number ?? "").startsWith("OPEN-"))) continue;
-    const openingLine = (document.lines as Line[] | undefined)?.find(item => item.productId === productId);
-    if (openingLine && Number.isFinite(Number(openingLine.unitPrice)) && Number(openingLine.unitPrice) > 0) return Number(openingLine.unitPrice);
-  }
-  return null;
+  const documents = await db.collection("documents").find(
+    { status: "posted", occurredAt: { $lte: occurredAt }, "lines.productId": productId }, { session },
+  ).toArray();
+  // Do not pass today's product metadata into a historical invoice correction.
+  return resolveProductCost({ id: productId }, documents).cost;
 }
 async function changePartyDebt(db: Db, session: ClientSession, partyId: unknown, kind: "sale" | "purchase", delta: number, reversing = false) {
   if (!delta) return;
@@ -141,16 +115,7 @@ async function reverseInvoicePayment(db: Db, session: ClientSession, document: R
 async function recomputePurchaseCosts(db: Db, session: ClientSession, productIds: string[]) {
   for (const productId of new Set(productIds)) {
     const product = await db.collection("products").findOne({ id: productId }, { session });
-    if (!product) continue;
-    const latest = await latestPurchaseCost(db, session, productId);
-    if (latest.cost !== null) {
-      await db.collection("products").updateOne({ id: productId }, { $set: { lastPurchaseCost: latest.cost, lastPurchaseAt: latest.occurredAt, lastPurchaseCostSource: "purchase" } }, { session });
-      continue;
-    }
-    const state = await deriveOpeningStockState(db, session, product);
-    const fallback = openingFallbackCost(product, state);
-    const adjustmentCost = fallback.cost == null && product.lastPurchaseCostSource === "adjustment" && Number.isFinite(Number(product.lastPurchaseCost)) && Number(product.lastPurchaseCost) > 0 ? Number(product.lastPurchaseCost) : null;
-    await db.collection("products").updateOne({ id: productId }, { $set: { lastPurchaseCost: fallback.cost ?? adjustmentCost, lastPurchaseAt: null, lastPurchaseCostSource: fallback.source ?? (adjustmentCost !== null ? "adjustment" : null), ...(state.total > 0 && state.cost != null && !Number.isFinite(Number(product.openingCost)) ? { openingStock: state.total, openingCost: state.cost, openingWarehouseId: state.warehouseId } : {}) } }, { session });
+    if (product) await currentProductCost(db, session, product);
   }
 }
 async function refs(db: Db, session: ClientSession, body: Input, requireParty = false) {
@@ -268,12 +233,13 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const product=await db.collection("products").findOne({id:productId},{session}); if(!product)throw new CommandError("المنتج غير موجود",404);
     const replaceOpeningStock = body.replaceOpeningStock === true;
     if (!replaceOpeningStock) {
+      if (Number(body.openingStock ?? 0) > 0 && Number(body.openingStock) !== Number(product.openingStock ?? 0)) throw new CommandError("تعديل رصيد البداية يحتاج طلب تصحيح صريح", 409);
       await db.collection("products").updateOne({id:productId},{$set:values},{session});
       return productId;
     }
     const state = await deriveOpeningStockState(db, session, product);
     const openingStock = optionalNumber(body.openingStock,"رصيد البداية") ?? 0;
-    if (!state.hasNativeOpening && state.hasStockHistory && openingStock > 0) throw new CommandError("لا يمكن إنشاء رصيد بداية رجعي بعد وجود حركات مخزون. استخدم تصحيح المخزون بدلًا من ذلك.", 409);
+    if (!state.hasNativeOpening && (state.hasStockHistory || Object.values(product.stocks ?? {}).some(quantity => Number(quantity) !== 0)) && openingStock > 0) throw new CommandError("لا يمكن إنشاء رصيد بداية رجعي بعد وجود حركات مخزون. استخدم تصحيح المخزون بدلًا من ذلك.", 409);
     if(!Number.isInteger(openingStock))throw new CommandError("رصيد البداية غير صالح");
     const requestedOpeningCost = optionalNumber(body.openingCost, "تكلفة رصيد البداية") ?? state.cost ?? pieceCost;
     if(openingStock>0&&(!requestedOpeningCost||requestedOpeningCost<=0))throw new CommandError("تكلفة رصيد البداية مطلوبة");
@@ -461,7 +427,12 @@ export async function POST(request: Request) {const licenseDenied=await requireV
   try {
     const body = await request.json() as Input; type = text(body.type);
     const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","adjustment.post":"warehouses.adjust","payment.post":text(body.side)==="receivable"?"customers.collect":"suppliers.pay","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","settlement.post":"customers.edit","offset.post":"customers.edit","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-transfer.post":"banks.transfer","account-opening-balance-correction.post":"banks.balance_correct","party.create":body.partyType==="customer"?"customers.create":"suppliers.create"};
-    const capability=map[type];if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;
+    let capability=map[type];
+    if(["party-cash.post","payment.post","settlement.post","offset.post"].includes(type)){
+      const party=await getDatabase().collection("parties").findOne({id:text(body.partyId)});
+      if(party){const supplier=resolvePartyType(party)==="supplier";capability=type==="party-cash.post"||type==="payment.post"?(supplier?"suppliers.pay":"customers.collect"):(supplier?"suppliers.edit":"customers.edit");}
+    }
+    if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;
     if((type==="product.update"&&body.replaceOpeningStock===true)||(type==="product.create"&&Number(body.openingStock??0)>0)){const stockDenied=await requireCapability(request,"warehouses.adjust");if(stockDenied)return stockDenied;}
     if(!validSameOrigin(request))return Response.json({error:"طلب غير صالح"},{status:403});
     const idempotencyKey=text(request.headers.get("Idempotency-Key"));

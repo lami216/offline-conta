@@ -1,6 +1,7 @@
 import type { SqliteDatabase as Db, SqliteSession as ClientSession, DbDocument as Document } from "./sqlite.ts";
 
 const finite = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 };
@@ -40,7 +41,9 @@ function add(allocation: Record<string, number>, warehouseId: string, quantity: 
 export async function deriveOpeningStockState(db: Db, session: ClientSession | undefined, product: Document): Promise<OpeningStockState> {
   const productId = String(product.id ?? "");
   if (!productId) return { total: 0, remaining: 0, consumed: 0, allocations: {}, warehouseId: null, cost: null, hasNativeOpening: false, hasStockHistory: false, legacySnapshot: false };
-  const movements = await db.collection("stockMovements").find({ productId }, { session }).sort({ occurredAt: 1 }).toArray();
+  // Replay insertion order. Edits/voids retain the invoice's original occurredAt,
+  // so sorting by that date would move today's correction into the past.
+  const movements = await db.collection("stockMovements").find({ productId }, { session }).toArray();
   const hasNativeOpening = movements.some(movement => movement.type === "opening" || movement.type === "opening-correction");
   const hasStockHistory = movements.length > 0;
   const legacySnapshot = movements.some(movement => movement.type === "legacy-opening") || positive(product.legacyOpeningCost) !== null;
@@ -56,7 +59,7 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
   }
 
   const allocations: Record<string, number> = {};
-  const consumedBySale = new Map<string, number>();
+  const consumedBySale = new Map<string, Array<{ opening: number; other: number }>>();
   const transferredByDocument = new Map<string, number>();
   let total = 0;
   let inferredCost: number | null = null;
@@ -104,14 +107,27 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
     }
     if ((type === "sale" || type === "sale-edit") && delta < 0) {
       const used = take(allocations, warehouseId, -delta);
-      consumedBySale.set(documentId, Number(consumedBySale.get(documentId) ?? 0) + used);
+      const segments = consumedBySale.get(documentId) ?? [];
+      segments.push({ opening: used, other: -delta - used });
+      consumedBySale.set(documentId, segments);
       continue;
     }
     if ((type === "sale-edit" || type === "sale-void") && delta > 0) {
-      const consumed = Math.max(0, Number(consumedBySale.get(documentId) ?? 0));
-      const restored = Math.min(delta, consumed);
-      add(allocations, warehouseId, restored);
-      consumedBySale.set(documentId, consumed - restored);
+      const segments = consumedBySale.get(documentId) ?? [];
+      let returning = delta;
+      // Undo the last units of this sale first: later purchase-origin units must
+      // not be relabelled as opening stock when a mixed sale is reduced.
+      while (returning > 0 && segments.length) {
+        const segment = segments[segments.length - 1];
+        const other = Math.min(returning, segment.other);
+        segment.other -= other;
+        returning -= other;
+        const opening = Math.min(returning, segment.opening);
+        segment.opening -= opening;
+        returning -= opening;
+        add(allocations, warehouseId, opening);
+        if (!segment.opening && !segment.other) segments.pop();
+      }
       continue;
     }
     // Inventory corrections and any future stock outflow consume opening units first.
@@ -129,8 +145,7 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
   const consumed = Math.max(0, total - remaining);
   const explicitWarehouseId = typeof product.openingWarehouseId === "string" && product.openingWarehouseId ? product.openingWarehouseId : null;
   const warehouseId = explicitWarehouseId ?? Object.keys(allocations)[0] ?? firstWarehouseId;
-  const explicitCost = positive(product.openingCost);
-  const cost = explicitCost ?? inferredCost ?? null;
+  const cost = Object.hasOwn(product, "openingCost") ? positive(product.openingCost) : inferredCost;
   return { total, remaining, consumed, allocations, warehouseId, cost, hasNativeOpening, hasStockHistory, legacySnapshot };
 }
 

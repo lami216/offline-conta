@@ -46,7 +46,7 @@ test("sale decreases stock and insufficient sale rolls every write back", async 
 });
 
 test("direct sale command allows below-cost pricing and records loss", async () => {
- await db.collection("products").updateOne({id:"p1"},{$set:{"stocks.wh-main":5,lastPurchaseCost:12000}});const id=await command({type:"sale.post",warehouseId:"wh-main",paymentMethod:"cash",lines:[{productId:"p1",quantity:1,piecePrice:10000}]});const doc=await db.collection("documents").findOne({id});assert.deepEqual([doc.lines[0].costAtSale,doc.lines[0].grossProfit],[12000,-2000]);
+ await db.collection("products").updateOne({id:"p1"},{$set:{"stocks.wh-main":5,openingCost:12000,lastPurchaseCost:12000}});const id=await command({type:"sale.post",warehouseId:"wh-main",paymentMethod:"cash",lines:[{productId:"p1",quantity:1,piecePrice:10000}]});const doc=await db.collection("documents").findOne({id});assert.deepEqual([doc.lines[0].costAtSale,doc.lines[0].grossProfit],[12000,-2000]);
 });
 
 test("direct sale and purchase use virtual parties without creating master data or debt", async () => {
@@ -69,14 +69,14 @@ test("transfer and adjustment initialize missing destination fields", async t =>
   await db.collection("products").updateOne({ id: "p1" }, { $set: { "stocks.wh-main": 30 } });
   await command({ type: "transfer.post", fromWarehouseId: "wh-main", toWarehouseId: "wh-b", lines: [{ productId: "p1", quantity: 10 }] });
   let product = await db.collection("products").findOne({ id: "p1" }); assert.deepEqual(product.stocks, { "wh-main": 20, "wh-b": 10 });
-  await db.collection("products").updateOne({ id: "p1" }, { $unset: { "stocks.wh-b": "" }, $set: { lastPurchaseCost: 50 } });
+  await db.collection("products").updateOne({ id: "p1" }, { $unset: { "stocks.wh-b": "" }, $set: { openingCost: 50, lastPurchaseCost: 50 } });
   await command({ type: "adjustment.post", warehouseId: "wh-b", reason: "count", lines: [{ productId: "p1", actualQuantity: 17 }] });
   product = await db.collection("products").findOne({ id: "p1" }); assert.equal(product.stocks["wh-b"], 17);
   assert.deepEqual(await db.collection("stockMovements").findOne({ type: "adjustment" }, { projection: { _id: 0, balanceBefore: 1, balanceAfter: 1, quantityDelta: 1 } }), { quantityDelta: 17, balanceBefore: 0, balanceAfter: 17 });
 });
 
 test("sale update is the only correction workflow and adjusts stock in both directions", async t => {
-  await db.collection("products").updateOne({ id: "p1" }, { $set: { "stocks.wh-main": 10, lastPurchaseCost: 40 } });
+  await db.collection("products").updateOne({ id: "p1" }, { $set: { "stocks.wh-main": 10, openingCost: 40, lastPurchaseCost: 40 } });
   const saleId = await command({ type: "sale.post", warehouseId: "wh-main", partyId: "party", paymentMethod: "note", lines: [{ productId: "p1", quantity: 5, piecePrice: 100 }] });
   const original = await db.collection("documents").findOne({ id: saleId });
   assert.equal((await db.collection("products").findOne({ id: "p1" })).stocks["wh-main"], 5);
@@ -276,7 +276,7 @@ test("payment accounts use auditable opening balances and manual adjustments", a
 });
 
 test("sale update preserves identity and historical cost while revising stock, bank and debt", async t => {
-  await db.collection("products").updateOne({ id: "p1" }, { $set: { "stocks.wh-main": 20, lastPurchaseCost: 50 } });
+  await db.collection("products").updateOne({ id: "p1" }, { $set: { "stocks.wh-main": 20, openingCost: 50, lastPurchaseCost: 50 } });
   await db.collection("paymentAccounts").insertOne({ id: "bank-b", code: "bank-b", name: "Bank B", isActive: true, balance: 0 });
   const saleId = await command({ type: "sale.post", warehouseId: "wh-main", partyId: "party", paymentMethod: "cash-id", lines: [{ productId: "p1", quantity: 1, piecePrice: 100 }] });
   const original = await db.collection("documents").findOne({ id: saleId });
@@ -405,10 +405,10 @@ test("warehouse safe deletion archives history and blocks stock/default", async 
 });
 
 test("editing product may add audited opening stock but zero adds nothing", async t => {
-  await command({type:"product.update",id:"p1",name:"Tea",pieceCost:50,openingStock:4,openingWarehouseId:"wh-b"});
+  await command({type:"product.update",id:"p1",name:"Tea",pieceCost:50,replaceOpeningStock:true,openingStock:4,openingCost:50,openingWarehouseId:"wh-b"});
   assert.equal((await db.collection("products").findOne({id:"p1"})).stocks["wh-b"],4);
-  assert.deepEqual(await db.collection("stockMovements").findOne({productId:"p1"},{projection:{_id:0,type:1,quantityDelta:1,balanceBefore:1,balanceAfter:1}}),{type:"opening",quantityDelta:4,balanceBefore:0,balanceAfter:4});
-  assert.equal((await db.collection("documents").findOne({"lines.productId":"p1"})).title,"إضافة رصيد افتتاحي");
+  assert.deepEqual(await db.collection("stockMovements").findOne({productId:"p1"},{projection:{_id:0,type:1,quantityDelta:1,balanceBefore:1,balanceAfter:1}}),{type:"opening-correction",quantityDelta:4,balanceBefore:0,balanceAfter:4});
+  assert.equal((await db.collection("documents").findOne({"lines.productId":"p1"})).title,"تصحيح رصيد البداية");
   const before=await db.collection("stockMovements").countDocuments(); await command({type:"product.update",id:"p1",name:"Tea",pieceCost:50,openingStock:0}); assert.equal(await db.collection("stockMovements").countDocuments(),before);
 });
 

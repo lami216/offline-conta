@@ -1,3 +1,4 @@
+import { productsWithCurrentCosts } from "./product-cost.ts";
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import type { SqliteDatabase as Db, DbDocument as Document } from "./sqlite.ts";
 type FindCursor<T> = ReturnType<Db["collection"]>["find"] extends (...args:any[])=>infer R ? R : never;
@@ -82,7 +83,7 @@ function profitSummary(facts: ReportRow[]) {
 /** Current expired stock is a non-cash inventory exposure: reporting never mutates stock or accounts. */
 async function expiredInventoryLoss(db: Db) {
   const today = new Date().toISOString().slice(0, 10);
-  const products = await db.collection("products").find({ expiryDate: { $type: "string", $lt: today }, isArchived: { $ne: true } }).toArray();
+  const products = await productsWithCurrentCosts(db, await db.collection("products").find({ expiryDate: { $type: "string", $lt: today }, isArchived: { $ne: true } }).toArray());
   return products.reduce((total, product) => {
     if (!isProductExpired(product, today)) return total;
     const remaining = Object.values((product.stocks ?? {}) as Record<string, number>).reduce((sum, quantity) => sum + Math.max(0, n(quantity)), 0);
@@ -186,7 +187,7 @@ export async function buildReport(db: Db, f: ReportFilters): Promise<ReportRespo
     db.collection("parties").find().sort({name:1}).toArray(),
     db.collection("paymentAccounts").find({isActive:{$ne:false},isArchived:{$ne:true}}).sort({createdAt:1,name:1}).toArray(),
     // Archived products remain here because their on-hand stock still has value.
-    db.collection("products").find().project({stocks:1,lastPurchaseCost:1,openingCost:1,legacyOpeningCost:1}).toArray(),
+    db.collection("products").find().toArray().then(rows => productsWithCurrentCosts(db, rows)),
     db.collection("warehouses").find().sort({createdAt:1,name:1}).toArray(),
   ]);
   const factsByDocument=new Map<string,{cost:number;profit:number}>();for(const fact of facts){const key=String(fact.documentId),current=factsByDocument.get(key)??{cost:0,profit:0};current.cost+=n(fact.cost);current.profit+=n(fact.profit);factsByDocument.set(key,current)}

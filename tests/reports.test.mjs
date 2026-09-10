@@ -26,9 +26,9 @@ test("overview current position is netted, complete, finite, and independent of 
   await db.collection("parties").insertMany([{id:"a",name:"A",receivable:100,payable:20},{id:"b",name:"B",receivable:10,payable:50}]);
   await db.collection("warehouses").insertMany([{_id:"wa",name:"Warehouse A"},{_id:"wb",name:"Warehouse B"},{_id:"zero",name:"Zero"},{_id:"old",name:"Old",isArchived:true}]);
   await db.collection("products").insertMany([
-    {id:"p1",stocks:{wa:10,wb:2},lastPurchaseCost:20,pieceCost:999},
-    {id:"p2",stocks:{wa:5},lastPurchaseCost:30},
-    {id:"archived-product",isArchived:true,stocks:{wa:4},lastPurchaseCost:50},
+    {id:"p1",stocks:{wa:10,wb:2},openingCost:20,lastPurchaseCost:20,pieceCost:999},
+    {id:"p2",stocks:{wa:5},openingCost:30,lastPurchaseCost:30},
+    {id:"archived-product",isArchived:true,stocks:{wa:4},openingCost:50,lastPurchaseCost:50},
     {id:"legacy-cost",stocks:{old:3},pieceCost:999,legacyOpeningCost:10},
   ]);
   await db.collection("paymentAccounts").insertMany([{id:"cash",name:"Cash",balance:100,isActive:true},{id:"bankily",name:"Bankily",balance:50},{id:"bank",name:"Bank",balance:-20},{id:"zero",name:"Zero",balance:0},{id:"archived",name:"Archived",balance:999,isArchived:true}]);
@@ -84,7 +84,7 @@ test("purchase summary exposes total paid and due and expiry loss is non-cash st
   const purchase=await buildReport(db,filters("purchases",{unpaged:true})); assert.deepEqual([purchase.summary.total,purchase.summary.paid,purchase.summary.due],[170,110,60]);
   const yesterday=new Date(Date.now()-86400000).toISOString().slice(0,10); await db.collection("products").insertOne({id:"a",name:"A",expiryDate:yesterday,lastPurchaseCost:12,pieceCost:3,stocks:{one:4,two:1}});
   const before=await db.collection("financialMovements").countDocuments(); const stock=await buildReport(db,filters("stock",{unpaged:true}));
-  assert.equal(stock.summary.expiredInventoryLoss,60); assert.equal(await db.collection("financialMovements").countDocuments(),before); assert.equal((await db.collection("products").findOne({id:"a"})).stocks.one,4);
+  assert.equal(stock.summary.expiredInventoryLoss,350, "five units use the latest posted purchase cost of 70, not the stale cache of 12"); assert.equal(await db.collection("financialMovements").countDocuments(),before); assert.equal((await db.collection("products").findOne({id:"a"})).stocks.one,4);
 });
 
 test("party ledger preserves historical totals for legacy sale adjustments",async()=>{

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { APP_NAME } from "../lib/app-brand";
-import DateRangeActionGuard from "./date-range-action-guard";
 import { LocaleProvider } from "./i18n/provider";
 import { direction, LOCALE_COOKIE, normalizeLocale } from "./i18n/locale";
 import "./globals.css";
@@ -30,7 +29,7 @@ export default async function RootLayout({
   const locale=normalizeLocale((await cookies()).get(LOCALE_COOKIE)?.value);
   return (
     <html lang={locale} dir={direction(locale)}>
-      <body><LocaleProvider initialLocale={locale}><DateRangeActionGuard />{children}</LocaleProvider></body>
+      <body><LocaleProvider initialLocale={locale}>{children}</LocaleProvider></body>
     </html>
   );
 }

@@ -1,24 +1,21 @@
-export type DateRangeIssue = "missing" | "invalid" | "reversed";
+export type DateRangeIssue = "missing" | "invalid" | "reversed" | "too-long";
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+export const MAX_REPORT_RANGE_DAYS = 3660;
 
-function isCalendarDate(value: string) {
-  if (!DATE.test(value)) return false;
+function parseCalendarDate(value: string) {
+  if (!DATE.test(value)) return null;
   const parsed = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value ? parsed : null;
 }
 
-/**
- * Shared guard for date-range actions that require both boundaries.
- * `null` means the range is safe to commit; otherwise the caller must keep
- * the current view unchanged and surface a validation message instead of
- * issuing a report/filter request with missing dates.
- */
+/** Complete ranges are required by every Apply action. Show-all is represented separately. */
 export function validateRequiredDateRange(from: string, to: string): DateRangeIssue | null {
-  const start = from.trim();
-  const end = to.trim();
+  const start = from.trim(), end = to.trim();
   if (!start || !end) return "missing";
-  if (!isCalendarDate(start) || !isCalendarDate(end)) return "invalid";
-  if (start > end) return "reversed";
+  const startDate = parseCalendarDate(start), endDate = parseCalendarDate(end);
+  if (!startDate || !endDate) return "invalid";
+  if (startDate > endDate) return "reversed";
+  if ((endDate.valueOf() - startDate.valueOf()) / 86400000 > MAX_REPORT_RANGE_DAYS) return "too-long";
   return null;
 }

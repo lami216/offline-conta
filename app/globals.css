@@ -1889,6 +1889,7 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 .parties-create { display:grid;grid-template-columns:minmax(150px,1fr) minmax(140px,.8fr) auto;gap:6px;padding:0 }
 .parties-create input, .parties-create button { min-height: 36px; height: 36px; }
 .parties-list{display:grid;grid-template-rows:minmax(0,1fr);min-height:0}.party-grid{height:100%;border:0;border-radius:0}.party-detail{display:grid;grid-template-rows:auto auto auto minmax(0,1fr);gap:7px;height:100%;min-height:0;overflow:hidden}.party-operation .form-row{margin:0}.party-history{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:5px;min-height:0}.party-history>.erp-table-wrap{height:100%}
+.party-row-actions{display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}.erp-table .party-row-actions button{min-width:0;padding-inline:6px;font-size:10px}.party-edit-button{display:inline-flex;align-items:center;justify-content:center;gap:3px}.party-edit-button svg{width:12px;height:12px}.party-edit-dialog{display:grid;gap:10px;width:min(440px,100%)}.party-edit-dialog label{display:grid;gap:4px;font-size:11px;font-weight:800}.party-delete-warning{display:grid;gap:3px;padding:8px;border:1px solid #e9b7b2;border-radius:7px;color:#8f1d14;background:#fff2f0;font-size:11px}.party-edit-actions{justify-content:space-between}.party-edit-actions>:only-child{margin-inline-start:auto}
 
 
 

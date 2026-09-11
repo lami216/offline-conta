@@ -21,7 +21,7 @@ export function clearPersistedSaleDraft(storage: Pick<Storage, "setItem">) {
 }
 
 export function belowCostConfirmation(locale: Locale, warnings: BelowCostWarning[]) {
-  const lines=warnings.map(w => locale === "fr" ? `• ${w.productName} — vente ${w.salePrice} / achat ${w.purchaseCost}` : `• ${w.productName} — البيع ${w.salePrice} / الشراء ${w.purchaseCost}`);
+  const lines=warnings.map(w => locale === "fr" ? `• ${w.productName} — vente ${w.salePrice} MRU / achat ${w.purchaseCost} MRU` : `• ${w.productName} — البيع ${w.salePrice} MRU / الشراء ${w.purchaseCost} MRU`);
   return locale === "fr" ? `Attention : certains produits sont vendus sous leur coût d’achat :\n\n${lines.join("\n")}\n\nContinuer la vente ?` : `تنبيه: توجد منتجات تباع بأقل من سعر الشراء:\n\n${lines.join("\n")}\n\nهل تريد متابعة البيع؟`;
 }
 

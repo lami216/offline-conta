@@ -259,7 +259,7 @@ export function formatQuantity(value: number) {
   return formatNumber(value);
 }
 export function formatMoney(value: number) {
-  return formatNumber(value);
+  return `${formatNumber(value)} MRU`;
 }
 export function displayDocumentNumber(document: Pick<DocumentRecord, "number" | "sequence" | "kind">) {
   return ["sale", "purchase", "expense"].includes(document.kind) && Number.isSafeInteger(Number(document.sequence)) && Number(document.sequence) > 0 ? String(document.sequence) : document.number;

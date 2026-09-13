@@ -8,7 +8,7 @@ export const SESSION_COOKIE = "conta_session";
 const MAX_AGE = 60 * 60 * 12;
 export const CAPABILITIES = [
   "pos.view","pos.create","pos.edit","pos.delete","purchases.view","purchases.create","purchases.edit","purchases.delete","records.view",
-  "products.view","products.create","products.edit","products.delete","customers.view","customers.create","customers.edit","customers.collect","suppliers.view","suppliers.create","suppliers.edit","suppliers.pay",
+  "products.view","products.create","products.edit","products.delete","customers.view","customers.create","customers.edit","customers.delete","customers.collect","suppliers.view","suppliers.create","suppliers.edit","suppliers.delete","suppliers.pay",
   "warehouses.view","warehouses.create","warehouses.edit","warehouses.delete","warehouses.inventory.view","warehouses.transfer","warehouses.adjust","banks.view","banks.create","banks.edit","banks.delete","banks.movements.view","banks.transfer","banks.deposit_withdraw","banks.balance_correct",
   "expenses.view","expenses.create","expenses.edit","expenses.delete","reports.view","settings.view","settings.branding.manage","settings.backup.manage","settings.legacy.import","settings.users.manage",
 ] as const;

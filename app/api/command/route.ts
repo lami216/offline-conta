@@ -165,6 +165,29 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const party = { id: id("party"), name, phone, partyType, receivable: 0, payable: 0, net: 0, createdAt: new Date() };
     await db.collection("parties").insertOne(party, { session }); return party.id;
   }
+  if (type === "party.update") {
+    const partyId=text(body.id),party=await db.collection("parties").findOne({id:partyId},{session});
+    if(!party)throw new CommandError("الطرف غير موجود",404);
+    const name=text(body.name),phone=text(body.phone),partyType=resolvePartyType(party);
+    if(!name)throw new CommandError("اسم الحساب مطلوب");
+    if(phone&&await db.collection("parties").findOne({phone,partyType,id:{$ne:partyId}},{session}))throw new CommandError("رقم الهاتف مستخدم لحساب آخر من النوع نفسه",409);
+    await db.collection("parties").updateOne({id:partyId},{$set:{name,phone,updatedAt:new Date()}},{session});
+    return partyId;
+  }
+  if (type === "party.delete") {
+    const partyId=text(body.id),party=await db.collection("parties").findOne({id:partyId},{session});
+    if(!party)throw new CommandError("الطرف غير موجود",404);
+    const rawReceivable=Number(party.receivable??0),rawPayable=Number(party.payable??0),receivable=Number.isFinite(rawReceivable)?Math.max(0,rawReceivable):0,payable=Number.isFinite(rawPayable)?Math.max(0,rawPayable):0;
+    const hasBalance=receivable>0||payable>0;
+    if(hasBalance&&body.settleBalance!==true)throw new CommandError("يجب تأكيد تصفية رصيد الطرف قبل الحذف",409);
+    if(hasBalance){
+      const balanceBefore=receivable-payable,settlement={...baseDocument("settlement","SET-DEL"),partyId,partyName:party.name,warehouseId:null,warehouseName:null,destinationWarehouseId:null,destinationWarehouseName:null,parentDocumentId:null,paymentMethod:null,title:"تصفية الحساب قبل حذف الطرف",total:receivable+payable,dueTotal:0,paidTotal:0,lines:[],partyBalanceBefore:balanceBefore,partyBalanceDelta:-balanceBefore,partyBalanceAfter:0,settledReceivable:receivable,settledPayable:payable,partyDeletionSettlement:true};
+      await db.collection("documents").insertOne(settlement,{session});
+    }
+    await db.collection("importMappings").deleteMany({targetEntityType:"parties",targetId:partyId},{session});
+    await db.collection("parties").deleteOne({id:partyId},{session});
+    return partyId;
+  }
   if (type === "warehouse.create") {
     const name = text(body.name); if (!name) throw new CommandError("اسم المخزن مطلوب"); const _id = id("wh");
     await warehouses(db).insertOne({ _id, name, isSalesDefault: false, createdAt: new Date() }, { session }); return _id;
@@ -426,11 +449,11 @@ export async function POST(request: Request) {const licenseDenied=await requireV
   let type = "unknown";
   try {
     const body = await request.json() as Input; type = text(body.type);
-    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","adjustment.post":"warehouses.adjust","payment.post":text(body.side)==="receivable"?"customers.collect":"suppliers.pay","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","settlement.post":"customers.edit","offset.post":"customers.edit","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-transfer.post":"banks.transfer","account-opening-balance-correction.post":"banks.balance_correct","party.create":body.partyType==="customer"?"customers.create":"suppliers.create"};
+    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","adjustment.post":"warehouses.adjust","payment.post":text(body.side)==="receivable"?"customers.collect":"suppliers.pay","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","settlement.post":"customers.edit","offset.post":"customers.edit","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-transfer.post":"banks.transfer","account-opening-balance-correction.post":"banks.balance_correct","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete"};
     let capability=map[type];
-    if(["party-cash.post","payment.post","settlement.post","offset.post"].includes(type)){
-      const party=await getDatabase().collection("parties").findOne({id:text(body.partyId)});
-      if(party){const supplier=resolvePartyType(party)==="supplier";capability=type==="party-cash.post"||type==="payment.post"?(supplier?"suppliers.pay":"customers.collect"):(supplier?"suppliers.edit":"customers.edit");}
+    if(["party-cash.post","payment.post","settlement.post","offset.post","party.update","party.delete"].includes(type)){
+      const party=await getDatabase().collection("parties").findOne({id:text(body.partyId??body.id)});
+      if(party){const supplier=resolvePartyType(party)==="supplier";capability=type==="party-cash.post"||type==="payment.post"?(supplier?"suppliers.pay":"customers.collect"):type==="party.delete"?(supplier?"suppliers.delete":"customers.delete"):(supplier?"suppliers.edit":"customers.edit");}
     }
     if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;
     if((type==="product.update"&&body.replaceOpeningStock===true)||(type==="product.create"&&Number(body.openingStock??0)>0)){const stockDenied=await requireCapability(request,"warehouses.adjust");if(stockDenied)return stockDenied;}

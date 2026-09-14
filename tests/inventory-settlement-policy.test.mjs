@@ -3,7 +3,7 @@ import test, { after, before, beforeEach } from "node:test";
 import { readFileSync } from "node:fs";
 import { sqliteHarness } from "./sqlite-harness.mjs";
 import { execute } from "../app/api/command/route.ts";
-import { currentProductCost, resolveProductCost } from "../lib/product-cost.ts";
+import { resolveProductCost } from "../lib/product-cost.ts";
 
 let harness, db;
 before(async () => { harness = await sqliteHarness(); db = harness.db; });

@@ -6,8 +6,8 @@ import { resolvePartyType } from "../app/domain.ts";
 
 export const BACKUP_SCHEMA_VERSION = 1;
 export const BACKUP_COLLECTIONS = ["parties", "warehouses", "products", "productCategories", "documents", "stockMovements", "financialMovements", "paymentAccounts", "recurringExpenses", "accountTransfers", "counters", "auditEvents", "appSettings", "users"] as const;
-export const MAX_BACKUP_ITEMS = 500_000;
-export const MAX_BACKUP_BYTES = 50 * 1024 * 1024;
+// Backups are local, user-selected files. Do not impose an artificial size or record-count cap;
+// validation below still enforces the accounting and reference invariants before restore.
 type BackupCollection = typeof BACKUP_COLLECTIONS[number];
 export type ContaBackup = { format: "conta-backup"; schemaVersion: 1; createdAt: string; appVersion: string; encoding: "json-v2"|"mongodb-extended-json-v2"; collections: Record<BackupCollection, Document[]>; counts: Record<BackupCollection, number> };
 
@@ -18,7 +18,6 @@ export async function createNativeBackup(db: Db): Promise<ContaBackup> {
 }
 export function stringifyBackup(value: ContaBackup) { return value.encoding==="mongodb-extended-json-v2" ? EJSON.stringify(value,{relaxed:false}) : JSON.stringify(value); }
 export function parseAndValidateBackup(input: string): ContaBackup {
-  if (Buffer.byteLength(input) > MAX_BACKUP_BYTES) throw new Error("ملف النسخة أكبر من الحد المسموح");
   let value: unknown; try { const raw=JSON.parse(input) as Record<string,unknown>;value=raw.encoding==="mongodb-extended-json-v2"?EJSON.parse(input,{relaxed:true}):raw; } catch { throw new Error("ملف النسخة ليس JSON صالحًا"); }
   const b = value as Partial<ContaBackup>;
   if (b.format !== "conta-backup") throw new Error("هذا الملف ليس نسخة الكرنه");
@@ -30,7 +29,6 @@ export function parseAndValidateBackup(input: string): ContaBackup {
   const keys = Object.keys(b.collections);
   if (keys.some(k => !BACKUP_COLLECTIONS.includes(k as BackupCollection))) throw new Error("تحتوي النسخة على collection غير مسموح");
   for (const name of BACKUP_COLLECTIONS) if (!Array.isArray(b.collections[name])) throw new Error(`collection مفقود: ${name}`);
-  const total = BACKUP_COLLECTIONS.reduce((n, k) => n + b.collections![k].length, 0); if (total > MAX_BACKUP_ITEMS) throw new Error("عدد السجلات أكبر من الحد المسموح");
   validateInvariants(b as ContaBackup); return b as ContaBackup;
 }
 const nonempty = (v: unknown) => typeof v === "string" && v.length > 0;

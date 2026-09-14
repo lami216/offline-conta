@@ -27,7 +27,6 @@ test("backup parser accepts payloads larger than the former 50 MiB cap", () => {
 test("payment and settlement reject an invalid balance side", async t => {
   const h = await sqliteHarness();
   t.after(() => h.close());
-  await h.db.collection("paymentAccounts").insertOne({ id: "cash", code: "cash", name: "Cash", isActive: true, balance: 1000 });
   await h.db.collection("parties").insertOne({ id: "party", name: "Party", partyType: "customer", receivable: 100, payable: 100, net: 0 });
   await assert.rejects(command(h.db, { type: "payment.post", partyId: "party", side: "typo", amount: 10, paymentMethod: "cash" }), /جهة الرصيد غير صالحة/);
   await assert.rejects(command(h.db, { type: "settlement.post", partyId: "party", side: "typo", amount: 10 }), /جهة الرصيد غير صالحة/);
@@ -39,7 +38,6 @@ test("historical partial-payment invoices are read-only instead of being coerced
   const h = await sqliteHarness();
   t.after(() => h.close());
   await h.db.collection("warehouses").insertOne({ _id: "main", name: "Main", isSalesDefault: true });
-  await h.db.collection("paymentAccounts").insertOne({ id: "cash", code: "cash", name: "Cash", isActive: true, balance: 1000 });
   await h.db.collection("products").insertOne({ id: "p", sku: "1", name: "Tea", stocks: { main: 5 }, openingStock: 5, openingCost: 50 });
   await h.db.collection("documents").insertOne({
     id: "legacy-partial",

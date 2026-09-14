@@ -2,10 +2,13 @@ import { readFileSync, writeFileSync } from "node:fs";
 
 function replaceExact(path, from, to) {
   const source = readFileSync(path, "utf8");
-  if (source.includes(to)) return false;
-  if (!source.includes(from)) throw new Error(`Expected source fragment not found in ${path}`);
-  writeFileSync(path, source.replace(from, to), "utf8");
-  return true;
+  if (source.includes(from)) {
+    writeFileSync(path, source.replace(from, to), "utf8");
+    return true;
+  }
+  if (to && source.includes(to)) return false;
+  if (!to) return false;
+  throw new Error(`Expected source fragment not found in ${path}`);
 }
 
 replaceExact(

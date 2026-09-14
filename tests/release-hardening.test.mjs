@@ -60,7 +60,7 @@ test("historical partial-payment invoices are read-only instead of being coerced
     documentId: "legacy-partial",
     paymentMethod: "cash",
     lines: [{ productId: "p", quantity: 1, piecePrice: 120 }],
-  }), /دفع جزئي/);
+  }), /متاحة للعرض فقط/);
   const original = await h.db.collection("documents").findOne({ id: "legacy-partial" });
   assert.deepEqual([original.total, original.paidTotal, original.dueTotal], [100, 40, 60]);
 });

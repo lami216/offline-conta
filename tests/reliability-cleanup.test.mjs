@@ -7,7 +7,7 @@ test("command client is in-flight single-flight and sends one idempotency identi
 test("server receipt claim and business mutation share a transaction",()=>{assert.match(route,/receipts\.insertOne\([^;]+\{session\}/);assert.match(route,/result=await execute\(db,session,body\)/);assert.match(route,/status:"committed",result:response/);assert.match(route,/مفتاح العملية مستخدم لطلب مختلف/);assert.match(route,/العملية قيد التنفيذ/);assert.match(sqlite,/DELETE FROM command_receipts/);assert.match(sqlite,/cleanupExpiredRecords/)});
 test("adjustments reject a no-op before creating ADJ",()=>{
   const block=route.slice(route.indexOf('if (type === "adjustment.post")'),route.indexOf('if (type === "party-cash.post")'));
-  assert.match(block,/effectiveInput=input\.filter/);
+  assert.match(block,/effectiveInput\s*=\s*input\.filter/);
   assert.match(block,/لا يوجد تغيير في المخزون لاعتماده/);
   assert.ok(block.indexOf("effectiveInput")<block.indexOf('baseDocument("adjustment", "ADJ")'));
 });

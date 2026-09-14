@@ -11,7 +11,7 @@ import { deriveOpeningStockState, planOpeningStockCorrection } from "../../../li
 import { currentProductCost, resolveProductCost } from "../../../lib/product-cost.ts";
 
 type Input = Record<string, unknown>;
-type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; purchaseCost?: number | null; costAtSale?: number | null; grossProfit?: number | null };
+type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; costAtSale?: number | null; grossProfit?: number | null };
 type WarehouseDoc = { _id: string; name: string; isSalesDefault?: boolean; [key: string]: unknown };
 const warehouses = (db: Db) => db.collection<WarehouseDoc>("warehouses");
 class CommandError extends Error { status: number; constructor(message: string, status = 400) { super(message); this.status = status; } }
@@ -364,13 +364,17 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if (paymentMethod !== "note") await paymentAccount(db, session, paymentMethod);
     const costs = isSale ? new Map(await Promise.all(input.map(async line => [line.productId, await authoritativeCost(db, session, map.get(line.productId)!)] as const))) : new Map<string, number | null>();
     const calculated = input.map(line => { const p = map.get(line.productId)!; let unitPrice: number, total: number; if (isSale) { const price = positive(line.piecePrice, "سعر الفرد"); total = Math.round(line.quantity * price); unitPrice = price; } else { unitPrice = positive(line.unitPrice, "سعر الشراء"); total = Math.round(unitPrice * line.quantity); } return { id: id("line"), productId: line.productId, description: p.name, quantity: line.quantity, unitPrice, lineTotal: total, ...(isSale ? { costAtSale: costs.get(line.productId) ?? null, grossProfit: costs.get(line.productId) == null ? null : total - line.quantity * Number(costs.get(line.productId)) } : {}) }; });
-    const total = calculated.reduce((s, l) => s + l.lineTotal, 0), cashAmount = paymentMethod === "note" ? 0 : positive(body.cashAmount ?? body.paidAmount ?? total, isSale ? "المبلغ المستلم" : "المبلغ المدفوع", true), requestedPaid = Math.min(total, cashAmount), due = Math.max(total - cashAmount, 0), partyDelta = isSale ? total - cashAmount : -total + cashAmount;
-    if (partyDelta && !party) throw new CommandError(isSale ? "اختر عميلاً عند وجود مبلغ مستحق" : "اختر موردًا عند وجود مبلغ مستحق");
+    const total = calculated.reduce((s, l) => s + l.lineTotal, 0);
+    const suppliedCash = body.cashAmount ?? body.paidAmount;
+    const settlementAmount = suppliedCash == null || suppliedCash === "" ? (paymentMethod === "note" ? 0 : total) : positive(suppliedCash, isSale ? "المبلغ المستلم" : "المبلغ المدفوع", true);
+    if (paymentMethod === "note" ? settlementAmount !== 0 : settlementAmount !== total) throw new CommandError("الدفع الجزئي داخل الفاتورة غير مدعوم. الفاتورة إما مدفوعة بالكامل أو ملاحظة بالكامل، ثم تُسجل أي دفعة لاحقة من حساب الطرف.", 409);
+    const cashAmount = paymentMethod === "note" ? 0 : total, paidTotal = cashAmount, due = paymentMethod === "note" ? total : 0, partyDelta = isSale ? due : -due;
+    if (due && !party) throw new CommandError(isSale ? "اختر عميلاً عند وجود مبلغ مستحق" : "اختر موردًا عند وجود مبلغ مستحق");
     const businessDate = new Date().toISOString().slice(0, 10);
     const dailySequence = isSale ? (Number((await db.collection("documents").find({ kind: "sale", businessDate }, { session }).sort({ dailySequence: -1 }).limit(1).next())?.dailySequence ?? 0) + 1) : undefined;
     const pricingMode = body.pricingMode === "wholesale" ? "wholesale" : "retail";
     const snapshot = partyDelta ? await applyPartyNetDelta(db, session, partyId, partyDelta) : null;
-    const doc = { ...await numberedDocument(db, session, isSale ? "sale" : "purchase", isSale ? "SAL" : "PUR"), businessDate, ...(isSale ? { dailySequence, pricingMode } : {}), partyId: partyId || null, partyName: party?.name ?? (isSale ? "بيع مباشر" : "شراء مباشر"), warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod, title: null, total, dueTotal: due, paidTotal: requestedPaid, cashAmount, ...(snapshot ? { partyBalanceBefore:snapshot.before, partyBalanceDelta:snapshot.delta, partyBalanceAfter:snapshot.after } : {}), lines: calculated };
+    const doc = { ...await numberedDocument(db, session, isSale ? "sale" : "purchase", isSale ? "SAL" : "PUR"), businessDate, ...(isSale ? { dailySequence, pricingMode } : {}), partyId: partyId || null, partyName: party?.name ?? (isSale ? "بيع مباشر" : "شراء مباشر"), warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod, title: null, total, dueTotal: due, paidTotal, cashAmount, ...(snapshot ? { partyBalanceBefore:snapshot.before, partyBalanceDelta:snapshot.delta, partyBalanceAfter:snapshot.after } : {}), lines: calculated };
     for (const line of input) await changeStock(db, session, map.get(line.productId)!, warehouse, isSale ? -line.quantity : line.quantity, doc, isSale ? "sale" : "purchase");
     await db.collection("documents").insertOne(doc, { session });
     if (!isSale) for (const line of calculated) await db.collection("products").updateOne({ id: line.productId }, { $set: { lastPurchaseCost: line.unitPrice, lastPurchaseAt: doc.occurredAt, lastPurchaseCostSource: "purchase" } }, { session });
@@ -383,15 +387,36 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     for (const line of input) { const p = map.get(line.productId)!; await changeStock(db, session, p, from, -line.quantity, doc, "transfer-out"); await changeStock(db, session, p, to, line.quantity, doc, "transfer-in"); } await db.collection("documents").insertOne(doc, { session }); return doc.id;
   }
   if (type === "adjustment.post") {
-    if (!Array.isArray(body.lines) || !body.lines.length) throw new CommandError("أضف منتجًا"); const input = body.lines.map(raw => { const r = raw as Input; return { productId: text(r.productId), quantity: 1, actualQuantity: positive(r.actualQuantity, "الرصيد الفعلي", true), purchaseCost: r.purchaseCost == null || r.purchaseCost === "" ? null : positive(r.purchaseCost, "تكلفة الشراء") }; }); const { warehouse, warehouseId } = await refs(db, session, body), map = await products(db, session, input), reason = text(body.reason); if (!reason) throw new CommandError("سبب التصحيح مطلوب");
+    if (!Array.isArray(body.lines) || !body.lines.length) throw new CommandError("أضف منتجًا");
+    const input = body.lines.map(raw => {
+      const r = raw as Input, productId = text(r.productId);
+      if (!productId) throw new CommandError("المنتج غير صالح");
+      return { productId, quantity: 1, actualQuantity: positive(r.actualQuantity, "الرصيد الفعلي", true) };
+    });
+    const { warehouse, warehouseId } = await refs(db, session, body), map = await products(db, session, input), reason = text(body.reason);
+    if (!reason) throw new CommandError("سبب التصحيح مطلوب");
+    const costs = new Map<string, number | null>();
     for (const line of input) {
-      const product = map.get(line.productId)!, before = Number((product.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0);
-      if (line.actualQuantity! > before && await authoritativeCost(db, session, product) == null && line.purchaseCost == null) throw new CommandError(`تكلفة الشراء مطلوبة لإضافة مخزون المنتج ${product.name}`);
+      const product = map.get(line.productId)!;
+      const stocks = (product.stocks ?? {}) as Record<string, number>;
+      const before = Number(stocks[warehouseId] ?? 0);
+      const hasWarehouseField = Object.prototype.hasOwnProperty.call(stocks, warehouseId);
+      const hasWarehouseMovement = hasWarehouseField ? true : Boolean(await db.collection("stockMovements").findOne({ productId: product.id, warehouseId }, { session }));
+      if (!hasWarehouseMovement) throw new CommandError(`لا يمكن تصحيح مخزون المنتج ${product.name} في هذا المخزن قبل دخوله إليه عبر رصيد بداية أو شراء أو تحويل مخزون.`, 409);
+      const cost = await authoritativeCost(db, session, product);
+      costs.set(line.productId, cost);
+      if (line.actualQuantity! > before && cost == null) throw new CommandError(`لا يمكن زيادة مخزون المنتج ${product.name} بالتصحيح لأنه لا يملك رصيد بداية أو فاتورة شراء قائمة تحدد تكلفته.`, 409);
     }
-    const effectiveInput=input.filter(line=>line.actualQuantity!==Number((map.get(line.productId)!.stocks as Record<string,number>|undefined)?.[warehouseId]??0));
-    if(!effectiveInput.length)throw new CommandError("لا يوجد تغيير في المخزون لاعتماده",409);
+    const effectiveInput = input.filter(line => line.actualQuantity !== Number((map.get(line.productId)!.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0));
+    if (!effectiveInput.length) throw new CommandError("لا يوجد تغيير في المخزون لاعتماده", 409);
     const doc = { ...baseDocument("adjustment", "ADJ"), partyId: null, partyName: null, warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: null, title: reason, total: 0, dueTotal: 0, paidTotal: 0, lines: [] as Record<string, unknown>[] };
-    for (const line of effectiveInput) { const p = map.get(line.productId)!, before = Number((p.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0), after = line.actualQuantity!; if (after > before && p.lastPurchaseCost == null && line.purchaseCost != null) { await db.collection("products").updateOne({ id: p.id }, { $set: { lastPurchaseCost: line.purchaseCost, lastPurchaseAt: doc.occurredAt, lastPurchaseCostSource: "adjustment" } }, { session }); p.lastPurchaseCost = line.purchaseCost; p.lastPurchaseCostSource = "adjustment"; } await changeStock(db, session, p, warehouse, after - before, doc, "adjustment"); doc.lines.push({ id: id("line"), productId: line.productId, description: `${p.name} — ${reason} (قبل ${before}، بعد ${after})`, quantity: after - before, unitPrice: Number(p.lastPurchaseCost ?? 0), lineTotal: 0, balanceBefore: before, balanceAfter: after }); } await db.collection("documents").insertOne(doc, { session }); return doc.id;
+    for (const line of effectiveInput) {
+      const p = map.get(line.productId)!, before = Number((p.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0), after = line.actualQuantity!;
+      await changeStock(db, session, p, warehouse, after - before, doc, "adjustment");
+      doc.lines.push({ id: id("line"), productId: line.productId, description: `${p.name} — ${reason} (قبل ${before}، بعد ${after})`, quantity: after - before, unitPrice: Number(costs.get(line.productId) ?? 0), lineTotal: 0, balanceBefore: before, balanceAfter: after });
+    }
+    await db.collection("documents").insertOne(doc, { session });
+    return doc.id;
   }
   if (type === "party-cash.post") {
     const partyId=text(body.partyId), party=await db.collection("parties").findOne({id:partyId},{session}); if(!party) throw new CommandError("الطرف غير موجود",404);

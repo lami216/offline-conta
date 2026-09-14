@@ -26,7 +26,7 @@ test("document sequence previews are kind-specific and never reserve numbers", a
 });
 
 test("first purchase initializes missing stock, movement, and supplier payable atomically", async t => {
-  await command({ type: "purchase.post", warehouseId: "wh-main", partyId: "supplier", paymentMethod: "note", paidAmount: 500, lines: [{ productId: "p1", quantity: 50, unitPrice: 50 }] });
+  await command({ type: "purchase.post", warehouseId: "wh-main", partyId: "supplier", paymentMethod: "note", paidAmount: 0, lines: [{ productId: "p1", quantity: 50, unitPrice: 50 }] });
   assert.equal((await db.collection("products").findOne({ id: "p1" })).stocks["wh-main"], 50);
   assert.deepEqual(await db.collection("stockMovements").findOne({}, { projection: { _id: 0, balanceBefore: 1, balanceAfter: 1, quantityDelta: 1 } }), { quantityDelta: 50, balanceBefore: 0, balanceAfter: 50 });
   const doc = await db.collection("documents").findOne({ kind: "purchase" });
@@ -36,7 +36,7 @@ test("first purchase initializes missing stock, movement, and supplier payable a
 
 test("sale decreases stock and insufficient sale rolls every write back", async t => {
   await db.collection("products").updateOne({ id: "p1" }, { $set: { "stocks.wh-main": 100 } });
-  await command({ type: "sale.post", warehouseId: "wh-main", partyId: "party", paymentMethod: "note", paidAmount: 700, lines: [{ productId: "p1", quantity: 27, piecePrice: 100 }] });
+  await command({ type: "sale.post", warehouseId: "wh-main", partyId: "party", paymentMethod: "note", paidAmount: 0, lines: [{ productId: "p1", quantity: 27, piecePrice: 100 }] });
   assert.equal((await db.collection("products").findOne({ id: "p1" })).stocks["wh-main"], 73);
   const beforeCounts = [await db.collection("documents").countDocuments(), await db.collection("stockMovements").countDocuments()];
   await assert.rejects(command({ type: "sale.post", warehouseId: "wh-main", partyId: "party", paymentMethod: "note", paidAmount: 0, lines: [{ productId: "p1", quantity: 74, piecePrice: 100 }] }), /المخزون غير كاف/);

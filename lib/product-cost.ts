@@ -24,12 +24,7 @@ export function resolveProductCost(product: DbDocument, documents: DbDocument[])
   if (openingCost !== null) return { cost: openingCost, source: "opening", at: null };
   const legacyCost = positiveCost(product.legacyOpeningCost);
   if (legacyCost !== null) return { cost: legacyCost, source: "legacy-opening", at: null };
-  const adjustment = relevant.filter(document => document.kind === "adjustment" && !document.openingCorrection &&
-    !String(document.number ?? "").startsWith("OPEN-") && document.lines.some((line: DbDocument) =>
-      line.productId === product.id && Number(line.quantity) > 0 && positiveCost(line.unitPrice) !== null)).at(-1);
-  const adjustmentCost = positiveCost(adjustment?.lines.find((line: DbDocument) => line.productId === product.id)?.unitPrice) ??
-    (product.lastPurchaseCostSource === "adjustment" ? positiveCost(product.lastPurchaseCost) : null);
-  return { cost: adjustmentCost, source: adjustmentCost !== null ? "adjustment" : null, at: null };
+  return { cost: null, source: null, at: null };
 }
 
 export async function currentProductCost(db: SqliteDatabase, session: SqliteSession, product: DbDocument) {

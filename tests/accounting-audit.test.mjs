@@ -95,16 +95,15 @@ test("reducing a mixed-origin sale reverses purchased units before opening units
   assert.deepEqual([state.remaining, state.consumed, (await product(id)).stocks.a], [10, 0, 20]);
 });
 
-test("latest same-timestamp purchase wins and void restores adjustment cost", async () => {
-  const id = await create(0);
-  await command({ type: "adjustment.post", warehouseId: "a", reason: "count", lines: [{ productId: id, actualQuantity: 3, purchaseCost: 35 }] });
+test("latest same-timestamp purchase wins and void restores opening cost", async () => {
+  const id = await create(3);
   const one = await purchase(id, 2, 70), two = await purchase(id, 2, 90);
   await db.collection("documents").updateMany({ kind: "purchase" }, { $set: { occurredAt: "2020-01-01T00:00:00.000Z" } });
   assert.equal(await db.transaction(session => currentProductCost(db, session, productSync(id))), 90);
   await command({ type: "purchase.void", documentId: two });
   assert.equal((await product(id)).lastPurchaseCost, 70);
   await command({ type: "purchase.void", documentId: one });
-  assert.deepEqual([(await product(id)).lastPurchaseCost, (await product(id)).lastPurchaseCostSource], [35, "adjustment"]);
+  assert.deepEqual([(await product(id)).lastPurchaseCost, (await product(id)).lastPurchaseCostSource], [50, "opening"]);
 });
 function productSync(id) { return { id, openingCost: null }; }
 

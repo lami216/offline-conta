@@ -73,7 +73,8 @@ test("stock operations collapse idle search and edit a serial ERP draft", () => 
   assert.match(form, /collapseResultsWhenIdle/);
   assert.match(form, /<StockDraftTable/);
   const table = between("function StockDraftTable", "function MultiStockForm");
-  for (const heading of ["الكمية للتحويل", "الكمية الفعلية", "تكلفة الوحدة"]) assert.match(table, new RegExp(heading));
+  for (const heading of ["الكمية للتحويل", "الكمية الفعلية"]) assert.match(table, new RegExp(heading));
+  assert.doesNotMatch(table, /تكلفة الوحدة|purchaseCost/);
   assert.match(table, /number\(index\+1\)/);
   assert.match(table, /أضف منتجًا لبدء العملية/);
 });

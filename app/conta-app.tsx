@@ -660,11 +660,11 @@ function ProductSearchPicker({ data, query, setQuery, onPick, mode = "sale", war
   const term = query.trim().toLocaleLowerCase();
   const categoryFiltering = mode === "sale" || mode === "purchase";
   const categoryOptions = useMemo(() => data.categories.map(category => ({ value: category.id, label: category.name, search: category.name })), [data.categories]);
-  const results = useMemo(() => term ? data.products.filter(product => !product.isArchived && (!categoryFiltering || !categoryId || product.categoryId === categoryId)).map((product, index) => {
+  const results = useMemo(() => term ? data.products.filter(product => !product.isArchived && (!categoryFiltering || !categoryId || product.categoryId === categoryId) && (mode !== "adjustment" || (warehouseId ? Object.prototype.hasOwnProperty.call(product.stocks ?? {}, warehouseId) || data.movements.some(movement => movement.productId === product.id && movement.warehouseId === warehouseId) : false))).map((product, index) => {
     const name = product.name.toLocaleLowerCase(), sku = (product.sku ?? "").toLocaleLowerCase(), barcode = (product.barcode ?? "").toLocaleLowerCase();
     const score = barcode === term || sku === term ? 0 : barcode.startsWith(term) || sku.startsWith(term) ? 1 : name.startsWith(term) ? 2 : name.includes(term) ? 3 : 4;
     return { product, index, score, matches: `${name} ${sku} ${barcode}`.includes(term) };
-  }).filter(item => item.matches).sort((a, b) => a.score - b.score || a.index - b.index).slice(0, 30).map(item => item.product) : [], [data.products, term, categoryFiltering, categoryId]);
+  }).filter(item => item.matches).sort((a, b) => a.score - b.score || a.index - b.index).slice(0, 30).map(item => item.product) : [], [data.products, data.movements, term, categoryFiltering, categoryId, mode, warehouseId]);
   const add = (product: Product) => {
     const stock = stockScope === "selected-warehouse" ? stockInWarehouse(product, warehouseId) : totalProductStock(product);
     if (mode === "sale" && (stock <= 0 || isProductExpired(product))) return;
@@ -1182,7 +1182,7 @@ function ProductForm({ run, close, product, warehouses, categories, canAdjustOpe
 }
 function StockDraftTable({ mode, lines, products, warehouseId, onChange, onRemove }: { mode: "transfer" | "adjust"; lines: DraftLine[]; products: Product[]; warehouseId: string; onChange: (line: DraftLine) => void; onRemove: (id: string) => void }) {
   const adjustment = mode === "adjust";
-  return <div className="erp-table-wrap stock-draft"><table className="erp-table" aria-label={tr("المنتجات الجاري تنفيذ العملية عليها")}><colgroup><col style={{width:"7%"}}/><col style={{width:adjustment?"27%":"37%"}}/><col style={{width:"18%"}}/><col style={{width:"20%"}}/>{adjustment&&<col style={{width:"20%"}}/>}<col style={{width:"8%"}}/></colgroup><thead><tr><th>{tr("رقم")}</th><th>{tr("المنتج")}</th><th>{adjustment ? tr("المخزون الحالي") : tr("المتوفر")}</th><th>{adjustment ? tr("الكمية الفعلية") : tr("الكمية للتحويل")}</th>{adjustment&&<th>{tr("تكلفة الوحدة")}</th>}<th>{tr("حذف")}</th></tr></thead><tbody>{lines.map((line,index)=>{const product=products.find(item=>item.id===line.productId)!;const available=Number(product?.stocks[warehouseId]??0);const increasing=adjustment&&line.actualQuantity!==""&&val(line.actualQuantity)>available;return <tr key={line.productId}><td className="num-cell">{number(index+1)}</td><td>{product.name}</td><td className="num-cell">{number(available)}</td><td><Num value={adjustment?line.actualQuantity:line.quantity} onChange={value=>onChange(adjustment?{...line,actualQuantity:value}:{...line,quantity:value})}/></td>{adjustment&&<td>{increasing&&inventoryUnitCost(product)<=0?<Num value={line.unitPrice} onChange={value=>onChange({...line,unitPrice:value})} placeholder={tr("مطلوب")}/>:<span className="draft-cost">{number(inventoryUnitCost(product))}</span>}</td>}<td className="action-cell"><button type="button" className="icon danger" aria-label={tr("ui.deleteItem",{name:product.name})} onClick={()=>onRemove(line.productId)}><X/></button></td></tr>})}{!lines.length&&<tr><td colSpan={adjustment?6:5} className="draft-empty">{tr("أضف منتجًا لبدء العملية")}</td></tr>}</tbody></table></div>;
+  return <div className="erp-table-wrap stock-draft"><table className="erp-table" aria-label={tr("المنتجات الجاري تنفيذ العملية عليها")}><colgroup><col style={{width:"7%"}}/><col style={{width:"37%"}}/><col style={{width:"18%"}}/><col style={{width:"30%"}}/><col style={{width:"8%"}}/></colgroup><thead><tr><th>{tr("رقم")}</th><th>{tr("المنتج")}</th><th>{adjustment ? tr("المخزون الحالي") : tr("المتوفر")}</th><th>{adjustment ? tr("الكمية الفعلية") : tr("الكمية للتحويل")}</th><th>{tr("حذف")}</th></tr></thead><tbody>{lines.map((line,index)=>{const product=products.find(item=>item.id===line.productId)!;const available=Number(product?.stocks[warehouseId]??0);return <tr key={line.productId}><td className="num-cell">{number(index+1)}</td><td>{product.name}</td><td className="num-cell">{number(available)}</td><td><Num value={adjustment?line.actualQuantity:line.quantity} onChange={value=>onChange(adjustment?{...line,actualQuantity:value}:{...line,quantity:value})}/></td><td className="action-cell"><button type="button" className="icon danger" aria-label={tr("ui.deleteItem",{name:product.name})} onClick={()=>onRemove(line.productId)}><X/></button></td></tr>})}{!lines.length&&<tr><td colSpan={5} className="draft-empty">{tr("أضف منتجًا لبدء العملية")}</td></tr>}</tbody></table></div>;
 }
 
 function MultiStockForm({
@@ -1234,7 +1234,6 @@ function MultiStockForm({
             lines: lines.map((l) => ({
               productId: l.productId,
               actualQuantity: val(l.actualQuantity),
-              purchaseCost: l.unitPrice === "" ? null : val(l.unitPrice),
             })),
           };
     const id = await run(
@@ -1249,8 +1248,8 @@ function MultiStockForm({
   }
   const invalidAdjustment = mode === "adjust" && lines.some(line => {
     const product = data.products.find(item => item.id === line.productId);
-    const before = Number(product?.stocks[from] ?? 0);
-    return line.actualQuantity === "" || (val(line.actualQuantity) > before && (!product || inventoryUnitCost(product) <= 0) && val(line.unitPrice) <= 0);
+    const hasWarehouseFootprint = Boolean(product && from && (Object.prototype.hasOwnProperty.call(product.stocks ?? {}, from) || data.movements.some(movement => movement.productId === product.id && movement.warehouseId === from)));
+    return line.actualQuantity === "" || !hasWarehouseFootprint;
   });
   return (
     <div className="form-stack stock-operation-panel">

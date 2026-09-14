@@ -18,6 +18,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: node scripts/apply-accounting-policy-patch.mjs
+      - run: node scripts/fix-accounting-policy-patch-tests.mjs
       - run: npm ci
       - run: npm test
       - run: npx tsc --noEmit
@@ -26,7 +27,7 @@ jobs:
       - name: Commit verified source changes
         shell: bash
         run: |
-          rm scripts/apply-accounting-policy-patch.mjs .github/workflows/apply-accounting-policy-patch.yml
+          rm scripts/apply-accounting-policy-patch.mjs scripts/fix-accounting-policy-patch-tests.mjs .github/workflows/apply-accounting-policy-patch.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A

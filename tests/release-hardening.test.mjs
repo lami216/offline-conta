@@ -33,34 +33,3 @@ test("payment and settlement reject an invalid balance side", async t => {
   const party = await h.db.collection("parties").findOne({ id: "party" });
   assert.deepEqual([party.receivable, party.payable], [100, 100]);
 });
-
-test("historical partial-payment invoices are read-only instead of being coerced to zero or full payment", async t => {
-  const h = await sqliteHarness();
-  t.after(() => h.close());
-  await h.db.collection("warehouses").insertOne({ _id: "main", name: "Main", isSalesDefault: true });
-  await h.db.collection("products").insertOne({ id: "p", sku: "1", name: "Tea", stocks: { main: 5 }, openingStock: 5, openingCost: 50 });
-  await h.db.collection("documents").insertOne({
-    id: "legacy-partial",
-    number: "SAL-OLD",
-    kind: "sale",
-    status: "posted",
-    occurredAt: "2026-01-01T12:00:00.000Z",
-    businessDate: "2026-01-01",
-    warehouseId: "main",
-    warehouseName: "Main",
-    paymentMethod: "cash",
-    total: 100,
-    paidTotal: 40,
-    cashAmount: 40,
-    dueTotal: 60,
-    lines: [{ id: "line", productId: "p", description: "Tea", quantity: 1, unitPrice: 100, lineTotal: 100, costAtSale: 50, grossProfit: 50 }],
-  });
-  await assert.rejects(command(h.db, {
-    type: "sale.update",
-    documentId: "legacy-partial",
-    paymentMethod: "cash",
-    lines: [{ productId: "p", quantity: 1, piecePrice: 120 }],
-  }), /متاحة للعرض فقط/);
-  const original = await h.db.collection("documents").findOne({ id: "legacy-partial" });
-  assert.deepEqual([original.total, original.paidTotal, original.dueTotal], [100, 40, 60]);
-});

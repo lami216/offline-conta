@@ -46,6 +46,17 @@ replaceExact(
 );
 
 replaceExact(
+  "lib/reports.ts",
+  '    const productIds = [...new Set(found.rows.flatMap(document => ((document.lines ?? []) as Document[]).map(line => String(line.productId ?? "")).filter(Boolean)))];',
+  '    const productIds = [...new Set((hasProductFilter ? found.all : found.rows).flatMap(document => ((document.lines ?? []) as Document[]).map(line => String(line.productId ?? "")).filter(Boolean)))];',
+);
+replaceExact(
+  "lib/reports.ts",
+  '    const rows = found.rows.map(document => { const selected = ((document.lines ?? []) as Document[]).filter(line => lineMatches(line, f, categoryScope)); if (f.type === "purchases" && hasProductFilter) { const line=selected[0]; return { id:String(document.id),documentId:String(document.id),number:displayDocumentNumber(document),occurredAt:String(document.occurredAt),party:String(document.partyName??""),product:String(identities.get(String(line?.productId))?.name??line?.description??"").trim()||"منتج غير متاح",sku:String(identities.get(String(line?.productId))?.sku??line?.sku??"—")||"—",quantity:n(line?.quantity),unitPrice:n(line?.unitPrice),total:n(line?.lineTotal) }; } return { id:String(document.id),documentId:String(document.id),number:displayDocumentNumber(document),occurredAt:String(document.occurredAt),party:String(document.partyName??""),paymentMethod:String(document.paymentMethod??""),title:String(document.title??""),recurring:Boolean(document.recurringId),total:n(document.total),paid:n(document.paidTotal),due:n(document.dueTotal) }; });',
+  '    const rows = found.rows.flatMap(document => { const selected = ((document.lines ?? []) as Document[]).filter(line => lineMatches(line, f, categoryScope)); if (f.type === "purchases" && hasProductFilter) return selected.map(line => ({ id:`${document.id}-${line.id ?? line.productId}`,documentId:String(document.id),number:displayDocumentNumber(document),occurredAt:String(document.occurredAt),party:String(document.partyName??""),product:String(identities.get(String(line.productId))?.name??line.description??"").trim()||"منتج غير متاح",sku:String(identities.get(String(line.productId))?.sku??line.sku??"—")||"—",quantity:n(line.quantity),unitPrice:n(line.unitPrice),total:n(line.lineTotal) })); return [{ id:String(document.id),documentId:String(document.id),number:displayDocumentNumber(document),occurredAt:String(document.occurredAt),party:String(document.partyName??""),paymentMethod:String(document.paymentMethod??""),title:String(document.title??""),recurring:Boolean(document.recurringId),total:n(document.total),paid:n(document.paidTotal),due:n(document.dueTotal) }]; });',
+);
+
+replaceExact(
   "package.json",
   '    "better-sqlite3": "^11.10.0",',
   '    "better-sqlite3": "13.0.3",',

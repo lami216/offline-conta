@@ -1,10 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { detectLegacyDatabase, MAX_LEGACY_BYTES } from "./dataacc-sqlite.ts";
+import { detectLegacyDatabase } from "./dataacc-sqlite.ts";
 
 export const LEGACY_CHUNK_BYTES = 512 * 1024;
-export const MAX_LEGACY_CHUNKS = Math.ceil(MAX_LEGACY_BYTES / LEGACY_CHUNK_BYTES);
 export const LEGACY_UPLOAD_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 // The upload is staging for a resumable import, not a disposable request temp file.
 // Desktop sets ALKARNA_USER_DATA to Electron's userData directory.
@@ -16,8 +15,8 @@ async function readMeta(id: string) { return JSON.parse(await readFile(paths(id)
 async function cleanupAbandoned() { await mkdir(root, { recursive: true }); const { readdir } = await import("node:fs/promises"); for (const name of await readdir(root)) { const path = join(root, name); try { if (Date.now() - (await stat(path)).mtimeMs > LEGACY_UPLOAD_MAX_AGE_MS) await rm(path, { force: true }); } catch {} } }
 export async function startLegacyUpload(size: number) {
   await cleanupAbandoned();
-  if (!Number.isInteger(size) || size <= 0 || size > MAX_LEGACY_BYTES) throw new Error("حجم ملف SQLite غير صالح أو أكبر من الحد المسموح");
-  const chunks = Math.ceil(size / LEGACY_CHUNK_BYTES); if (chunks > MAX_LEGACY_CHUNKS) throw new Error("عدد أجزاء الملف أكبر من الحد المسموح");
+  if (!Number.isSafeInteger(size) || size <= 0) throw new Error("حجم ملف SQLite غير صالح");
+  const chunks = Math.ceil(size / LEGACY_CHUNK_BYTES);
   const id = randomUUID(), p = paths(id), meta: Meta = { id, size, chunks, nextIndex: 0, createdAt: Date.now() };
   await mkdir(root, { recursive: true }); await writeFile(p.meta, JSON.stringify(meta), { flag: "wx", mode: 0o600 }); await writeFile(p.data, new Uint8Array(), { flag: "wx", mode: 0o600 });
   return { uploadId: id, chunkSize: LEGACY_CHUNK_BYTES, chunks };

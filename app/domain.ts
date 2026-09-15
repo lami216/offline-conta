@@ -102,6 +102,12 @@ export interface DocumentRecord {
   paymentMethod: string | null;
   status: string;
   title: string | null;
+  /** Opening-stock audit metadata for initial balances and later corrections. */
+  openingCorrection?: boolean;
+  openingStockBefore?: number | null;
+  openingStockAfter?: number | null;
+  openingCostBefore?: number | null;
+  openingCostAfter?: number | null;
   total: number;
   dueTotal: number;
   paidTotal: number;

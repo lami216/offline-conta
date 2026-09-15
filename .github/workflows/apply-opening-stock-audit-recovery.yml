@@ -1,0 +1,87 @@
+name: Recover opening stock audit hardening
+on:
+  push:
+    branches:
+      - fix/quantity-money-formatting-20260915
+    paths:
+      - .github/workflows/apply-opening-stock-audit-recovery.yml
+permissions:
+  contents: write
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/quantity-money-formatting-20260915
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Reapply audited opening-stock patch from the original guarded workflow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/apply-opening-stock-audit.yml')
+          text = path.read_text(encoding='utf-8')
+          step = '      - name: Apply audited opening-stock classification and history changes\n'
+          start = text.index(step)
+          run_marker = '        run: |\n'
+          body_start = text.index(run_marker, start) + len(run_marker)
+          body_end = text.index('      - run: npm ci\n', body_start)
+          body = text[body_start:body_end]
+          normalized = '\n'.join(line[10:] if line.startswith('          ') else line for line in body.splitlines()) + '\n'
+          Path('/tmp/apply-opening-stock-audit.sh').write_text(normalized, encoding='utf-8')
+          PY
+          bash /tmp/apply-opening-stock-audit.sh
+      - name: Tighten generated collection typing
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one typing target, got {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'app/api/bootstrap/route.ts',
+              'const cleanMovements = clean(movements).map(movement => ({ ...movement, type: classifyStockMovementType(movement.type, documentHints.get(String(movement.documentId ?? ""))) }));',
+              'const cleanMovements = clean(movements as Array<Record<string, unknown>>).map((movement: Record<string, unknown>) => ({ ...movement, type: classifyStockMovementType(movement.type, documentHints.get(String(movement.documentId ?? ""))) }));',
+          )
+          replace_once(
+              'lib/reports.ts',
+              'const stored = await db.collection("stockMovements").find(query).toArray();',
+              'const stored = await db.collection("stockMovements").find(query).toArray() as Array<Record<string, unknown>>;',
+          )
+          replace_once(
+              'lib/reports.ts',
+              'const documents = documentIds.length ? await db.collection("documents").find({ id: { $in: documentIds } }).project({ id: 1, number: 1, kind: 1, title: 1, openingCorrection: 1, openingStockBefore: 1, openingStockAfter: 1 }).toArray() : [];',
+              'const documents = (documentIds.length ? await db.collection("documents").find({ id: { $in: documentIds } }).project({ id: 1, number: 1, kind: 1, title: 1, openingCorrection: 1, openingStockBefore: 1, openingStockAfter: 1 }).toArray() : []) as Array<Record<string, unknown>>;',
+          )
+          replace_once(
+              'lib/reports.ts',
+              'const classified = stored.map(row => ({ ...row, type: classifyStockMovementType(row.type, documentMap.get(String(row.documentId ?? ""))) }));',
+              'const classified: Array<Record<string, unknown> & { type: string }> = stored.map(row => ({ ...row, type: classifyStockMovementType(row.type, documentMap.get(String(row.documentId ?? ""))) }));',
+          )
+          PY
+      - run: npm ci
+      - run: npm test
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build
+      - name: Commit validated patch and remove temporary workflows
+        shell: bash
+        run: |
+          rm .github/workflows/apply-opening-stock-audit.yml .github/workflows/apply-opening-stock-audit-recovery.yml
+          git config user.name "lami216"
+          git config user.email "iiyad21694@gmail.com"
+          git add app lib tests .github/workflows/apply-opening-stock-audit.yml .github/workflows/apply-opening-stock-audit-recovery.yml
+          git commit -m "fix: classify and audit opening stock corrections"
+          git push origin HEAD:fix/quantity-money-formatting-20260915

@@ -66,13 +66,12 @@ for (const packageName of aliases) {
   if (!replaced.has(packageName)) throw new Error(`Next standalone output has no traced ${packageName} alias below ${aliasRoot}`);
 }
 
-for (const relative of [
-  "node_modules/better-sqlite3",
-  "node_modules/better-sqlite3/build/Release/better_sqlite3.node",
-]) {
-  const physical = await realpath(path.join(output, relative));
-  if (!insideOutput(physical)) {
-    throw new Error(`Staged runtime path escapes the app: ${relative} -> ${physical}`);
-  }
-  console.log(`Staged physical path: ${physical}`);
+// better-sqlite3 13 uses N-API prebuilds instead of the old build/Release ABI artifact.
+// desktop:rebuild-native replaces the traced package with a full physical package copy;
+// here we only assert that the staged package itself stays contained inside the app.
+const nativeModule = path.join(output, "node_modules", "better-sqlite3");
+const physicalNativeModule = await realpath(nativeModule);
+if (!insideOutput(physicalNativeModule)) {
+  throw new Error(`Staged runtime path escapes the app: node_modules/better-sqlite3 -> ${physicalNativeModule}`);
 }
+console.log(`Staged physical path: ${physicalNativeModule}`);

@@ -24,10 +24,11 @@ test("categoryId is parsed and constrains real report data",async()=>{
   await db.collection("products").insertMany([
     {id:"a",name:"Alpha",sku:"001",categoryId:"cat-a",stocks:{main:10},lastPurchaseCost:40},
     {id:"b",name:"Beta",sku:"002",categoryId:"cat-b",stocks:{main:10},lastPurchaseCost:30},
+    {id:"c",name:"Gamma",sku:"003",categoryId:"cat-a",stocks:{main:10},lastPurchaseCost:55},
   ]);
   await db.collection("documents").insertMany([
     doc("sale","sale",[line("sa","a",2,100,40),line("sb","b",3,200,30)]),
-    doc("purchase","purchase",[line("pa","a",4,50),line("pb","b",5,60)]),
+    doc("purchase","purchase",[line("pa","a",4,50),line("pc","c",2,70),line("pb","b",5,60)]),
   ]);
   await db.collection("stockMovements").insertMany([
     {id:"ma",documentId:"sale",occurredAt:"2026-09-08T12:00:00.000Z",productId:"a",productName:"Alpha",warehouseId:"main",warehouseName:"Main",type:"sale",balanceBefore:10,quantityDelta:-2,balanceAfter:8,documentNumber:"N-sale"},
@@ -41,8 +42,10 @@ test("categoryId is parsed and constrains real report data",async()=>{
   const stock=await buildReport(db,f("stock",{categoryId:"cat-a"}));
 
   assert.equal(sales.summary.netSales,200);
-  assert.equal(purchases.summary.total,200);
-  assert.deepEqual(productSales.rows.map(row=>row.productId),["a"]);
+  assert.equal(purchases.summary.total,340);
+  assert.deepEqual(purchases.rows.map(row=>row.product),["Alpha","Gamma"]);
+  assert.deepEqual(purchases.rows.map(row=>row.quantity),[4,2]);
+  assert.deepEqual(productSales.rows.map(row=>row.productId),["a","c"]);
   assert.equal(profit.summary.revenue,200);
   assert.deepEqual(profit.rows.map(row=>row.productId),["a"]);
   assert.deepEqual(stock.rows.map(row=>row.product),["Alpha"]);

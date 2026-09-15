@@ -57,6 +57,12 @@ replaceExact(
 );
 
 replaceExact(
+  "app/conta-app.tsx",
+  ' const remaining=Math.max(0,record.dueTotal-record.paidTotal),reference=displayDocumentNumber(record),date=formatDateTime(record.occurredAt),payment=paymentName(record,data);',
+  ' const remaining=Math.max(0,record.dueTotal),reference=displayDocumentNumber(record),date=formatDateTime(record.occurredAt),payment=paymentName(record,data);',
+);
+
+replaceExact(
   "package.json",
   '    "better-sqlite3": "^11.10.0",',
   '    "better-sqlite3": "13.0.3",',

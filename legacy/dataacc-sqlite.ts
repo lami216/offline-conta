@@ -12,7 +12,6 @@ import { normalizeImportText } from "../migration/matching.ts";
 import { allocateAvailableSequences } from "../lib/document-sequences.ts";
 
 export const SQLITE_MAGIC = Buffer.from("SQLite format 3\0", "ascii");
-export const MAX_LEGACY_BYTES = 50 * 1024 * 1024;
 export const LEGACY_SUPPORTED_TABLES = ["itemsTB","storesTB","stores_itemsTB","customerTB","supplierTB","suppliersTB","BankTB","PayMethods","buyBillTB","items_BuyTB","purchBillTB","items_purchTB","safeTB","process_TypeTB","process_MainType","companyTB"];
 const financialReview = ["tblBankDeposit","tblBankConvert","tblBankConvertToSafe","customerAccountTB","customerSolfaTB","suppliersAccountTB","suppliersSolfaTB"];
 const unsupported = ["userTB","authTB","EmpTBs","Emp_salaryTB","Emp_mrtbatTB","presenceTB","MaintainceTB","tblPrinter","tblPrinterAccounts","Units","items_UnitsTB","NotesTB","ShowBillTB","items_ShowBillTB"];
@@ -26,7 +25,7 @@ export function resolveSqlJsWasmPath() {
   return wasmPath;
 }
 
-async function open(bytes: Uint8Array) { if (bytes.byteLength > MAX_LEGACY_BYTES) throw new Error("ملف SQLite أكبر من الحد المسموح"); if (!detectLegacyDatabase(bytes)) throw new Error("الملف ليس قاعدة SQLite 3"); const SQL = await initSqlJs({ locateFile: () => resolveSqlJsWasmPath() }); return new SQL.Database(bytes); }
+async function open(bytes: Uint8Array) { if (!detectLegacyDatabase(bytes)) throw new Error("الملف ليس قاعدة SQLite 3"); const SQL = await initSqlJs({ locateFile: () => resolveSqlJsWasmPath() }); return new SQL.Database(bytes); }
 type Row = Record<string, unknown>;
 const tables = (db: Database):string[] => db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")[0]?.values.flat().map(String) ?? [];
 const quote = (name: string) => `"${name.replaceAll('"','""')}"`;

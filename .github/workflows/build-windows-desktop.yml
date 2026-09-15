@@ -6,12 +6,15 @@ on:
       - main
       - "fix/**"
       - "feat/**"
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: write
 jobs:
   build:
-    # Native better-sqlite3 Electron rebuild currently requires the VS2022 toolchain.
-    # Do not switch back to windows-latest without validating node-gyp VS2026 support.
+    # Native better-sqlite3 Electron validation currently uses the VS2022 image.
+    # Keep this pinned until the complete packaged Windows smoke is green elsewhere.
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v7

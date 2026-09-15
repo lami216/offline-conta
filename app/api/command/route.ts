@@ -297,8 +297,6 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const original = await db.collection("documents").findOne({ id: documentId, kind, status: "posted" }, { session });
     if (!original) throw new CommandError("الفاتورة غير موجودة أو غير قابلة للتعديل", 404);
     if (original.legacyKey) throw new CommandError("الفواتير المرحلة متاحة للعرض فقط", 409);
-    const originalTotal = Number(original.total ?? 0), originalPaid = Number(original.paidTotal ?? original.cashAmount ?? 0);
-    if (Number.isFinite(originalTotal) && Number.isFinite(originalPaid) && originalPaid > 0 && originalPaid < originalTotal) throw new CommandError("هذه فاتورة قديمة تحتوي دفعًا جزئيًا داخل الفاتورة، لذلك هي متاحة للعرض فقط حفاظًا على الرصيد التاريخي.", 409);
     if (isSale && await db.collection("documents").findOne({ kind: "return", status: "posted", parentDocumentId: documentId }, { session })) throw new CommandError("لا يمكن تعديل هذه الفاتورة القديمة لوجود حركة تاريخية مرتبطة بها.", 409);
     const input = lines(body), paymentMethod = text(body.paymentMethod);
     const { warehouse, party, warehouseId, partyId } = await refs(db, session, { ...body, warehouseId: isSale ? original.warehouseId : body.warehouseId }, paymentMethod === "note");

@@ -37,7 +37,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/api/command/route.ts lib/backup.ts lib/reports.ts package.json package-lock.json
+          git add app/api/command/route.ts app/conta-app.tsx lib/backup.ts lib/reports.ts package.json package-lock.json
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
             git commit -m "fix: harden restore settlement reports and Electron runtime"

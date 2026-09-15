@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test, { after, before, beforeEach } from "node:test";
-import { classifyStockMovementType, isOpeningStockCorrectionDocument, isOpeningStockDocument, stockMovementMatchesFilter } from "../app/stock-movement.ts";
+import { classifyStockMovementType, isOpeningStockCorrectionDocument, isOpeningStockDocument, optionalFiniteNumber, stockMovementMatchesFilter } from "../app/stock-movement.ts";
 import { buildReport } from "../lib/reports.ts";
 import { sqliteHarness } from "./sqlite-harness.mjs";
 
@@ -9,6 +9,16 @@ let harness, db;
 before(async () => { harness = await sqliteHarness(); db = harness.db; });
 beforeEach(async () => { await harness.reset(); });
 after(async () => { await harness.close(); });
+
+test("optional opening-stock metadata never invents zero for missing values", () => {
+  assert.equal(optionalFiniteNumber(null), null);
+  assert.equal(optionalFiniteNumber(undefined), null);
+  assert.equal(optionalFiniteNumber(""), null);
+  assert.equal(optionalFiniteNumber("no-number"), null);
+  assert.equal(optionalFiniteNumber(0), 0);
+  assert.equal(optionalFiniteNumber("0"), 0);
+  assert.equal(optionalFiniteNumber("12.5"), 12.5);
+});
 
 test("opening-stock movement classification repairs current and historical correction labels", () => {
   const current = { kind: "adjustment", number: "OPEN-COR-1", title: "تصحيح رصيد البداية", openingCorrection: true, openingStockBefore: 10, openingStockAfter: 8 };

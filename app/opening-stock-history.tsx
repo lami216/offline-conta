@@ -1,9 +1,7 @@
 "use client";
 import { displayDocumentNumber, formatDateTime, money, number, type BootstrapData, type DocumentRecord } from "./domain";
 import { tr } from "./i18n/messages";
-import { isOpeningStockCorrectionDocument, isOpeningStockDocument } from "./stock-movement";
-
-const finite = (value: unknown) => Number.isFinite(Number(value));
+import { isOpeningStockCorrectionDocument, isOpeningStockDocument, optionalFiniteNumber } from "./stock-movement";
 
 export default function OpeningStockHistory({ data, docs, openDoc }: { data: BootstrapData; docs: DocumentRecord[]; openDoc: (id: string) => void }) {
   const rows = docs.filter(isOpeningStockDocument).slice().sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt)));
@@ -18,10 +16,10 @@ export default function OpeningStockHistory({ data, docs, openDoc }: { data: Boo
         const lineDelta = document.lines.reduce((sum, line) => sum + Number(line.quantity ?? 0), 0);
         const delta = movements.length ? movementDelta : lineDelta;
         const initialAfter = document.lines.reduce((sum, line) => sum + Math.max(0, Number(line.quantity ?? 0)), 0);
-        const before = correction && finite(document.openingStockBefore) ? Number(document.openingStockBefore) : correction ? null : 0;
-        const after = finite(document.openingStockAfter) ? Number(document.openingStockAfter) : correction ? null : initialAfter;
-        const costBefore = finite(document.openingCostBefore) ? Number(document.openingCostBefore) : null;
-        const costAfter = finite(document.openingCostAfter) ? Number(document.openingCostAfter) : finite(document.lines[0]?.unitPrice) ? Number(document.lines[0]?.unitPrice) : null;
+        const before = correction ? optionalFiniteNumber(document.openingStockBefore) : 0;
+        const after = optionalFiniteNumber(document.openingStockAfter) ?? (correction ? null : initialAfter);
+        const costBefore = optionalFiniteNumber(document.openingCostBefore);
+        const costAfter = optionalFiniteNumber(document.openingCostAfter) ?? optionalFiniteNumber(document.lines[0]?.unitPrice);
         const stockBasis = before !== null && after !== null ? `${number(before)} → ${number(after)}` : "—";
         const cost = costAfter === null ? "—" : correction && costBefore !== null && costBefore !== costAfter ? `${money(costBefore)} → ${money(costAfter)}` : money(costAfter);
         const productNames = [...new Set(document.lines.map(line => data.products.find(product => product.id === line.productId)?.name ?? line.description.split(" — ")[0]).filter(Boolean))].join("، ") || "—";

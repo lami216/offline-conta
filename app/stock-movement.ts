@@ -11,6 +11,13 @@ export type StockMovementDocumentHint = {
 const asText = (value: unknown) => typeof value === "string" ? value.trim() : "";
 const hasOwn = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 
+/** Preserve a real numeric zero while treating absent audit metadata as absent. */
+export function optionalFiniteNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 /**
  * Opening-stock edits existed before the current explicit opening-correction
  * movement type. Document provenance is therefore the durable authority for

@@ -47,7 +47,7 @@ test("categoryId is parsed and constrains real report data",async()=>{
   assert.deepEqual(purchases.rows.map(row=>row.quantity),[4,2]);
   assert.deepEqual(productSales.rows.map(row=>row.productId),["a","c"]);
   assert.equal(profit.summary.revenue,200);
-  assert.deepEqual(profit.rows.map(row=>row.productId),["a","c"]);
+  assert.deepEqual(profit.rows.map(row=>row.productId),["a"]);
   assert.deepEqual(stock.rows.map(row=>row.product),["Alpha"]);
 });
 

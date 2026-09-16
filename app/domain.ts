@@ -9,7 +9,9 @@ export type DocumentKind =
   | "expense"
   | "payment"
   | "offset"
-  | "settlement";
+  | "settlement"
+  | "account-transfer"
+  | "account-adjustment";
 export type PartyType = "customer" | "supplier";
 export interface Party {
   id: string;
@@ -19,6 +21,8 @@ export interface Party {
   receivable: number;
   payable: number;
   net: number;
+  isArchived?: boolean;
+  archivedAt?: string | null;
 }
 /** Single compatibility authority: pre-role parties were suppliers in Conta. */
 export function resolvePartyType(party: unknown): PartyType {
@@ -85,6 +89,8 @@ export interface DocumentLine {
   lineTotal: number;
   costAtSale?: number | null;
   grossProfit?: number | null;
+  balanceBefore?: number;
+  balanceAfter?: number;
 }
 export interface DocumentRecord {
   id: string;
@@ -94,12 +100,16 @@ export interface DocumentRecord {
   kind: DocumentKind;
   partyId: string | null;
   partyName: string | null;
+  partyNameOriginal?: string | null;
+  partyNameSnapshot?: string | null;
   warehouseId: string | null;
   warehouseName: string | null;
   destinationWarehouseId: string | null;
   destinationWarehouseName: string | null;
   parentDocumentId: string | null;
   paymentMethod: string | null;
+  fromAccountId?: string | null;
+  toAccountId?: string | null;
   status: string;
   title: string | null;
   /** Opening-stock audit metadata for initial balances and later corrections. */
@@ -114,6 +124,7 @@ export interface DocumentRecord {
   /** Actual cash moved; legacy documents fall back to paidTotal. */
   cashAmount?: number;
   partyCashDirection?: "receive" | "pay";
+  accountAdjustmentDirection?: "deposit" | "withdrawal";
   partyBalanceBefore?: number;
   partyBalanceDelta?: number;
   partyBalanceAfter?: number;
@@ -141,6 +152,7 @@ export interface Movement {
   balanceBefore: number;
   balanceAfter: number;
   occurredAt: string;
+  documentRevision?: number;
 }
 export interface BootstrapData {
   principal: { principalType: "local" | "owner" | "user"; name: string; permissions: string[] };
@@ -158,7 +170,21 @@ export interface BootstrapData {
   financialMovements: FinancialMovement[];
   partyFinancialSummaries: PartyFinancialSummary[];
   paymentAccounts: PaymentAccount[];
-  accountTransfers: Array<{ id: string; number: string; fromAccountId: string; toAccountId: string; amount: number; note: string; occurredAt: string }>;
+  accountTransfers: AccountTransferRecord[];
+}
+export interface AccountTransferRecord {
+  id: string;
+  documentId?: string;
+  number: string;
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+  note: string | null;
+  occurredAt: string;
+  status?: "posted" | "voided";
+  revision?: number;
+  updatedAt?: string;
+  voidedAt?: string;
 }
 export const invoiceFonts = ["tahoma", "arial", "segoe-ui", "times-new-roman"] as const;
 export type InvoiceFont = typeof invoiceFonts[number];
@@ -210,10 +236,18 @@ export interface FinancialMovement {
   documentNumber: string;
   partyId: string | null;
   partyName: string | null;
+  partyNameOriginal?: string | null;
   type: string;
   occurredAt: string;
   transferId?: string | null;
   note?: string | null;
+  status?: "posted" | "reversed";
+  revision?: number;
+  isReversal?: boolean;
+  reversedAt?: string;
+  reversalMovementId?: string;
+  reversalReason?: string;
+  reversalOfMovementId?: string;
   delta?: number;
   balanceBefore?: number;
   balanceAfter?: number;
@@ -241,6 +275,8 @@ export const kindLabels: Record<DocumentKind, string> = {
   payment: "سداد",
   offset: "مقاصة",
   settlement: "تسوية يدوية للرصيد",
+  "account-transfer": "تحويل بين الحسابات",
+  "account-adjustment": "سحب / إيداع",
 };
 /** Current document kinds offered by user-facing filters. */
 export const visibleDocumentKindLabels = Object.fromEntries(

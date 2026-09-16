@@ -42,7 +42,7 @@ export const permissionPresets = {
     "banks.view", "banks.movements.view", "banks.transfer", "banks.transfer.edit", "banks.deposit_withdraw", "banks.deposit_withdraw.edit",
     "expenses.view", "expenses.create", "expenses.edit", "reports.view",
   ],
-  sales: ["pos.view", "pos.create", "customers.create"],
+  sales: ["pos.view", "pos.create", "customers.view", "customers.create"],
 };
 
 export type AccountPreset = keyof typeof permissionPresets | "custom";

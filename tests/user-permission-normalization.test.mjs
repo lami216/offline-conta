@@ -9,6 +9,7 @@ const baseHeaders = { Origin: origin, Host: "127.0.0.1:3219" };
 before(async () => {
   process.env.NODE_ENV = "production";
   process.env.ALKARNA_DESKTOP = "1";
+  process.env.ALKARNA_TEST_LICENSE_BYPASS = "1";
   harness = await sqliteHarness();
   usersRoute = await import("../app/api/settings/users/route.ts");
   auth = await import("../lib/auth.ts");

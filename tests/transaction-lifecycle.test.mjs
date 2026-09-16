@@ -26,6 +26,10 @@ async function insertProduct(stocks = { a: 10, b: 0 }) {
   await db.collection("products").insertOne({ id: "p", sku: "1", name: "Tea", piecePrice: 10, pieceCost: 5, lastPurchaseCost: 5, stocks, isArchived: false });
 }
 
+async function establishOpeningCost() {
+  await db.collection("documents").insertOne({ id: "opening-p", number: "OPEN-TEST", kind: "adjustment", status: "posted", openingCorrection: true, occurredAt: "2026-09-01T00:00:00.000Z", warehouseId: "a", lines: [{ id: "opening-line", productId: "p", description: "Tea", quantity: 10, unitPrice: 5, lineTotal: 50 }] });
+}
+
 async function insertCustomer(net = 100) {
   await db.collection("parties").insertOne({ id: "c", name: "Customer", phone: "", partyType: "customer", receivable: Math.max(net, 0), payable: Math.max(-net, 0), net });
 }
@@ -85,6 +89,7 @@ test("stock transfer edit rolls back completely when destination stock was consu
 
 test("inventory adjustment update replays the historical delta and void restores the pre-adjustment quantity", async () => {
   await insertProduct();
+  await establishOpeningCost();
   const documentId = await command({ type: "adjustment.post", warehouseId: "a", reason: "count", lines: [{ productId: "p", actualQuantity: 12 }] });
   assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 12);
   await command({ type: "adjustment.update", documentId, reason: "corrected count", lines: [{ productId: "p", actualQuantity: 11 }] });

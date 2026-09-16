@@ -14,6 +14,18 @@ export type DocumentReadAccess = {
 
 const partyIdOf = (document: ReadModelDocument) =>
   typeof document.partyId === "string" ? document.partyId : "";
+const canAny = (can: DocumentReadAccess["can"], capabilities: readonly string[]) =>
+  capabilities.some(capability => can(capability));
+
+const saleAccess = ["pos.view", "pos.create", "pos.edit", "pos.delete"] as const;
+const purchaseAccess = ["purchases.view", "purchases.create", "purchases.edit", "purchases.delete"] as const;
+const expenseAccess = ["expenses.view", "expenses.create", "expenses.edit", "expenses.delete"] as const;
+const customerAccess = ["customers.view", "customers.create", "customers.edit", "customers.delete", "customers.collect", "customers.collect.edit", "customers.collect.delete"] as const;
+const supplierAccess = ["suppliers.view", "suppliers.create", "suppliers.edit", "suppliers.delete", "suppliers.pay", "suppliers.pay.edit", "suppliers.pay.delete"] as const;
+const transferAccess = ["warehouses.transfer", "warehouses.transfer.edit", "warehouses.transfer.delete"] as const;
+const adjustmentAccess = ["warehouses.adjust", "warehouses.adjust.edit", "warehouses.adjust.delete"] as const;
+const accountTransferAccess = ["banks.view", "banks.movements.view", "banks.transfer", "banks.transfer.edit", "banks.transfer.delete"] as const;
+const accountAdjustmentAccess = ["banks.view", "banks.movements.view", "banks.deposit_withdraw", "banks.deposit_withdraw.edit", "banks.deposit_withdraw.delete"] as const;
 
 /**
  * `documents` in bootstrap is the operational read model. Voided records stay in
@@ -27,13 +39,14 @@ export function isOperationalDocument(document: ReadModelDocument) {
 /** Coarse kind authorization, used before historical queries expose a kind. */
 export function canReadDocumentKind(kind: string, access: Pick<DocumentReadAccess, "can">) {
   if (access.can("records.view")) return true;
-  if (kind === "sale") return access.can("pos.view") || access.can("customers.view");
-  if (kind === "purchase") return access.can("purchases.view") || access.can("suppliers.view");
-  if (kind === "expense") return access.can("expenses.view");
-  if (kind === "transfer") return access.can("warehouses.transfer");
-  if (kind === "adjustment") return access.can("warehouses.adjust");
-  if (kind === "account-transfer" || kind === "account-adjustment") return access.can("banks.view") || access.can("banks.movements.view");
-  if (["payment", "settlement", "offset", "return"].includes(kind)) return access.can("customers.view") || access.can("suppliers.view");
+  if (kind === "sale") return canAny(access.can, saleAccess) || canAny(access.can, customerAccess);
+  if (kind === "purchase") return canAny(access.can, purchaseAccess) || canAny(access.can, supplierAccess);
+  if (kind === "expense") return canAny(access.can, expenseAccess);
+  if (kind === "transfer") return canAny(access.can, transferAccess);
+  if (kind === "adjustment") return canAny(access.can, adjustmentAccess);
+  if (kind === "account-transfer") return canAny(access.can, accountTransferAccess);
+  if (kind === "account-adjustment") return canAny(access.can, accountAdjustmentAccess);
+  if (["payment", "settlement", "offset", "return"].includes(kind)) return canAny(access.can, customerAccess) || canAny(access.can, supplierAccess);
   return false;
 }
 
@@ -45,14 +58,15 @@ export function canReadDocument(document: ReadModelDocument, access: DocumentRea
   const customerParty = Boolean(partyId) && access.customerPartyIds.has(partyId);
   const supplierParty = Boolean(partyId) && access.supplierPartyIds.has(partyId);
 
-  if (kind === "sale") return access.can("pos.view") || (customerParty && access.can("customers.view"));
-  if (kind === "purchase") return access.can("purchases.view") || (supplierParty && access.can("suppliers.view"));
-  if (kind === "expense") return access.can("expenses.view");
-  if (kind === "transfer") return access.can("warehouses.transfer");
-  if (kind === "adjustment") return access.can("warehouses.adjust");
-  if (kind === "account-transfer" || kind === "account-adjustment") return access.can("banks.view") || access.can("banks.movements.view");
+  if (kind === "sale") return canAny(access.can, saleAccess) || (customerParty && canAny(access.can, customerAccess));
+  if (kind === "purchase") return canAny(access.can, purchaseAccess) || (supplierParty && canAny(access.can, supplierAccess));
+  if (kind === "expense") return canAny(access.can, expenseAccess);
+  if (kind === "transfer") return canAny(access.can, transferAccess);
+  if (kind === "adjustment") return canAny(access.can, adjustmentAccess);
+  if (kind === "account-transfer") return canAny(access.can, accountTransferAccess);
+  if (kind === "account-adjustment") return canAny(access.can, accountAdjustmentAccess);
   if (["payment", "settlement", "offset", "return"].includes(kind)) {
-    return (customerParty && access.can("customers.view")) || (supplierParty && access.can("suppliers.view"));
+    return (customerParty && canAny(access.can, customerAccess)) || (supplierParty && canAny(access.can, supplierAccess));
   }
   return false;
 }

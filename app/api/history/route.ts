@@ -1,7 +1,7 @@
 import { requireValidLicense } from "../../../lib/license.ts";
 import { getDatabase } from "../../../lib/sqlite.ts";
 import { getPrincipalFromRequest, hasCapability, type Capability } from "../../../lib/auth.ts";
-import { canReadDocument, resolveCurrentPartyName } from "../../../lib/document-read-model.ts";
+import { canReadDocument, canReadDocumentKind, resolveCurrentPartyName } from "../../../lib/document-read-model.ts";
 import { resolvePartyType } from "../../domain.ts";
 import { validateRequiredDateRange } from "../../date-range-validation.ts";
 
@@ -23,6 +23,8 @@ export async function GET(request:Request){
  if(!["documents","stockMovements","financialMovements"].includes(resource))return Response.json({error:"غير مصرح"},{status:403});
  const allowed=resource==="documents"?documentCapabilities.some(capability=>hasCapability(principal,capability)):resource==="stockMovements"?hasCapability(principal,"warehouses.inventory.view"):hasCapability(principal,"banks.movements.view");
  if(!allowed)return Response.json({error:"غير مصرح"},{status:403});
+ const coarseAccess={can:(capability:string)=>hasCapability(principal,capability as Capability)};
+ if(resource==="documents"&&kind&&!canReadDocumentKind(kind,coarseAccess))return Response.json({error:"غير مصرح"},{status:403});
  const query:Record<string,unknown>={};
  if(kind)query[resource==="documents"?"kind":"type"]=kind;
  if(from||to){
@@ -39,7 +41,7 @@ export async function GET(request:Request){
    const customerPartyIds=new Set(parties.filter(party=>resolvePartyType(party)==="customer").map(party=>String(party.id??party._id??"")));
    const supplierPartyIds=new Set(parties.filter(party=>resolvePartyType(party)==="supplier").map(party=>String(party.id??party._id??"")));
    const currentPartyNames=new Map(parties.map(party=>[String(party.id??party._id??""),String(party.name??"")] as const));
-   const access={can:(capability:string)=>hasCapability(principal,capability as Capability),customerPartyIds,supplierPartyIds};
+   const access={...coarseAccess,customerPartyIds,supplierPartyIds};
    const visible=candidates.filter(document=>canReadDocument(document,access)).map(document=>resolveCurrentPartyName(document,currentPartyNames));
    const total=visible.length,rows=visible.slice((page-1)*pageSize,page*pageSize);
    return Response.json({resource,page,pageSize,total,totalPages:Math.ceil(total/pageSize),rows:rows.map(({_id,...row})=>({id:row.id??String(_id),...row}))});

@@ -15,6 +15,7 @@ beforeEach(async () => {
   await db.collection("paymentAccounts").insertOne({ id: "cash-id", code: "cash", name: "Cash", isActive: true, balance: 10000 });
 });
 async function command(body) { return db.transaction(session=>execute(db,session,body)); }
+const effectiveFinancial = rows => rows.filter(row => row.status !== "reversed" && row.isReversal !== true);
 
 test("document sequence previews are kind-specific and never reserve numbers", async t => {
   await db.collection("counters").insertMany([{ _id: "documentSequence:sale", value: 550 }, { _id: "documentSequence:purchase", value: 117 }]);
@@ -136,7 +137,6 @@ test("product deletion always archives, preserves stock and identity, and suppor
   await assert.rejects(command({type:"purchase.post",warehouseId:"wh-main",partyId:"party",paymentMethod:"note",lines:[{productId:"history",quantity:1,unitPrice:1}]}),/غير موجود/);
   assert.ok(await db.collection("documents").findOne({"lines.productId":"history"}),"historical documents remain queryable");
 });
-
 
 test("product opening stock is validated, auditable, and barcode is unique", async t => {
   const plainId = await command({ type: "product.create", name: "Name only" });
@@ -288,13 +288,17 @@ test("sale update preserves identity and historical cost while revising stock, b
   assert.equal((await db.collection("products").findOne({ id: "p1" })).stocks["wh-main"], 17, "only two additional units are removed");
   assert.equal((await db.collection("paymentAccounts").findOne({ id: "cash-id" })).balance, 10000);
   assert.equal((await db.collection("paymentAccounts").findOne({ id: "bank-b" })).balance, 360);
-  assert.equal(await db.collection("financialMovements").countDocuments({ documentId: saleId, type: "sale" }), 1);
+  let saleMovements = await db.collection("financialMovements").find({ documentId: saleId, type: "sale" }).toArray();
+  assert.equal(effectiveFinancial(saleMovements).length, 1);
+  assert.equal(saleMovements.filter(row => row.status === "reversed").length, 1);
 
   await command({ type: "sale.update", documentId: saleId, partyId: "party", paymentMethod: "note", lines: [{ productId: "p1", quantity: 2, piecePrice: 120 }] });
   assert.equal((await db.collection("products").findOne({ id: "p1" })).stocks["wh-main"], 18);
   assert.equal((await db.collection("paymentAccounts").findOne({ id: "bank-b" })).balance, 0);
   assert.equal((await db.collection("parties").findOne({ id: "party" })).receivable, 240);
   assert.equal((await db.collection("documents").findOne({ id: saleId })).dueTotal, 240);
+  saleMovements = await db.collection("financialMovements").find({ documentId: saleId, type: "sale" }).toArray();
+  assert.equal(effectiveFinancial(saleMovements).length, 0);
 });
 
 test("sale update moves a settled invoice to another customer without moving its payment", async t => {
@@ -412,7 +416,6 @@ test("editing product may add audited opening stock but zero adds nothing", asyn
   const before=await db.collection("stockMovements").countDocuments(); await command({type:"product.update",id:"p1",name:"Tea",pieceCost:50,openingStock:0}); assert.equal(await db.collection("stockMovements").countDocuments(),before);
 });
 
-
 test("payment-account removal blocks balances, archives every kind of history, deletes unused, and restores identity",async t=>{
  await assert.rejects(command({type:"payment-account.delete",accountId:"cash-id"}),/النقدية الأساسية/);
  for(const [id,balance] of [["positive",100],["negative",-100]]){await db.collection("paymentAccounts").insertOne({id,code:id,name:id,isActive:true,balance});await assert.rejects(command({type:"payment-account.delete",accountId:id}),/غير صفري/)}
@@ -428,7 +431,9 @@ test("expense update preserves identity and atomically moves its financial effec
   const revised=await db.collection("documents").findOne({id:expenseId});
   assert.deepEqual([revised.id,revised.number,revised.sequence,revised.title,revised.total,revised.paymentMethod,revised.revision],[original.id,original.number,original.sequence,"B",150,"bank",1]);
   assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,(await db.collection("paymentAccounts").findOne({id:"bank"})).balance],[10000,350]);
-  assert.equal(await db.collection("financialMovements").countDocuments({documentId:expenseId,type:"expense"}),1);
+  const expenseMovements=await db.collection("financialMovements").find({documentId:expenseId,type:"expense"}).toArray();
+  assert.equal(effectiveFinancial(expenseMovements).length,1);
+  assert.equal(expenseMovements.filter(row=>row.status==="reversed").length,1);
 });
 
 test("expense update may move payment to an overdrawn account",async()=>{
@@ -446,7 +451,10 @@ test("expense void restores the current payment movement exactly once and preser
   assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,10000);
   const document=await db.collection("documents").findOne({id:expenseId});
   assert.equal(document.status,"voided");assert.ok(document.voidedAt);assert.equal(document.revision,1);
-  assert.equal(await db.collection("financialMovements").countDocuments({documentId:expenseId,type:"expense"}),0);
+  const expenseMovements=await db.collection("financialMovements").find({documentId:expenseId}).toArray();
+  assert.equal(effectiveFinancial(expenseMovements).length,0);
+  assert.equal(expenseMovements.filter(row=>row.status==="reversed"&&row.type==="expense").length,1);
+  assert.ok(expenseMovements.some(row=>row.isReversal===true));
   await assert.rejects(command({type:"expense.void",documentId:expenseId}),/غير موجودة أو ملغاة بالفعل/);
   assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,10000);
 });

@@ -33,10 +33,41 @@ test("party account permissions expose the complete posted account history", () 
   assert.equal(canReadOperationalDocument({ kind: "sale", status: "posted", partyId: "c1" }, supplierAccess), false);
 });
 
+test("lifecycle edit and delete permissions can read the transaction they are allowed to change", () => {
+  const cases = [
+    ["sale", "pos.edit"],
+    ["sale", "pos.delete"],
+    ["purchase", "purchases.edit"],
+    ["purchase", "purchases.delete"],
+    ["expense", "expenses.edit"],
+    ["expense", "expenses.delete"],
+    ["transfer", "warehouses.transfer.edit"],
+    ["transfer", "warehouses.transfer.delete"],
+    ["adjustment", "warehouses.adjust.edit"],
+    ["adjustment", "warehouses.adjust.delete"],
+    ["account-transfer", "banks.transfer.edit"],
+    ["account-transfer", "banks.transfer.delete"],
+    ["account-adjustment", "banks.deposit_withdraw.edit"],
+    ["account-adjustment", "banks.deposit_withdraw.delete"],
+  ];
+  for (const [kind, permission] of cases) {
+    assert.equal(canReadOperationalDocument({ kind, status: "posted" }, access([permission])), true, `${kind}:${permission}`);
+  }
+});
+
+test("party cash lifecycle permissions are scoped to the matching party type", () => {
+  assert.equal(canReadOperationalDocument({ kind: "payment", status: "posted", partyId: "c1" }, access(["customers.collect.edit"])), true);
+  assert.equal(canReadOperationalDocument({ kind: "payment", status: "posted", partyId: "s1" }, access(["customers.collect.edit"])), false);
+  assert.equal(canReadOperationalDocument({ kind: "payment", status: "posted", partyId: "s1" }, access(["suppliers.pay.delete"])), true);
+  assert.equal(canReadOperationalDocument({ kind: "payment", status: "posted", partyId: "c1" }, access(["suppliers.pay.delete"])), false);
+});
+
 test("warehouse transaction screens receive their own posted documents", () => {
   assert.equal(canReadOperationalDocument({ kind: "transfer", status: "posted" }, access(["warehouses.transfer"])), true);
   assert.equal(canReadOperationalDocument({ kind: "adjustment", status: "posted" }, access(["warehouses.adjust"])), true);
   assert.equal(canReadOperationalDocument({ kind: "transfer", status: "posted" }, access(["warehouses.adjust"])), false);
+  assert.equal(canReadOperationalDocument({ kind: "transfer", status: "posted" }, access([])), false);
+  assert.equal(canReadOperationalDocument({ kind: "adjustment", status: "posted" }, access([])), false);
 });
 
 test("bank workspaces receive their posted lifecycle documents from the same read model", () => {

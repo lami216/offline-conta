@@ -4,11 +4,11 @@ import { getDatabase } from "../../../lib/sqlite.ts";
 import { log } from "../../../lib/log.ts";
 import { requireCapability, validSameOrigin, type Capability } from "../../../lib/auth.ts";
 import { isProductExpired, resolvePartyType } from "../../domain.ts";
-import { normalizePartyNet, partyCashDelta, partyNet } from "../../party-balance.ts";
+import { normalizePartyNet, partyNet } from "../../party-balance.ts";
 import { nextDocumentSequence, type SequencedDocumentKind } from "../../../lib/document-sequences.ts";
 import { deriveOpeningStockState, planOpeningStockCorrection } from "../../../lib/opening-stock.ts";
-
 import { currentProductCost, resolveProductCost } from "../../../lib/product-cost.ts";
+import { executeLifecycleCommand, findActiveFinancialMovement, LifecycleCommandError, propagatePartyName, reverseFinancialMovement } from "../../../lib/transaction-lifecycle.ts";
 
 type Input = Record<string, unknown>;
 type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; costAtSale?: number | null; grossProfit?: number | null };
@@ -79,7 +79,7 @@ async function financialMovement(db: Db, session: ClientSession, document: Recor
     { $inc: { balance: delta } }, { session },
   );
   if (!result.matchedCount) throw new CommandError(`الرصيد غير كافٍ في ${account.name}`);
-  await db.collection("financialMovements").insertOne({ id: id("fin"), paymentMethod: account.id, paymentCode: account.code, direction, amount, documentId: document.id, documentNumber: document.number, partyId: document.partyId ?? null, partyName: document.partyName ?? null, type, occurredAt: document.occurredAt, transferId: document.transferId ?? null, note: document.note ?? null }, { session });
+  await db.collection("financialMovements").insertOne({ id: id("fin"), paymentMethod: account.id, paymentCode: account.code, direction, amount, documentId: document.id, documentNumber: document.number, partyId: document.partyId ?? null, partyName: document.partyName ?? null, type, occurredAt: document.occurredAt, transferId: document.transferId ?? null, note: document.note ?? null, status: "posted", revision: Number(document.revision ?? 0) }, { session });
 }
 async function authoritativeCost(db: Db, session: ClientSession, product: Record<string, unknown>) {
   return currentProductCost(db, session, product);
@@ -106,11 +106,9 @@ async function applyPartyNetDelta(db: Db, session: ClientSession, partyId: unkno
 async function reverseInvoicePayment(db: Db, session: ClientSession, document: Record<string, unknown>, kind: "sale" | "purchase") {
   const amount = Number(document.cashAmount ?? document.paidTotal ?? 0);
   if (!amount) return;
-  const movement = await db.collection("financialMovements").findOne({ documentId: document.id, type: kind }, { session });
+  const movement = await findActiveFinancialMovement(db, session, { documentId: document.id, type: kind });
   if (!movement) throw new CommandError("تعذر العثور على حركة الدفع الأصلية للفاتورة", 409);
-  const account = await paymentAccount(db, session, movement.paymentMethod, false);
-  await db.collection("paymentAccounts").updateOne({ id: account.id }, { $inc: { balance: kind === "sale" ? -amount : amount } }, { session });
-  await db.collection("financialMovements").deleteOne({ _id: movement._id }, { session });
+  await reverseFinancialMovement(db, session, movement, "عكس دفعة فاتورة");
 }
 async function recomputePurchaseCosts(db: Db, session: ClientSession, productIds: string[]) {
   for (const productId of new Set(productIds)) {
@@ -122,7 +120,7 @@ async function refs(db: Db, session: ClientSession, body: Input, requireParty = 
   const warehouseId = text(body.warehouseId), partyId = text(body.partyId);
   const [warehouse, party] = await Promise.all([
     warehouseId ? warehouses(db).findOne({ _id: warehouseId, isArchived: { $ne: true } }, { session }) : null,
-    partyId ? db.collection("parties").findOne({ id: partyId }, { session }) : null,
+    partyId ? db.collection("parties").findOne({ id: partyId, isArchived: { $ne: true } }, { session }) : null,
   ]);
   if (!warehouse) throw new CommandError("المخزن غير موجود", 404);
   if (requireParty && !party) throw new CommandError("الطرف غير موجود", 404);
@@ -142,12 +140,14 @@ async function changeStock(db: Db, session: ClientSession, product: Record<strin
   if (!result.matchedCount) throw new CommandError("تغير المخزون أثناء العملية، أعد المحاولة", 409);
   const currentStocks = (product.stocks ??= {}) as Record<string, number>;
   currentStocks[warehouseId] = after;
-  await db.collection("stockMovements").insertOne({ id: id("mov"), documentId: document.id, documentNumber: document.number, warehouseId, warehouseName: warehouse.name, productId, productName: product.name, type, quantityDelta: delta, balanceBefore: before, balanceAfter: after, occurredAt: document.occurredAt }, { session });
+  await db.collection("stockMovements").insertOne({ id: id("mov"), documentId: document.id, documentNumber: document.number, warehouseId, warehouseName: warehouse.name, productId, productName: product.name, type, quantityDelta: delta, balanceBefore: before, balanceAfter: after, occurredAt: document.occurredAt, documentRevision: Number(document.revision ?? 0) }, { session });
   return { before, after };
 }
 
 export async function execute(db: Db, session: ClientSession, body: Input) {
   const type = text(body.type);
+  const lifecycle = await executeLifecycleCommand(db, session, body);
+  if (lifecycle.handled) return lifecycle.result;
   if (type === "product.delete") {
     const productId = text(body.id), product = await db.collection("products").findOne({ id: productId }, { session });
     if (!product) throw new CommandError("المنتج غير موجود", 404);
@@ -161,32 +161,35 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   if (type === "party.create") {
     const name = text(body.name), phone = text(body.phone), partyType = text(body.partyType); if (!name) throw new CommandError("اسم الحساب مطلوب");
     if (!["customer", "supplier"].includes(partyType)) throw new CommandError("نوع الحساب غير صالح");
-    if (phone) { const existing = await db.collection("parties").findOne({ phone, partyType }, { session }); if (existing) return String(existing.id); }
+    if (phone) { const existing = await db.collection("parties").findOne({ phone, partyType, isArchived: { $ne: true } }, { session }); if (existing) return String(existing.id); }
     const party = { id: id("party"), name, phone, partyType, receivable: 0, payable: 0, net: 0, createdAt: new Date() };
     await db.collection("parties").insertOne(party, { session }); return party.id;
   }
   if (type === "party.update") {
-    const partyId=text(body.id),party=await db.collection("parties").findOne({id:partyId},{session});
+    const partyId=text(body.id),party=await db.collection("parties").findOne({id:partyId,isArchived:{$ne:true}},{session});
     if(!party)throw new CommandError("الطرف غير موجود",404);
     const name=text(body.name),phone=text(body.phone),partyType=resolvePartyType(party);
     if(!name)throw new CommandError("اسم الحساب مطلوب");
-    if(phone&&await db.collection("parties").findOne({phone,partyType,id:{$ne:partyId}},{session}))throw new CommandError("رقم الهاتف مستخدم لحساب آخر من النوع نفسه",409);
+    if(phone&&await db.collection("parties").findOne({phone,partyType,id:{$ne:partyId},isArchived:{$ne:true}},{session}))throw new CommandError("رقم الهاتف مستخدم لحساب آخر من النوع نفسه",409);
+    await propagatePartyName(db,session,partyId,String(party.name??""),name);
     await db.collection("parties").updateOne({id:partyId},{$set:{name,phone,updatedAt:new Date()}},{session});
     return partyId;
   }
   if (type === "party.delete") {
-    const partyId=text(body.id),party=await db.collection("parties").findOne({id:partyId},{session});
+    const partyId=text(body.id),party=await db.collection("parties").findOne({id:partyId,isArchived:{$ne:true}},{session});
     if(!party)throw new CommandError("الطرف غير موجود",404);
     const rawReceivable=Number(party.receivable??0),rawPayable=Number(party.payable??0),receivable=Number.isFinite(rawReceivable)?Math.max(0,rawReceivable):0,payable=Number.isFinite(rawPayable)?Math.max(0,rawPayable):0;
     const hasBalance=receivable>0||payable>0;
     if(hasBalance&&body.settleBalance!==true)throw new CommandError("يجب تأكيد تصفية رصيد الطرف قبل الحذف",409);
+    const historicalReference=await db.collection("documents").findOne({partyId},{session})||await db.collection("financialMovements").findOne({partyId},{session});
     if(hasBalance){
       const balanceBefore=receivable-payable,settlement={...baseDocument("settlement","SET-DEL"),partyId,partyName:party.name,warehouseId:null,warehouseName:null,destinationWarehouseId:null,destinationWarehouseName:null,parentDocumentId:null,paymentMethod:null,title:"تصفية الحساب قبل حذف الطرف",total:receivable+payable,dueTotal:0,paidTotal:0,lines:[],partyBalanceBefore:balanceBefore,partyBalanceDelta:-balanceBefore,partyBalanceAfter:0,settledReceivable:receivable,settledPayable:payable,partyDeletionSettlement:true};
       await db.collection("documents").insertOne(settlement,{session});
     }
+    if(historicalReference||hasBalance){await db.collection("parties").updateOne({id:partyId},{$set:{isArchived:true,archivedAt:new Date(),receivable:0,payable:0,net:0,updatedAt:new Date()}},{session});return {id:partyId,disposition:"archived"};}
     await db.collection("importMappings").deleteMany({targetEntityType:"parties",targetId:partyId},{session});
     await db.collection("parties").deleteOne({id:partyId},{session});
-    return partyId;
+    return {id:partyId,disposition:"deleted"};
   }
   if (type === "warehouse.create") {
     const name = text(body.name); if (!name) throw new CommandError("اسم المخزن مطلوب"); const _id = id("wh");
@@ -321,14 +324,14 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if (productMap.size !== allIds.length) throw new CommandError("أحد منتجات الفاتورة لم يعد موجودًا", 409);
     const newByProduct = new Map(input.map(line => [line.productId, line.quantity]));
     if (!isSale && warehouseId !== String(original.warehouseId)) {
-      for (const old of oldLines) try { await changeStock(db, session, productMap.get(old.productId)!, oldWarehouse, -old.quantity, original, "purchase-edit"); } catch (error) { if (error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("لا يمكن تعديل الفاتورة لأن جزءًا من مخزونها تم التصرف فيه.", 409); throw error; }
-      for (const line of input) await changeStock(db, session, productMap.get(line.productId)!, warehouse, line.quantity, original, "purchase-edit");
+      for (const old of oldLines) try { await changeStock(db, session, productMap.get(old.productId)!, oldWarehouse, -old.quantity, { ...original, occurredAt: new Date().toISOString(), revision: Number(original.revision ?? 0) + 1 }, "purchase-edit-reversal"); } catch (error) { if (error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("لا يمكن تعديل الفاتورة لأن جزءًا من مخزونها تم التصرف فيه.", 409); throw error; }
+      for (const line of input) await changeStock(db, session, productMap.get(line.productId)!, warehouse, line.quantity, { ...original, occurredAt: new Date().toISOString(), revision: Number(original.revision ?? 0) + 1 }, "purchase-edit");
     } else {
       const oldQuantity = new Map(oldLines.map(line => [line.productId, line.quantity]));
       for (const productId of allIds) {
         const delta = isSale ? (oldQuantity.get(productId) ?? 0) - (newByProduct.get(productId) ?? 0) : (newByProduct.get(productId) ?? 0) - (oldQuantity.get(productId) ?? 0);
         if (!delta) continue;
-        try { await changeStock(db, session, productMap.get(productId)!, warehouse, delta, original, `${kind}-edit`); } catch (error) { if (!isSale && error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("لا يمكن تعديل الفاتورة لأن جزءًا من مخزونها تم التصرف فيه.", 409); throw error; }
+        try { await changeStock(db, session, productMap.get(productId)!, warehouse, delta, { ...original, occurredAt: new Date().toISOString(), revision: Number(original.revision ?? 0) + 1 }, `${kind}-edit`); } catch (error) { if (!isSale && error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("لا يمكن تعديل الفاتورة لأن جزءًا من مخزونها تم التصرف فيه.", 409); throw error; }
       }
     }
     if (Number(original.dueTotal) > 0) await changePartyDebt(db, session, original.partyId, kind, -Number(original.dueTotal), true);
@@ -350,10 +353,10 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const warehouse = await warehouses(db).findOne({ _id: String(original.warehouseId) }, { session });
     if (!warehouse) throw new CommandError("مخزن الفاتورة غير موجود", 409);
     const oldLines = original.lines as Line[], found = await db.collection("products").find({ id: { $in: oldLines.map(line => line.productId) } }, { session }).toArray(), map = new Map(found.map(product => [String(product.id), product]));
-    for (const line of oldLines) try { await changeStock(db, session, map.get(line.productId)!, warehouse, isSale ? line.quantity : -line.quantity, original, `${kind}-void`); } catch (error) { if (!isSale && error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("لا يمكن حذف الفاتورة لأن جزءًا من مخزونها تم التصرف فيه.", 409); throw error; }
+    for (const line of oldLines) try { await changeStock(db, session, map.get(line.productId)!, warehouse, isSale ? line.quantity : -line.quantity, { ...original, occurredAt: new Date().toISOString(), revision: Number(original.revision ?? 0) + 1 }, `${kind}-void`); } catch (error) { if (!isSale && error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("لا يمكن حذف الفاتورة لأن جزءًا من مخزونها تم التصرف فيه.", 409); throw error; }
     if (Number(original.dueTotal) > 0) await changePartyDebt(db, session, original.partyId, kind, -Number(original.dueTotal), true);
     await reverseInvoicePayment(db, session, original, kind);
-    await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: { status: "voided", voidedAt: new Date(), updatedAt: new Date() } }, { session });
+    await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: { status: "voided", voidedAt: new Date(), updatedAt: new Date(), revision: Number(original.revision ?? 0) + 1 } }, { session });
     if (!isSale) await recomputePurchaseCosts(db, session, oldLines.map(line => line.productId));
     return documentId;
   }
@@ -374,7 +377,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const dailySequence = isSale ? (Number((await db.collection("documents").find({ kind: "sale", businessDate }, { session }).sort({ dailySequence: -1 }).limit(1).next())?.dailySequence ?? 0) + 1) : undefined;
     const pricingMode = body.pricingMode === "wholesale" ? "wholesale" : "retail";
     const snapshot = partyDelta ? await applyPartyNetDelta(db, session, partyId, partyDelta) : null;
-    const doc = { ...await numberedDocument(db, session, isSale ? "sale" : "purchase", isSale ? "SAL" : "PUR"), businessDate, ...(isSale ? { dailySequence, pricingMode } : {}), partyId: partyId || null, partyName: party?.name ?? (isSale ? "بيع مباشر" : "شراء مباشر"), warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod, title: null, total, dueTotal: due, paidTotal, cashAmount, ...(snapshot ? { partyBalanceBefore:snapshot.before, partyBalanceDelta:snapshot.delta, partyBalanceAfter:snapshot.after } : {}), lines: calculated };
+    const doc = { ...await numberedDocument(db, session, isSale ? "sale" : "purchase", isSale ? "SAL" : "PUR"), revision: 0, businessDate, ...(isSale ? { dailySequence, pricingMode } : {}), partyId: partyId || null, partyName: party?.name ?? (isSale ? "بيع مباشر" : "شراء مباشر"), warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod, title: null, total, dueTotal: due, paidTotal, cashAmount, ...(snapshot ? { partyBalanceBefore:snapshot.before, partyBalanceDelta:snapshot.delta, partyBalanceAfter:snapshot.after } : {}), lines: calculated };
     for (const line of input) await changeStock(db, session, map.get(line.productId)!, warehouse, isSale ? -line.quantity : line.quantity, doc, isSale ? "sale" : "purchase");
     await db.collection("documents").insertOne(doc, { session });
     if (!isSale) for (const line of calculated) await db.collection("products").updateOne({ id: line.productId }, { $set: { lastPurchaseCost: line.unitPrice, lastPurchaseAt: doc.occurredAt, lastPurchaseCostSource: "purchase" } }, { session });
@@ -383,7 +386,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   }
   if (type === "transfer.post") {
     const input = lines(body), fromId = text(body.fromWarehouseId), toId = text(body.toWarehouseId); if (!fromId || fromId === toId) throw new CommandError("اختر مخزنين مختلفين");
-    const [from, to] = await Promise.all([warehouses(db).findOne({ _id: fromId, isArchived: { $ne: true } }, { session }), warehouses(db).findOne({ _id: toId, isArchived: { $ne: true } }, { session })]); if (!from || !to) throw new CommandError("أحد المخازن غير موجود", 404); const map = await products(db, session, input), doc = { ...baseDocument("transfer", "TRF"), partyId: null, partyName: null, warehouseId: fromId, warehouseName: from.name, destinationWarehouseId: toId, destinationWarehouseName: to.name, parentDocumentId: null, paymentMethod: null, title: null, total: 0, dueTotal: 0, paidTotal: 0, lines: input.map(l => ({ id: id("line"), productId: l.productId, description: map.get(l.productId)!.name, quantity: l.quantity, unitPrice: 0, lineTotal: 0 })) };
+    const [from, to] = await Promise.all([warehouses(db).findOne({ _id: fromId, isArchived: { $ne: true } }, { session }), warehouses(db).findOne({ _id: toId, isArchived: { $ne: true } }, { session })]); if (!from || !to) throw new CommandError("أحد المخازن غير موجود", 404); const map = await products(db, session, input), doc = { ...baseDocument("transfer", "TRF"), revision: 0, partyId: null, partyName: null, warehouseId: fromId, warehouseName: from.name, destinationWarehouseId: toId, destinationWarehouseName: to.name, parentDocumentId: null, paymentMethod: null, title: null, total: 0, dueTotal: 0, paidTotal: 0, lines: input.map(l => ({ id: id("line"), productId: l.productId, description: map.get(l.productId)!.name, quantity: l.quantity, unitPrice: 0, lineTotal: 0 })) };
     for (const line of input) { const p = map.get(line.productId)!; await changeStock(db, session, p, from, -line.quantity, doc, "transfer-out"); await changeStock(db, session, p, to, line.quantity, doc, "transfer-in"); } await db.collection("documents").insertOne(doc, { session }); return doc.id;
   }
   if (type === "adjustment.post") {
@@ -409,7 +412,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     }
     const effectiveInput = input.filter(line => line.actualQuantity !== Number((map.get(line.productId)!.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0));
     if (!effectiveInput.length) throw new CommandError("لا يوجد تغيير في المخزون لاعتماده", 409);
-    const doc = { ...baseDocument("adjustment", "ADJ"), partyId: null, partyName: null, warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: null, title: reason, total: 0, dueTotal: 0, paidTotal: 0, lines: [] as Record<string, unknown>[] };
+    const doc = { ...baseDocument("adjustment", "ADJ"), revision: 0, partyId: null, partyName: null, warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: null, title: reason, total: 0, dueTotal: 0, paidTotal: 0, lines: [] as Record<string, unknown>[] };
     for (const line of effectiveInput) {
       const p = map.get(line.productId)!, before = Number((p.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0), after = line.actualQuantity!;
       await changeStock(db, session, p, warehouse, after - before, doc, "adjustment");
@@ -418,28 +421,19 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     await db.collection("documents").insertOne(doc, { session });
     return doc.id;
   }
-  if (type === "party-cash.post") {
-    const partyId=text(body.partyId), party=await db.collection("parties").findOne({id:partyId},{session}); if(!party) throw new CommandError("الطرف غير موجود",404);
-    const amount=positive(body.amount,"المبلغ"), direction=text(body.direction); if(direction!=="receive"&&direction!=="pay") throw new CommandError("اتجاه الحركة غير صالح");
-    const method=text(body.paymentMethod); await paymentAccount(db,session,method); const snapshot=await applyPartyNetDelta(db,session,partyId,partyCashDelta(direction,amount));
-    const doc={...baseDocument("payment","PAY"),partyId,partyName:party.name,warehouseId:null,warehouseName:null,destinationWarehouseId:null,destinationWarehouseName:null,parentDocumentId:null,paymentMethod:method,title:direction==="receive"?"استلام من الطرف":"دفع للطرف",note:text(body.note)||null,total:amount,dueTotal:0,paidTotal:amount,cashAmount:amount,partyCashDirection:direction,partyBalanceBefore:snapshot!.before,partyBalanceDelta:snapshot!.delta,partyBalanceAfter:snapshot!.after,lines:[]};
-    await db.collection("documents").insertOne(doc,{session}); await financialMovement(db,session,doc,direction==="receive"?"in":"out",amount,direction==="receive"?"party-receipt":"party-payment"); return doc.id;
-  }
   if (["payment.post", "settlement.post", "offset.post"].includes(type)) {
-    const partyId = text(body.partyId), party = await db.collection("parties").findOne({ id: partyId }, { session }); if (!party) throw new CommandError("الطرف غير موجود", 404); const requested = positive(body.amount, "المبلغ"); let receivable = Number(party.receivable), payable = Number(party.payable); const side = text(body.side); if (type !== "offset.post" && side !== "receivable" && side !== "payable") throw new CommandError("جهة الرصيد غير صالحة"); if (type === "offset.post") { const amount = Math.min(requested, receivable, payable); if (amount <= 0 || requested > amount) throw new CommandError("المقاصة تتجاوز الرصيد المشترك"); receivable -= amount; payable -= amount; } else if (side === "receivable") { if (requested > receivable) throw new CommandError("المبلغ يتجاوز المستحق"); receivable -= requested; } else { if (requested > payable) throw new CommandError("المبلغ يتجاوز المستحق"); payable -= requested; }
-    const kind = type.split(".")[0], method = type === "offset.post" || type === "settlement.post" ? null : text(body.paymentMethod); if (type === "payment.post") await paymentAccount(db, session, method); const doc = { ...baseDocument(kind, kind === "offset" ? "OFF" : kind === "payment" ? "PAY" : "SET"), partyId, partyName: party.name, warehouseId: null, warehouseName: null, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: method, title: side === "receivable" ? "الطرف دفع لنا" : "نحن دفعنا للطرف", total: requested, dueTotal: 0, paidTotal: requested, lines: [] }; await db.collection("parties").updateOne({ id: partyId }, { $set: { receivable, payable, net: receivable - payable } }, { session }); await db.collection("documents").insertOne(doc, { session }); if (type === "payment.post") await financialMovement(db, session, doc, side === "receivable" ? "in" : "out", requested, side === "receivable" ? "party-receipt" : "party-payment"); return doc.id;
+    const partyId = text(body.partyId), party = await db.collection("parties").findOne({ id: partyId, isArchived: { $ne: true } }, { session }); if (!party) throw new CommandError("الطرف غير موجود", 404); const requested = positive(body.amount, "المبلغ"); let receivable = Number(party.receivable), payable = Number(party.payable); const side = text(body.side); if (type !== "offset.post" && side !== "receivable" && side !== "payable") throw new CommandError("جهة الرصيد غير صالحة"); if (type === "offset.post") { const amount = Math.min(requested, receivable, payable); if (amount <= 0 || requested > amount) throw new CommandError("المقاصة تتجاوز الرصيد المشترك"); receivable -= amount; payable -= amount; } else if (side === "receivable") { if (requested > receivable) throw new CommandError("المبلغ يتجاوز المستحق"); receivable -= requested; } else { if (requested > payable) throw new CommandError("المبلغ يتجاوز المستحق"); payable -= requested; }
+    const kind = type.split(".")[0], method = type === "offset.post" || type === "settlement.post" ? null : text(body.paymentMethod); if (type === "payment.post") await paymentAccount(db, session, method); const doc = { ...baseDocument(kind, kind === "offset" ? "OFF" : kind === "payment" ? "PAY" : "SET"), revision: 0, partyId, partyName: party.name, warehouseId: null, warehouseName: null, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: method, title: side === "receivable" ? "الطرف دفع لنا" : "نحن دفعنا للطرف", total: requested, dueTotal: 0, paidTotal: requested, lines: [] }; await db.collection("parties").updateOne({ id: partyId }, { $set: { receivable, payable, net: receivable - payable } }, { session }); await db.collection("documents").insertOne(doc, { session }); if (type === "payment.post") await financialMovement(db, session, doc, side === "receivable" ? "in" : "out", requested, side === "receivable" ? "party-receipt" : "party-payment"); return doc.id;
   }
-  if (type === "expense.post") { const title = text(body.title), amount = positive(body.amount, "المبلغ"), date = text(body.occurredAt), parsedDate = new Date(`${date}T12:00:00Z`); if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.valueOf()) || parsedDate.toISOString().slice(0,10) !== date) throw new CommandError("العنوان والتاريخ غير صالحين"); const method = text(body.paymentMethod); await paymentAccount(db, session, method); const doc = { ...await numberedDocument(db, session, "expense", "EXP"), occurredAt: parsedDate.toISOString(), partyId: null, partyName: null, warehouseId: null, warehouseName: null, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: method, title, total: amount, dueTotal: 0, paidTotal: amount, lines: [{ id: id("line"), productId: null, description: title, quantity: 1, unitPrice: amount, lineTotal: amount }] }; await financialMovement(db, session, doc, "out", amount, "expense"); await db.collection("documents").insertOne(doc, { session }); return doc.id; }
+  if (type === "expense.post") { const title = text(body.title), amount = positive(body.amount, "المبلغ"), date = text(body.occurredAt), parsedDate = new Date(`${date}T12:00:00Z`); if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.valueOf()) || parsedDate.toISOString().slice(0,10) !== date) throw new CommandError("العنوان والتاريخ غير صالحين"); const method = text(body.paymentMethod); await paymentAccount(db, session, method); const doc = { ...await numberedDocument(db, session, "expense", "EXP"), revision: 0, occurredAt: parsedDate.toISOString(), partyId: null, partyName: null, warehouseId: null, warehouseName: null, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: method, title, total: amount, dueTotal: 0, paidTotal: amount, cashAmount: amount, lines: [{ id: id("line"), productId: null, description: title, quantity: 1, unitPrice: amount, lineTotal: amount }] }; await financialMovement(db, session, doc, "out", amount, "expense"); await db.collection("documents").insertOne(doc, { session }); return doc.id; }
   if (type === "expense.update") {
     const documentId=text(body.documentId),title=text(body.title),amount=positive(body.amount,"المبلغ"),date=text(body.occurredAt),method=text(body.paymentMethod),parsedDate=new Date(`${date}T12:00:00Z`);
     if(!title||!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(parsedDate.valueOf())||parsedDate.toISOString().slice(0,10)!==date)throw new CommandError("العنوان والتاريخ غير صالحين");
     const original=await db.collection("documents").findOne({id:documentId,kind:"expense",status:"posted"},{session});
     if(!original||original.legacyKey)throw new CommandError("المصروف غير موجود أو غير قابل للتعديل",404);
-    const movement=await db.collection("financialMovements").findOne({documentId,type:"expense"},{session});
+    const movement=await findActiveFinancialMovement(db,session,{documentId,type:"expense"});
     if(!movement)throw new CommandError("تعذر العثور على حركة المصروف الأصلية",409);
-    const oldAccount=await paymentAccount(db,session,movement.paymentMethod,false);
-    await db.collection("paymentAccounts").updateOne({id:oldAccount.id},{$inc:{balance:Number(movement.amount)}},{session});
-    await db.collection("financialMovements").deleteOne({_id:movement._id},{session});
+    await reverseFinancialMovement(db,session,movement,"تعديل مصروف");
     const occurredAt=parsedDate.toISOString(),lineId=(original.lines as Line[]|undefined)?.[0]?.id??id("line");
     const revised={title,total:amount,dueTotal:0,paidTotal:amount,cashAmount:amount,paymentMethod:method,occurredAt,lines:[{id:lineId,productId:null,description:title,quantity:1,unitPrice:amount,lineTotal:amount}],updatedAt:new Date(),revision:Number(original.revision??0)+1};
     await financialMovement(db,session,{...original,...revised},"out",amount,"expense");
@@ -451,22 +445,16 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const documentId=text(body.documentId),original=await db.collection("documents").findOne({id:documentId,kind:"expense",status:"posted"},{session});
     if(!original)throw new CommandError("فاتورة المصروف غير موجودة أو ملغاة بالفعل",404);
     if(original.legacyKey)throw new CommandError("الفواتير المرحلة متاحة للعرض فقط",409);
-    const movement=await db.collection("financialMovements").findOne({documentId,type:"expense"},{session});
+    const movement=await findActiveFinancialMovement(db,session,{documentId,type:"expense"});
     if(!movement)throw new CommandError("تعذر العثور على حركة المصروف الأصلية",409);
-    const account=await paymentAccount(db,session,movement.paymentMethod,false),amount=Number(movement.amount);
-    if(!Number.isFinite(amount)||amount<=0)throw new CommandError("حركة المصروف الأصلية غير صالحة",409);
-    const restored=await db.collection("paymentAccounts").updateOne({id:account.id},{$inc:{balance:amount}},{session});
-    if(!restored.matchedCount)throw new CommandError("تعذر إعادة مبلغ المصروف",409);
-    await db.collection("financialMovements").deleteOne({_id:movement._id},{session});
+    await reverseFinancialMovement(db,session,movement,"إلغاء مصروف");
     await db.collection("documents").updateOne({id:documentId,kind:"expense",status:"posted"},{$set:{status:"voided",voidedAt:new Date(),updatedAt:new Date()},$inc:{revision:1}},{session});
     return documentId;
   }
-  if (type === "payment-account.create") { const name = text(body.name), openingBalance = num(body.openingBalance ?? 0); if (!name) throw new CommandError("اسم البنك أو وسيلة الدفع مطلوب");if(!Number.isFinite(openingBalance))throw new CommandError("رصيد البداية غير صالح"); const account = { id: id("account"), code: id("custom"), name, color: "#1677c8", icon: "wallet", isActive: true, allowNegativeBalance: true, openingBalance, balance: 0, createdAt: new Date() }; await db.collection("paymentAccounts").insertOne(account, { session }); if (openingBalance !== 0) { const doc = { ...baseDocument("opening-balance", "OPEN"), paymentMethod: account.id, partyId: null, partyName: null, note: "رصيد بداية" }; await financialMovement(db, session, doc, openingBalance>=0?"in":"out", Math.abs(openingBalance), "opening-balance"); } return account.id; }
+  if (type === "payment-account.create") { const name = text(body.name), openingBalance = num(body.openingBalance ?? 0); if (!name) throw new CommandError("اسم البنك أو وسيلة الدفع مطلوب");if(!Number.isFinite(openingBalance))throw new CommandError("رصيد البداية غير صالح"); const account = { id: id("account"), code: id("custom"), name, color: "#1677c8", icon: "wallet", isActive: true, allowNegativeBalance: true, openingBalance, balance: 0, createdAt: new Date() }; await db.collection("paymentAccounts").insertOne(account, { session }); if (openingBalance !== 0) { const doc = { ...baseDocument("opening-balance", "OPEN"), revision: 0, paymentMethod: account.id, partyId: null, partyName: null, note: "رصيد بداية" }; await financialMovement(db, session, doc, openingBalance>=0?"in":"out", Math.abs(openingBalance), "opening-balance"); } return account.id; }
   if(type==="payment-account.delete"){const account=await paymentAccount(db,session,body.accountId,false);if(account.code==="cash")throw new CommandError("لا يمكن حذف وسيلة الدفع النقدية الأساسية",409);if(Number(account.balance??0)!==0)throw new CommandError("لا يمكن حذف أو أرشفة وسيلة الدفع ورصيدها غير صفري. صفّر أو سوِّ الرصيد أولًا.",409);const key=[account.id,account.code], [movement,document,transfer]=await Promise.all([db.collection("financialMovements").findOne({paymentMethod:{$in:key}},{session}),db.collection("documents").findOne({paymentMethod:{$in:key}},{session}),db.collection("accountTransfers").findOne({$or:[{fromAccountId:{$in:key}},{toAccountId:{$in:key}}]},{session})]);if(movement||document||transfer){await db.collection("paymentAccounts").updateOne({id:account.id},{$set:{isActive:false,isArchived:true,archivedAt:new Date(),updatedAt:new Date()}},{session});return {id:String(account.id),disposition:"archived"}}await db.collection("paymentAccounts").deleteOne({id:account.id},{session});return {id:String(account.id),disposition:"deleted"}}
   if(type==="payment-account.restore"){const account=await paymentAccount(db,session,body.accountId,false);if(account.code==="cash"||account.isArchived!==true)throw new CommandError("وسيلة الدفع غير مؤرشفة",409);await db.collection("paymentAccounts").updateOne({id:account.id,isArchived:true},{$set:{isArchived:false,isActive:true,archivedAt:null,updatedAt:new Date()}},{session});return String(account.id)}
-  if(type==="account-opening-balance-correction.post"){const account=await paymentAccount(db,session,body.accountId,false),currentBalance=Number(account.balance??0),newOpening=num(body.newOpeningBalance),reason=text(body.reason);if(!Number.isFinite(newOpening))throw new CommandError("رصيد البداية الصحيح غير صالح");if(!reason)throw new CommandError("سبب التصحيح مطلوب");let oldOpening=Number(account.openingBalance);if(!Number.isFinite(oldOpening)){const history=await db.collection("financialMovements").find({paymentMethod:{$in:[account.id,account.code]},type:{$in:["opening-balance","opening-balance-correction"]}},{session}).toArray();oldOpening=history.reduce((sum,movement)=>sum+(Number.isFinite(Number(movement.delta))?Number(movement.delta):(movement.direction==="out"?-Number(movement.amount??0):Number(movement.amount??0))),0)}const delta=newOpening-oldOpening;if(delta===0)throw new CommandError("رصيد البداية الجديد يطابق الرصيد الحالي.");const newCurrentBalance=currentBalance+delta,occurredAt=new Date().toISOString(),movementId=id("fin"),reference=`OPEN-COR-${Date.now()}`;const updated=await db.collection("paymentAccounts").updateOne({id:account.id,balance:currentBalance},{$set:{openingBalance:newOpening,balance:newCurrentBalance,updatedAt:new Date()}},{session});if(!updated.matchedCount)throw new CommandError("تغير الرصيد أثناء العملية، أعد المحاولة",409);await db.collection("financialMovements").insertOne({id:movementId,paymentMethod:account.id,paymentCode:account.code,direction:delta>=0?"in":"out",amount:Math.abs(delta),delta,openingBalanceBefore:oldOpening,openingBalanceAfter:newOpening,balanceBefore:currentBalance,balanceAfter:newCurrentBalance,reason,note:reason,type:"opening-balance-correction",occurredAt,documentId:movementId,documentNumber:reference,partyId:null,partyName:null,transferId:null},{session});return movementId}
-  if (type === "account-adjustment.post") { const account = await paymentAccount(db, session, body.accountId), direction = text(body.direction), amount = positive(body.amount, "المبلغ"); if (!['deposit', 'withdrawal'].includes(direction)) throw new CommandError("نوع العملية غير صالح"); const doc = { ...baseDocument("account-adjustment", direction === "deposit" ? "DEP" : "WDR"), paymentMethod: account.id, partyId: null, partyName: null, note: text(body.note) }; await financialMovement(db, session, doc, direction === "deposit" ? "in" : "out", amount, direction === "deposit" ? "manual-deposit" : "manual-withdrawal"); return String(doc.id); }
-  if (type === "account-transfer.post") { const from = await paymentAccount(db, session, body.fromAccountId), to = await paymentAccount(db, session, body.toAccountId), amount = positive(body.amount, "المبلغ"); if (from.id === to.id) throw new CommandError("اختر حسابين مختلفين"); const transferId = id("transfer"), doc = { ...baseDocument("payment-transfer", "BTR"), transferId, paymentMethod: from.id, note: text(body.note), partyId: null, partyName: null }; await financialMovement(db, session, doc, "out", amount, "transfer-out"); doc.paymentMethod = to.id; await financialMovement(db, session, doc, "in", amount, "transfer-in"); await db.collection("accountTransfers").insertOne({ id: transferId, number: doc.number, fromAccountId: from.id, toAccountId: to.id, amount, note: doc.note, occurredAt: doc.occurredAt }, { session }); return transferId; }
+  if(type==="account-opening-balance-correction.post"){const account=await paymentAccount(db,session,body.accountId,false),currentBalance=Number(account.balance??0),newOpening=num(body.newOpeningBalance),reason=text(body.reason);if(!Number.isFinite(newOpening))throw new CommandError("رصيد البداية الصحيح غير صالح");if(!reason)throw new CommandError("سبب التصحيح مطلوب");let oldOpening=Number(account.openingBalance);if(!Number.isFinite(oldOpening)){const history=await db.collection("financialMovements").find({paymentMethod:{$in:[account.id,account.code]},type:{$in:["opening-balance","opening-balance-correction"]},status:{$ne:"reversed"},isReversal:{$ne:true}},{session}).toArray();oldOpening=history.reduce((sum,movement)=>sum+(Number.isFinite(Number(movement.delta))?Number(movement.delta):(movement.direction==="out"?-Number(movement.amount??0):Number(movement.amount??0))),0)}const delta=newOpening-oldOpening;if(delta===0)throw new CommandError("رصيد البداية الجديد يطابق الرصيد الحالي.");const newCurrentBalance=currentBalance+delta,occurredAt=new Date().toISOString(),movementId=id("fin"),reference=`OPEN-COR-${Date.now()}`;const updated=await db.collection("paymentAccounts").updateOne({id:account.id,balance:currentBalance},{$set:{openingBalance:newOpening,balance:newCurrentBalance,updatedAt:new Date()}},{session});if(!updated.matchedCount)throw new CommandError("تغير الرصيد أثناء العملية، أعد المحاولة",409);await db.collection("financialMovements").insertOne({id:movementId,paymentMethod:account.id,paymentCode:account.code,direction:delta>=0?"in":"out",amount:Math.abs(delta),delta,openingBalanceBefore:oldOpening,openingBalanceAfter:newOpening,balanceBefore:currentBalance,balanceAfter:newCurrentBalance,reason,note:reason,type:"opening-balance-correction",occurredAt,documentId:movementId,documentNumber:reference,partyId:null,partyName:null,transferId:null,status:"posted"},{session});return movementId}
   throw new CommandError("العملية غير مدعومة");
 }
 
@@ -474,11 +462,16 @@ export async function POST(request: Request) {const licenseDenied=await requireV
   let type = "unknown";
   try {
     const body = await request.json() as Input; type = text(body.type);
-    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","adjustment.post":"warehouses.adjust","payment.post":text(body.side)==="receivable"?"customers.collect":"suppliers.pay","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","settlement.post":"customers.edit","offset.post":"customers.edit","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-transfer.post":"banks.transfer","account-opening-balance-correction.post":"banks.balance_correct","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete"};
+    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","payment.post":text(body.side)==="receivable"?"customers.collect":"suppliers.pay","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","settlement.post":"customers.edit","offset.post":"customers.edit","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete"};
     let capability=map[type];
     if(["party-cash.post","payment.post","settlement.post","offset.post","party.update","party.delete"].includes(type)){
       const party=await getDatabase().collection("parties").findOne({id:text(body.partyId??body.id)});
       if(party){const supplier=resolvePartyType(party)==="supplier";capability=type==="party-cash.post"||type==="payment.post"?(supplier?"suppliers.pay":"customers.collect"):type==="party.delete"?(supplier?"suppliers.delete":"customers.delete"):(supplier?"suppliers.edit":"customers.edit");}
+    }
+    if(["party-cash.update","party-cash.void"].includes(type)){
+      const database=await getDatabase(),document=await database.collection("documents").findOne({id:text(body.documentId),kind:"payment"});
+      const party=document?.partyId?await database.collection("parties").findOne({id:String(document.partyId)}):null;
+      if(party){const supplier=resolvePartyType(party)==="supplier",editing=type==="party-cash.update";capability=supplier?(editing?"suppliers.pay.edit":"suppliers.pay.delete"):(editing?"customers.collect.edit":"customers.collect.delete");}
     }
     if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;
     if((type==="product.update"&&body.replaceOpeningStock===true)||(type==="product.create"&&Number(body.openingStock??0)>0)){const stockDenied=await requireCapability(request,"warehouses.adjust");if(stockDenied)return stockDenied;}
@@ -498,5 +491,5 @@ export async function POST(request: Request) {const licenseDenied=await requireV
     });}
     catch(error){if((error as {code?:number}).code===11000){const duplicate=await receipts.findOne({_id:idempotencyKey as never});if(duplicate?.fingerprint!==fingerprint)return Response.json({error:"مفتاح العملية مستخدم لطلب مختلف"},{status:409});if(duplicate?.status==="committed")return Response.json(duplicate.result);return Response.json({error:"العملية قيد التنفيذ"},{status:409});}throw error;}
     log("info","api.command.completed",{commandType:type,entityId:result});return Response.json(response);
-  }catch(error){const status=error instanceof CommandError?error.status:500;log("error","api.command.failed",{commandType:type,error});return Response.json({error:error instanceof CommandError?error.message:"تعذر تنفيذ العملية"},{status});}
+  }catch(error){const status=error instanceof CommandError||error instanceof LifecycleCommandError?error.status:500;log("error","api.command.failed",{commandType:type,error});return Response.json({error:error instanceof CommandError||error instanceof LifecycleCommandError?error.message:"تعذر تنفيذ العملية"},{status});}
 }

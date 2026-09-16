@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { expandPermissionDependencies, removePermissionAndDependents } from "../lib/permission-dependencies.ts";
-import { permissionPresets, setPermission } from "../app/user-permissions.ts";
+import { permissionPresets, setPermission, setRowFullControl } from "../app/user-permissions.ts";
 
 test("edit and delete permissions include the read access required by their workspace", () => {
   assert.deepEqual(new Set(expandPermissionDependencies(["pos.edit"])), new Set(["pos.edit", "pos.view"]));
@@ -23,6 +23,12 @@ test("permission editor applies the same prerequisite policy as runtime principa
   assert.deepEqual(new Set(setPermission([], "expenses.edit", true)), new Set(["expenses.edit", "expenses.view"]));
   assert.deepEqual(new Set(setPermission([], "warehouses.transfer.delete", true)), new Set(["warehouses.transfer.delete", "warehouses.transfer"]));
   assert.deepEqual(setPermission(["suppliers.view", "suppliers.pay", "suppliers.pay.delete"], "suppliers.view", false), []);
+});
+
+test("row toggles preserve a shared view prerequisite when another row still needs it", () => {
+  const permissions = ["customers.view", "customers.create", "customers.edit", "customers.collect"];
+  const result = setRowFullControl(permissions, ["customers.view", "customers.create", "customers.edit", "customers.delete"], false);
+  assert.deepEqual(new Set(result), new Set(["customers.collect", "customers.view"]));
 });
 
 test("built-in permission presets are dependency complete", () => {

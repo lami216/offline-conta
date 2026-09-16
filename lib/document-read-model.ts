@@ -3,6 +3,7 @@ export type ReadModelDocument = Record<string, unknown> & {
   status?: unknown;
   partyId?: unknown;
   partyName?: unknown;
+  partyNameOriginal?: unknown;
 };
 
 export type DocumentReadAccess = {
@@ -40,6 +41,9 @@ export function canReadOperationalDocument(document: ReadModelDocument, access: 
   if (kind === "expense") return access.can("expenses.view");
   if (kind === "transfer") return access.can("warehouses.transfer");
   if (kind === "adjustment") return access.can("warehouses.adjust");
+  if (kind === "account-transfer" || kind === "account-adjustment") {
+    return access.can("banks.view") || access.can("banks.movements.view");
+  }
 
   if (["payment", "settlement", "offset", "return"].includes(kind)) {
     return (customerParty && access.can("customers.view")) || (supplierParty && access.can("suppliers.view"));
@@ -49,9 +53,8 @@ export function canReadOperationalDocument(document: ReadModelDocument, access: 
 }
 
 /**
- * Historical snapshots remain untouched in storage. The operational read model
- * resolves the current party identity by id so a corrected customer/supplier
- * name is reflected consistently everywhere that consumes bootstrap data.
+ * Operational consumers always see the current party identity by id. The first
+ * stored name remains available separately for audit / as-issued presentation.
  */
 export function resolveCurrentPartyName(
   document: ReadModelDocument,
@@ -61,7 +64,9 @@ export function resolveCurrentPartyName(
   if (!partyId) return document;
   const currentName = currentPartyNames.get(partyId)?.trim();
   if (!currentName) return document;
-  const snapshot = typeof document.partyName === "string" ? document.partyName.trim() : "";
+  const original = typeof document.partyNameOriginal === "string" ? document.partyNameOriginal.trim() : "";
+  const stored = typeof document.partyName === "string" ? document.partyName.trim() : "";
+  const snapshot = original || stored;
   return {
     ...document,
     ...(snapshot && snapshot !== currentName ? { partyNameSnapshot: snapshot } : {}),
@@ -69,6 +74,7 @@ export function resolveCurrentPartyName(
   };
 }
 
+/** Reversal rows are audit evidence, never an additional operating cash effect. */
 export function isEffectiveFinancialMovement(movement: Record<string, unknown>) {
   return movement.status !== "reversed" && movement.isReversal !== true;
 }

@@ -49,8 +49,9 @@ export type AccountPreset = keyof typeof permissionPresets | "custom";
 const samePermissions = (left: string[], right: string[]) =>
   left.length === right.length && left.every(permission => right.includes(permission));
 export function detectPermissionPreset(permissions: string[]): AccountPreset {
+  const normalized = expandPermissionDependencies([...new Set(permissions)]);
   for (const preset of ["manager", "accountant", "sales"] as const) {
-    if (samePermissions(permissionPresets[preset], [...new Set(permissions)])) return preset;
+    if (samePermissions(permissionPresets[preset], normalized)) return preset;
   }
   return "custom";
 }

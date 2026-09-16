@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { expandPermissionDependencies, removePermissionAndDependents } from "../lib/permission-dependencies.ts";
-import { permissionPresets, setPermission, setRowFullControl } from "../app/user-permissions.ts";
+import { detectPermissionPreset, permissionPresets, setPermission, setRowFullControl } from "../app/user-permissions.ts";
 
 test("edit and delete permissions include the read access required by their workspace", () => {
   assert.deepEqual(new Set(expandPermissionDependencies(["pos.edit"])), new Set(["pos.edit", "pos.view"]));
@@ -35,4 +35,8 @@ test("built-in permission presets are dependency complete", () => {
   for (const [name, permissions] of Object.entries(permissionPresets)) {
     assert.deepEqual(new Set(expandPermissionDependencies(permissions)), new Set(permissions), name);
   }
+});
+
+test("legacy stored sales permissions still resolve to the sales preset", () => {
+  assert.equal(detectPermissionPreset(["pos.view", "pos.create", "customers.create"]), "sales");
 });

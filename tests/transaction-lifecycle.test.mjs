@@ -2,8 +2,7 @@ import assert from "node:assert/strict";
 import test, { after, before, beforeEach } from "node:test";
 import { sqliteHarness } from "./sqlite-harness.mjs";
 import { execute } from "../app/api/command/route.ts";
-import { getDatabase } from "../lib/sqlite.ts";
-import { isEffectiveFinancialMovement } from "../lib/document-read-model.ts";
+import { canReadOperationalDocument, isEffectiveFinancialMovement } from "../lib/document-read-model.ts";
 
 let harness, db;
 before(async () => { harness = await sqliteHarness(); db = harness.db; });
@@ -19,8 +18,13 @@ beforeEach(async () => {
     { id: "bank", code: "bank", name: "Bank", isActive: true, balance: 0 },
   ]);
 });
-const command = body => getDatabase().transaction(session => execute(getDatabase(), session, body));
+const command = body => db.transaction(session => execute(db, session, body));
 const activeFinancial = rows => rows.filter(isEffectiveFinancialMovement);
+const readAccess = permissions => ({
+  can: capability => permissions.includes(capability),
+  customerPartyIds: new Set(["c"]),
+  supplierPartyIds: new Set(),
+});
 
 async function insertProduct(stocks = { a: 10, b: 0 }) {
   await db.collection("products").insertOne({ id: "p", sku: "1", name: "Tea", piecePrice: 10, pieceCost: 5, lastPurchaseCost: 5, stocks, isArchived: false });
@@ -59,6 +63,29 @@ test("party cash update and void keep one document identity and reconcile party 
   movements = await db.collection("financialMovements").find({ documentId }).toArray();
   assert.equal(activeFinancial(movements).length, 0);
   assert.ok(movements.some(row => row.isReversal === true));
+});
+
+test("command lifecycle and operational read model stay in lockstep across update and void", async () => {
+  await insertCustomer(80);
+  const documentId = await command({ type: "party-cash.post", partyId: "c", direction: "receive", amount: 20, paymentMethod: "cash", note: "initial" });
+  const access = readAccess(["customers.collect.edit"]);
+  let document = await db.collection("documents").findOne({ id: documentId });
+  assert.equal(canReadOperationalDocument(document, access), true);
+
+  const updatedId = await command({ type: "party-cash.update", documentId, direction: "receive", amount: 15, paymentMethod: "bank", note: "corrected" });
+  assert.equal(updatedId, documentId);
+  document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([document.id, document.status, document.revision, document.total, document.paymentMethod], [documentId, "posted", 1, 15, "bank"]);
+  assert.equal(canReadOperationalDocument(document, access), true);
+  assert.deepEqual(activeFinancial(await db.collection("financialMovements").find({ documentId }).toArray()).map(row => [row.paymentMethod, row.amount]), [["bank", 15]]);
+
+  await command({ type: "party-cash.void", documentId });
+  document = await db.collection("documents").findOne({ id: documentId });
+  assert.equal(canReadOperationalDocument(document, access), false);
+  const auditRows = await db.collection("financialMovements").find({ documentId }).toArray();
+  assert.equal(activeFinancial(auditRows).length, 0);
+  assert.ok(auditRows.some(row => row.status === "reversed"));
+  assert.ok(auditRows.some(row => row.isReversal === true));
 });
 
 test("stock transfer update and void preserve the document id and exact inventory", async () => {

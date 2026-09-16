@@ -24,6 +24,19 @@ export function isOperationalDocument(document: ReadModelDocument) {
   return document.status === "posted";
 }
 
+/** Coarse kind authorization, used before historical queries expose a kind. */
+export function canReadDocumentKind(kind: string, access: Pick<DocumentReadAccess, "can">) {
+  if (access.can("records.view")) return true;
+  if (kind === "sale") return access.can("pos.view") || access.can("customers.view");
+  if (kind === "purchase") return access.can("purchases.view") || access.can("suppliers.view");
+  if (kind === "expense") return access.can("expenses.view");
+  if (kind === "transfer") return access.can("warehouses.transfer");
+  if (kind === "adjustment") return access.can("warehouses.adjust");
+  if (kind === "account-transfer" || kind === "account-adjustment") return access.can("banks.view") || access.can("banks.movements.view");
+  if (["payment", "settlement", "offset", "return"].includes(kind)) return access.can("customers.view") || access.can("suppliers.view");
+  return false;
+}
+
 /** One authorization rule for both live documents and historical/audit reads. */
 export function canReadDocument(document: ReadModelDocument, access: DocumentReadAccess) {
   if (access.can("records.view")) return true;
@@ -37,9 +50,7 @@ export function canReadDocument(document: ReadModelDocument, access: DocumentRea
   if (kind === "expense") return access.can("expenses.view");
   if (kind === "transfer") return access.can("warehouses.transfer");
   if (kind === "adjustment") return access.can("warehouses.adjust");
-  if (kind === "account-transfer" || kind === "account-adjustment") {
-    return access.can("banks.view") || access.can("banks.movements.view");
-  }
+  if (kind === "account-transfer" || kind === "account-adjustment") return access.can("banks.view") || access.can("banks.movements.view");
   if (["payment", "settlement", "offset", "return"].includes(kind)) {
     return (customerParty && access.can("customers.view")) || (supplierParty && access.can("suppliers.view"));
   }

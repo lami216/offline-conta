@@ -1,3 +1,5 @@
+import { expandPermissionDependencies, removePermissionAndDependents } from "../lib/permission-dependencies";
+
 export type PermissionAction = "view" | "create" | "edit" | "delete";
 
 export const permissionRows: Array<{
@@ -54,13 +56,13 @@ export function detectPermissionPreset(permissions: string[]): AccountPreset {
 }
 
 export function setPermission(permissions: string[], key: string, checked: boolean) {
-  return checked ? [...new Set([...permissions, key])] : permissions.filter(permission => permission !== key);
+  return checked
+    ? expandPermissionDependencies([...permissions, key])
+    : removePermissionAndDependents(permissions, key);
 }
 
 export function setRowFullControl(permissions: string[], keys: string[], checked: boolean) {
+  if (checked) return expandPermissionDependencies([...permissions, ...keys]);
   const applicable = new Set(keys);
-  return checked
-    ? [...new Set([...permissions, ...keys])]
-    : permissions.filter(permission => !applicable.has(permission));
+  return permissions.filter(permission => !applicable.has(permission));
 }
-

@@ -10,16 +10,16 @@ export const permissionRows: Array<{
   { name: "المنتجات", actions: { view: "products.view", create: "products.create", edit: "products.edit", delete: "products.delete" } },
   { name: "العملاء", actions: { view: "customers.view", create: "customers.create", edit: "customers.edit", delete: "customers.delete" } },
   { name: "الموردون", actions: { view: "suppliers.view", create: "suppliers.create", edit: "suppliers.edit", delete: "suppliers.delete" } },
-  { name: "حساب العميل / التحصيل", actions: { view: "customers.view", create: "customers.collect" } },
-  { name: "حساب المورد / الدفع", actions: { view: "suppliers.view", create: "suppliers.pay" } },
+  { name: "حساب العميل / التحصيل", actions: { view: "customers.view", create: "customers.collect", edit: "customers.collect.edit", delete: "customers.collect.delete" } },
+  { name: "حساب المورد / الدفع", actions: { view: "suppliers.view", create: "suppliers.pay", edit: "suppliers.pay.edit", delete: "suppliers.pay.delete" } },
   { name: "المخازن", actions: { view: "warehouses.view", create: "warehouses.create", edit: "warehouses.edit", delete: "warehouses.delete" } },
   { name: "جرد المخزن", actions: { view: "warehouses.inventory.view" } },
-  { name: "التحويل بين المخازن", actions: { create: "warehouses.transfer" } },
-  { name: "تصحيح المخزون", actions: { create: "warehouses.adjust" } },
+  { name: "التحويل بين المخازن", actions: { create: "warehouses.transfer", edit: "warehouses.transfer.edit", delete: "warehouses.transfer.delete" } },
+  { name: "تصحيح المخزون", actions: { create: "warehouses.adjust", edit: "warehouses.adjust.edit", delete: "warehouses.adjust.delete" } },
   { name: "البنوك ووسائل الدفع", actions: { view: "banks.view", create: "banks.create", edit: "banks.edit", delete: "banks.delete" } },
   { name: "حركة الحسابات", actions: { view: "banks.movements.view" } },
-  { name: "التحويلات البنكية", actions: { view: "banks.view", create: "banks.transfer" } },
-  { name: "السحب والإيداع", actions: { view: "banks.view", create: "banks.deposit_withdraw" } },
+  { name: "التحويلات البنكية", actions: { view: "banks.view", create: "banks.transfer", edit: "banks.transfer.edit", delete: "banks.transfer.delete" } },
+  { name: "السحب والإيداع", actions: { view: "banks.view", create: "banks.deposit_withdraw", edit: "banks.deposit_withdraw.edit", delete: "banks.deposit_withdraw.delete" } },
   { name: "تصحيح رصيد بنك/وسيلة دفع", actions: { view: "banks.view", create: "banks.balance_correct" } },
   { name: "المصاريف", actions: { view: "expenses.view", create: "expenses.create", edit: "expenses.edit", delete: "expenses.delete" } },
   { name: "التقارير", actions: { view: "reports.view" } },
@@ -35,9 +35,10 @@ export const permissionPresets = {
   manager: allPermissions,
   accountant: [
     "purchases.view", "purchases.create", "purchases.edit", "records.view",
-    "products.view", "customers.view", "customers.collect", "suppliers.view", "suppliers.pay",
-    "warehouses.view", "warehouses.inventory.view", "banks.view", "banks.movements.view", "banks.transfer",
-    "banks.deposit_withdraw", "expenses.view", "expenses.create", "expenses.edit", "reports.view",
+    "products.view", "customers.view", "customers.collect", "customers.collect.edit", "suppliers.view", "suppliers.pay", "suppliers.pay.edit",
+    "warehouses.view", "warehouses.inventory.view", "warehouses.transfer", "warehouses.transfer.edit", "warehouses.adjust", "warehouses.adjust.edit",
+    "banks.view", "banks.movements.view", "banks.transfer", "banks.transfer.edit", "banks.deposit_withdraw", "banks.deposit_withdraw.edit",
+    "expenses.view", "expenses.create", "expenses.edit", "reports.view",
   ],
   sales: ["pos.view", "pos.create", "customers.create"],
 };
@@ -62,3 +63,4 @@ export function setRowFullControl(permissions: string[], keys: string[], checked
     ? [...new Set([...permissions, ...keys])]
     : permissions.filter(permission => !applicable.has(permission));
 }
+

@@ -17,15 +17,17 @@ const partyIdOf = (document: ReadModelDocument) =>
 const canAny = (can: DocumentReadAccess["can"], capabilities: readonly string[]) =>
   capabilities.some(capability => can(capability));
 
-const saleAccess = ["pos.view", "pos.create", "pos.edit", "pos.delete"] as const;
-const purchaseAccess = ["purchases.view", "purchases.create", "purchases.edit", "purchases.delete"] as const;
-const expenseAccess = ["expenses.view", "expenses.create", "expenses.edit", "expenses.delete"] as const;
-const customerAccess = ["customers.view", "customers.create", "customers.edit", "customers.delete", "customers.collect", "customers.collect.edit", "customers.collect.delete"] as const;
-const supplierAccess = ["suppliers.view", "suppliers.create", "suppliers.edit", "suppliers.delete", "suppliers.pay", "suppliers.pay.edit", "suppliers.pay.delete"] as const;
+// Existing-record reads follow view/edit/delete authority. Create-only authority
+// stays separate so it never broadens historical visibility by itself.
+const saleAccess = ["pos.view", "pos.edit", "pos.delete"] as const;
+const purchaseAccess = ["purchases.view", "purchases.edit", "purchases.delete"] as const;
+const expenseAccess = ["expenses.view", "expenses.edit", "expenses.delete"] as const;
+const customerAccess = ["customers.view", "customers.edit", "customers.delete", "customers.collect.edit", "customers.collect.delete"] as const;
+const supplierAccess = ["suppliers.view", "suppliers.edit", "suppliers.delete", "suppliers.pay.edit", "suppliers.pay.delete"] as const;
 const transferAccess = ["warehouses.transfer", "warehouses.transfer.edit", "warehouses.transfer.delete"] as const;
 const adjustmentAccess = ["warehouses.adjust", "warehouses.adjust.edit", "warehouses.adjust.delete"] as const;
-const accountTransferAccess = ["banks.view", "banks.movements.view", "banks.transfer", "banks.transfer.edit", "banks.transfer.delete"] as const;
-const accountAdjustmentAccess = ["banks.view", "banks.movements.view", "banks.deposit_withdraw", "banks.deposit_withdraw.edit", "banks.deposit_withdraw.delete"] as const;
+const accountTransferAccess = ["banks.view", "banks.movements.view", "banks.transfer.edit", "banks.transfer.delete"] as const;
+const accountAdjustmentAccess = ["banks.view", "banks.movements.view", "banks.deposit_withdraw.edit", "banks.deposit_withdraw.delete"] as const;
 
 /**
  * `documents` in bootstrap is the operational read model. Voided records stay in

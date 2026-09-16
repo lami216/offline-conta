@@ -39,12 +39,21 @@ test("warehouse transaction screens receive their own posted documents", () => {
   assert.equal(canReadOperationalDocument({ kind: "transfer", status: "posted" }, access(["warehouses.adjust"])), false);
 });
 
-test("current party identity is resolved by partyId without destroying the stored snapshot", () => {
-  const document = { id: "sale-1", kind: "sale", status: "posted", partyId: "c1", partyName: "Old spelling" };
+test("bank workspaces receive their posted lifecycle documents from the same read model", () => {
+  const bankAccess = access(["banks.view"]);
+  assert.equal(canReadOperationalDocument({ kind: "account-transfer", status: "posted" }, bankAccess), true);
+  assert.equal(canReadOperationalDocument({ kind: "account-adjustment", status: "posted" }, bankAccess), true);
+  assert.equal(canReadOperationalDocument({ kind: "account-transfer", status: "voided" }, bankAccess), false);
+  assert.equal(canReadOperationalDocument({ kind: "account-adjustment", status: "posted" }, access(["customers.view"])), false);
+});
+
+test("current party identity is resolved by partyId without destroying the first stored snapshot", () => {
+  const document = { id: "sale-1", kind: "sale", status: "posted", partyId: "c1", partyName: "Intermediate spelling", partyNameOriginal: "Old spelling" };
   const resolved = resolveCurrentPartyName(document, new Map([["c1", "Correct spelling"]]));
   assert.equal(resolved.partyName, "Correct spelling");
   assert.equal(resolved.partyNameSnapshot, "Old spelling");
-  assert.equal(document.partyName, "Old spelling");
+  assert.equal(document.partyName, "Intermediate spelling");
+  assert.equal(document.partyNameOriginal, "Old spelling");
 });
 
 test("reversed and reversal audit rows are excluded from the effective financial read model", () => {

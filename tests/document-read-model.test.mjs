@@ -55,6 +55,21 @@ test("lifecycle edit and delete permissions can read the transaction they are al
   }
 });
 
+test("create-only permissions do not expose existing documents", () => {
+  const cases = [
+    ["sale", "pos.create"],
+    ["purchase", "purchases.create"],
+    ["expense", "expenses.create"],
+    ["payment", "customers.collect", "c1"],
+    ["payment", "suppliers.pay", "s1"],
+    ["account-transfer", "banks.transfer"],
+    ["account-adjustment", "banks.deposit_withdraw"],
+  ];
+  for (const [kind, permission, partyId] of cases) {
+    assert.equal(canReadOperationalDocument({ kind, status: "posted", ...(partyId ? { partyId } : {}) }, access([permission])), false, `${kind}:${permission}`);
+  }
+});
+
 test("party cash lifecycle permissions are scoped to the matching party type", () => {
   assert.equal(canReadOperationalDocument({ kind: "payment", status: "posted", partyId: "c1" }, access(["customers.collect.edit"])), true);
   assert.equal(canReadOperationalDocument({ kind: "payment", status: "posted", partyId: "s1" }, access(["customers.collect.edit"])), false);

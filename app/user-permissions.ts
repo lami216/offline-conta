@@ -64,5 +64,5 @@ export function setPermission(permissions: string[], key: string, checked: boole
 export function setRowFullControl(permissions: string[], keys: string[], checked: boolean) {
   if (checked) return expandPermissionDependencies([...permissions, ...keys]);
   const applicable = new Set(keys);
-  return permissions.filter(permission => !applicable.has(permission));
+  return expandPermissionDependencies(permissions.filter(permission => !applicable.has(permission)));
 }

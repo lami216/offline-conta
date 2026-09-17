@@ -190,7 +190,11 @@ test("party history footer and framed bank workflows preserve semantic hierarchy
   assert.match(css, /\.party-history-toolbar\s*\{[^}]*min-height:34px[^}]*overflow:visible/);
   assert.match(css, /\.party-trade-metrics\{[^}]*justify-content:flex-end[^}]*width:100%/);
   const banks = between("function Banks", "function PaymentAccountDialog");
-  for (const title of ["تحويل جديد", "سجل التحويلات", "عملية سحب أو إيداع", "سجل السحب والإيداع"]) assert.match(banks, new RegExp(`FramedSection title="${title}"`));
+  assert.match(banks, /FramedSection title=\{editingTransferId\?/);
+  assert.match(banks, /تحويل جديد/);
+  assert.match(banks, /FramedSection title=\{editingAdjustmentId\?/);
+  assert.match(banks, /عملية سحب أو إيداع/);
+  for (const title of ["سجل التحويلات", "سجل السحب والإيداع"]) assert.match(banks, new RegExp(`FramedSection title="${title}"`));
 });
 
 test("party financial summaries use explicit business-semantic tones", () => {

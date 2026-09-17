@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { formatMoney, formatQuantity } from "../app/domain.ts";
 
 const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+const openingHistorySource = await readFile(new URL("../app/opening-stock-history.tsx", import.meta.url), "utf8");
 
 test("money carries MRU while quantities remain unitless", () => {
   assert.equal(formatMoney(7), "7 MRU");
@@ -46,6 +47,7 @@ test("stock counts and quantities stay plain numbers without MRU", () => {
   assert.match(source, /number\(totalPieces\)/);
   assert.match(source, /number\(qty\(product\)\)/);
   assert.match(source, /number\(selectedQty\)/);
-  assert.match(source, /number\(movement\?\.quantityDelta \?\? line\.quantity\)/);
+  assert.match(openingHistorySource, /number\(delta\)/);
+  assert.doesNotMatch(openingHistorySource, /money\(delta\)/);
   assert.doesNotMatch(source, /money\(totalPieces\)|money\(qty\(product\)\)|money\(selectedQty\)|money\(current\)|money\(stock\)/);
 });

@@ -30,7 +30,7 @@ test("voiding an old sale reactivates an archived warehouse before returned stoc
 
 test("voiding history reactivates an archived party when its balance becomes nonzero",async()=>{
  const sale=await command({type:"sale.post",warehouseId:"a",partyId:"c",paymentMethod:"note",lines:[{productId:"p",quantity:1,piecePrice:10}]});
- await command({type:"party.delete",id:"c",settleBalance:true});
+ await command({type:"party.delete",id:"c",writeOffBalance:true});
  assert.equal((await db.collection("parties").findOne({id:"c"})).isArchived,true);
  await command({type:"sale.void",documentId:sale});
  const party=await db.collection("parties").findOne({id:"c"});

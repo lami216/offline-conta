@@ -19,13 +19,14 @@ const documentCapabilities: Capability[] = [
 export async function GET(request:Request){
  const licenseDenied=await requireValidLicense();if(licenseDenied)return licenseDenied;
  const principal=await getPrincipalFromRequest(request);if(!principal)return Response.json({error:"غير مصرح"},{status:401});
- const url=new URL(request.url),resource=url.searchParams.get("resource")??"documents",page=bounded(url.searchParams.get("page"),1,1_000_000),pageSize=bounded(url.searchParams.get("pageSize"),100,250),kind=url.searchParams.get("kind"),from=url.searchParams.get("from"),to=url.searchParams.get("to");
+ const url=new URL(request.url),resource=url.searchParams.get("resource")??"documents",page=bounded(url.searchParams.get("page"),1,1_000_000),pageSize=bounded(url.searchParams.get("pageSize"),100,250),kind=url.searchParams.get("kind"),from=url.searchParams.get("from"),to=url.searchParams.get("to"),id=url.searchParams.get("id")?.trim()??"",search=url.searchParams.get("q")?.trim().toLocaleLowerCase()??"";
  if(!["documents","stockMovements","financialMovements"].includes(resource))return Response.json({error:"غير مصرح"},{status:403});
  const allowed=resource==="documents"?documentCapabilities.some(capability=>hasCapability(principal,capability)):resource==="stockMovements"?hasCapability(principal,"warehouses.inventory.view"):hasCapability(principal,"banks.movements.view");
  if(!allowed)return Response.json({error:"غير مصرح"},{status:403});
  const coarseAccess={can:(capability:string)=>hasCapability(principal,capability as Capability)};
  if(resource==="documents"&&kind&&!canReadDocumentKind(kind,coarseAccess))return Response.json({error:"غير مصرح"},{status:403});
  const query:Record<string,unknown>={};
+ if(id)query.id=id;
  if(kind)query[resource==="documents"?"kind":"type"]=kind;
  if(from||to){
    const start=from?.slice(0,10)??to!.slice(0,10),end=to?.slice(0,10)??from!.slice(0,10);
@@ -42,7 +43,8 @@ export async function GET(request:Request){
    const supplierPartyIds=new Set(parties.filter(party=>resolvePartyType(party)==="supplier").map(party=>String(party.id??party._id??"")));
    const currentPartyNames=new Map(parties.map(party=>[String(party.id??party._id??""),String(party.name??"")] as const));
    const access={...coarseAccess,customerPartyIds,supplierPartyIds};
-   const visible=candidates.filter(document=>canReadDocument(document,access)).map(document=>resolveCurrentPartyName(document,currentPartyNames));
+   const authorized=candidates.filter(document=>canReadDocument(document,access)).map(document=>resolveCurrentPartyName(document,currentPartyNames));
+   const visible=search?authorized.filter(document=>String(document.number??"")+" "+String(document.sequence??"")+" "+String(document.legacyBillCode??"")+" "+String(document.partyName??"")+" "+String(document.title??"")+" "+String(document.kind??"")+" "+String(document.status??"").toLocaleLowerCase().includes(search)):authorized;
    const total=visible.length,rows=visible.slice((page-1)*pageSize,page*pageSize);
    return Response.json({resource,page,pageSize,total,totalPages:Math.ceil(total/pageSize),rows:rows.map(({_id,...row})=>({id:row.id??String(_id),...row}))});
  }

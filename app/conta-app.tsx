@@ -172,6 +172,7 @@ const bankNav: Array<{ id: BankTab; label: MessageKey }> = [
   { id: "accounts", label: "وسائل الدفع" }, { id: "movements", label: "حركة الحسابات" },
   { id: "transfers", label: "التحويلات" }, { id: "adjustment", label: "السحب والإيداع" },
 ];
+const bankTabCapability:Record<BankTab,string>={accounts:"banks.view",movements:"banks.movements.view",transfers:"banks.view",adjustment:"banks.view"};
 const reportOrder: ReportType[] = ["sales", "purchases", "product-sales", "stock", "debts", "party-ledger", "financial", "expenses", "overview"];
 const NO_ACCESS_TITLE = "لا تملك صلاحية الوصول";
 export const TRANSIENT_NOTICE_MS = 2800;
@@ -242,6 +243,8 @@ function ContaAppContent() {
   const can=(capability:string)=>data.principal.principalType==="owner"||data.principal.permissions.includes(capability);
   const settingsAllowed=(target:SettingsTab)=>target==="license"||target==="contact"||can("settings.view")&&(target==="general"||(target==="users"?can("settings.users.manage"):can("settings.backup.manage")||can("settings.legacy.import")));
   const viewCapability:Record<View,string>={pos:"pos.view",purchases:"purchases.view",expenses:"expenses.view",customers:"customers.view",suppliers:"suppliers.view",warehouses:"warehouses.inventory.view",warehouseAdmin:"warehouses.view",transfers:"warehouses.transfer",adjustments:"warehouses.adjust",products:"products.view",records:"records.view",reports:"reports.view",banks:"banks.view",settings:"settings.view"};
+  const canView=(id:View)=>id==="banks"?bankNav.some(item=>can(bankTabCapability[item.id])):can(viewCapability[id]);
+  const effectiveBankTab=can(bankTabCapability[bankTab])?bankTab:bankNav.find(item=>can(bankTabCapability[item.id]))?.id??bankTab;
   useEffect(() => {
     const close = (event: PointerEvent) => {
       if (!warehouseMenuRef.current?.contains(event.target as Node)) setWarehouseMenu(false);
@@ -255,7 +258,7 @@ function ContaAppContent() {
     return () => document.removeEventListener("pointerdown", close);
   }, []);
   const navigate = async (id: View) => {
-    if (!can(viewCapability[id])) return;
+    if (!canView(id)) return;
     if (id !== view) {
       const guard=activeEditorGuard.current;
       if (guard?.isEditing()) {
@@ -290,7 +293,7 @@ function ContaAppContent() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
       setData(j);
-      const permitted=(id:View)=>j.principal.principalType==="owner"||j.principal.permissions.includes(viewCapability[id]);
+      const permitted=(id:View)=>j.principal.principalType==="owner"||(id==="banks"?bankNav.some(item=>j.principal.permissions.includes(bankTabCapability[item.id])):j.principal.permissions.includes(viewCapability[id]));
       if(!permitted(view)){const first=(["pos","purchases","records","products","customers","suppliers","warehouses","expenses","banks","reports","settings"] as View[]).find(permitted);if(first)setView(first)}
       setError("");
     } catch (e) {
@@ -319,9 +322,14 @@ function ContaAppContent() {
     inFlightCommands.current.set(fingerprint,operation);
     try{return await operation as Awaited<ReturnType<RunCommand>>}finally{inFlightCommands.current.delete(fingerprint)}
   }
-  const openDoc = (id: string) => {
-    const found = data.documents.find((x) => x.id === id);
-    if (found) { dialogOpenerRef.current = document.activeElement as HTMLElement; setDoc(found); }
+  const openDoc = async (id: string) => {
+    dialogOpenerRef.current = document.activeElement as HTMLElement;
+    let found=data.documents.find((x)=>x.id===id);
+    if(!found){
+      try{const result=await readApiResponse(await fetch("/api/history?resource=documents&id="+encodeURIComponent(id)+"&pageSize=1")) as {rows:DocumentRecord[]};found=result.rows[0]}
+      catch(reason){setError(translateApiError(locale,reason instanceof Error?reason.message:tr("تعذر تحميل السجلات")));return}
+    }
+    if(found)setDoc(found);
   };
   const closeDoc = () => { setDoc(null); window.requestAnimationFrame(() => dialogOpenerRef.current?.focus()); };
   useEffect(() => { if (doc) window.requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>("button, input, select, textarea, [tabindex='0']")?.focus()); }, [doc]);
@@ -362,7 +370,7 @@ function ContaAppContent() {
           <div className="nav-menu nav-warehouses" ref={warehouseMenuRef}><button className={warehouseNav.some(n=>n.id===view)?"nav active":"nav"} aria-expanded={warehouseMenu} onClick={()=>setWarehouseMenu(x=>!x)}><Boxes/><span>{tr("المخازن")}</span><ChevronDown className="chevron"/></button>{warehouseMenu&&<div className="nav-popover">{warehouseNav.map(n=><PermissionNavItem key={n.id} allowed={can(viewCapability[n.id])} active={view===n.id} onClick={()=>navigate(n.id)}><span>{tr(n.label)}</span></PermissionNavItem>)}</div>}</div>
           <div className="nav-menu nav-parties party-nav-menu" ref={partyMenuRef}><button className={partyNav.some(item=>item.id===view)?"nav active":"nav"} aria-expanded={partyMenu} onClick={()=>setPartyMenu(value=>!value)}><Users/><span>{tr("العملاء والموردون")}</span><ChevronDown className="chevron"/></button>{partyMenu&&<div className="nav-popover party-nav-popover">{partyNav.map(item=><PermissionNavItem key={item.id} allowed={can(viewCapability[item.id])} active={view===item.id} onClick={()=>navigate(item.id)}><span>{tr(item.label)}</span></PermissionNavItem>)}</div>}</div>
           {nav.slice(1).filter(n=>n.id!=="reports"&&n.id!=="settings"&&n.id!=="banks").map(n=><PermissionNavItem key={n.id} allowed={can(viewCapability[n.id])} active={view===n.id} className={`nav ${topNavClass[n.id as "products"]}`} onClick={()=>navigate(n.id)}><n.icon/><span>{tr(n.label)}</span></PermissionNavItem>)}
-          <div className="nav-menu nav-accounts bank-nav-menu" ref={bankMenuRef}><button className={view==="banks"?"nav active":"nav"} aria-expanded={bankMenu} onClick={()=>setBankMenu(open=>!open)}><Landmark/><span>{tr("البنوك")}</span><ChevronDown className="chevron"/></button>{bankMenu&&<div className="nav-popover bank-nav-popover">{bankNav.map(item=><PermissionNavItem key={item.id} allowed={can("banks.view")} active={view==="banks"&&bankTab===item.id} onClick={()=>{setBankTab(item.id);navigate("banks")}}><span>{tr(item.label)}</span></PermissionNavItem>)}</div>}</div>
+          <div className="nav-menu nav-accounts bank-nav-menu" ref={bankMenuRef}><button className={view==="banks"?"nav active":"nav"} aria-expanded={bankMenu} onClick={()=>setBankMenu(open=>!open)}><Landmark/><span>{tr("البنوك")}</span><ChevronDown className="chevron"/></button>{bankMenu&&<div className="nav-popover bank-nav-popover">{bankNav.map(item=><PermissionNavItem key={item.id} allowed={can(bankTabCapability[item.id])} active={view==="banks"&&effectiveBankTab===item.id} onClick={()=>{setBankTab(item.id);navigate("banks")}}><span>{tr(item.label)}</span></PermissionNavItem>)}</div>}</div>
           <div className="nav-menu nav-reports report-nav-menu" ref={reportMenuRef}><button className={view==="reports"?"nav active":"nav"} aria-expanded={reportMenu} onClick={()=>setReportMenu(value=>!value)}><Receipt/><span>{tr("التقارير")}</span><ChevronDown className="chevron"/></button>{reportMenu&&<div className="nav-popover report-nav-popover">{reportOrder.map(id=><PermissionNavItem key={id} allowed={can("reports.view")} active={view==="reports"&&reportType===id} onClick={()=>{setReportType(id);navigate("reports")}}><span>{tr(reportNames[id])}</span></PermissionNavItem>)}</div>}</div>
           <div className="nav-menu settings-nav-menu" ref={settingsMenuRef}><button className={view==="settings"?"nav nav-settings active":"nav nav-settings"} aria-expanded={settingsMenu} onClick={()=>setSettingsMenu(value=>!value)}><SettingsIcon/><span>{tr("الإعدادات")}</span><ChevronDown className="chevron"/></button>{settingsMenu&&<div className="nav-popover">{([{id:"general",label:"إعدادات عامة"},{id:"users",label:"المستخدمون والصلاحيات"},{id:"data",label:"البيانات والنسخ الاحتياطي"},{id:"license",label:"رخصة التفعيل"},{id:"contact",label:"تواصل مع الدعم"}] as Array<{id:SettingsTab;label:MessageKey}>).map(item=><PermissionNavItem key={item.id} allowed={settingsAllowed(item.id)} active={view==="settings"&&settingsTab===item.id} onClick={()=>{setSettingsTab(item.id);if(item.id==="license"||item.id==="contact"){setView("settings");setSettingsMenu(false)}else navigate("settings")}}><span>{tr(item.label)}</span></PermissionNavItem>)}</div>}</div>
         </nav>
@@ -418,11 +426,11 @@ function ContaAppContent() {
               {view === "adjustments" && (
                 <Adjustment data={data} run={run} openDoc={openDoc} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} />
               )}{" "}
-              {view === "records" && <Records data={data} openDoc={openDoc} />}{" "}
+              {view === "records" && <Records openDoc={openDoc} />}{" "}
               {view === "reports" && (
                 <Reports key={reportType} data={data} openDoc={openDoc} type={reportType} />
               )}{" "}
-              {view === "banks" && <Banks data={data} run={run} openDoc={openDoc} tab={bankTab} />}{" "}
+              {view === "banks" && <Banks data={data} run={run} openDoc={openDoc} tab={effectiveBankTab} />}{" "}
               {view === "settings" && <SettingsPage data={data} reload={reload} tab={settingsTab} />}{" "}
             </>
           )}
@@ -1304,44 +1312,28 @@ function Adjustment(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string
     </section>;
 }
 
-function Records({
-  data,
-  openDoc,
-}: {
-  data: BootstrapData;
-  openDoc: (id: string) => void;
-}) {
-  const today = localBusinessDay(), [kind, setKind] = useState("sale"),
-    [q, setQ] = useState(""),
-    [from, setFrom] = useState(today),
-    [to, setTo] = useState(today),
-    [allTime, setAllTime] = useState(false);
-  const docs = filterDocumentsByDate(data.documents.filter(
-    (d) =>
-      d.status === "posted" &&
-      (!kind || d.kind === kind) &&
-      (!q ||
-        `${displayDocumentNumber(d)} ${d.number} ${d.legacyBillCode ?? ""} ${d.partyName ?? ""} ${d.title ?? ""}`
-          .toLowerCase()
-          .includes(q.toLowerCase())),
-  ), from, to, allTime);
-  return (
-    <section className="records-workspace">
-      <FramedSection title={tr("بحث السجلات")} className="records-filters"><div className="filters">
-        <CompactSearch value={q} onChange={setQ} placeholder={tr("رقم المستند أو الطرف")} />
-        <select className="records-kind-filter" value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="">{tr("كل المعاملات")}</option>
-          {Object.entries(visibleDocumentKindLabels).map(([k, v]) => (
-            <option key={k} value={k}>
-              {tr(v)}
-            </option>
-          ))}
-        </select>
-        <CompactDateRange from={from} to={to} allTime={allTime} onAllTime={() => { setFrom(""); setTo(""); setQ(""); setKind(""); setAllTime(true); }} onFromChange={value => { setFrom(value); setAllTime(false); }} onToChange={value => { setTo(value); setAllTime(false); }} />
-      </div></FramedSection>
-      <Recent title={tr("كل السجلات القابلة للتتبع")} docs={docs} openDoc={openDoc} />
-    </section>
-  );
+function Records({ openDoc }: { openDoc: (id: string) => void }) {
+  const today=localBusinessDay(),[kind,setKind]=useState("sale"),[q,setQ]=useState(""),[from,setFrom]=useState(today),[to,setTo]=useState(today),[allTime,setAllTime]=useState(false),[docs,setDocs]=useState<DocumentRecord[]>([]),[busy,setBusy]=useState(false),[failure,setFailure]=useState("");
+  useEffect(()=>{
+    const controller=new AbortController(),timer=window.setTimeout(()=>{void(async()=>{
+      const params=new URLSearchParams({resource:"documents",page:"1",pageSize:"250"});
+      if(kind)params.set("kind",kind);if(q.trim())params.set("q",q.trim());if(!allTime){if(from)params.set("from",from);if(to)params.set("to",to)}
+      setBusy(true);setFailure("");
+      try{const result=await readApiResponse(await fetch("/api/history?"+params.toString(),{signal:controller.signal})) as {rows:DocumentRecord[]};if(!controller.signal.aborted)setDocs(result.rows)}
+      catch(error){if((error as Error).name!=="AbortError")setFailure(error instanceof Error?error.message:tr("تعذر تحميل السجلات"))}
+      finally{if(!controller.signal.aborted)setBusy(false)}
+    })()},120);
+    return()=>{controller.abort();window.clearTimeout(timer)};
+  },[kind,q,from,to,allTime]);
+  return <section className="records-workspace">
+    <FramedSection title={tr("بحث السجلات")} className="records-filters"><div className="filters">
+      <CompactSearch value={q} onChange={setQ} placeholder={tr("رقم المستند أو الطرف")} />
+      <select className="records-kind-filter" value={kind} onChange={e=>setKind(e.target.value)}><option value="">{tr("كل المعاملات")}</option>{Object.entries(visibleDocumentKindLabels).map(([k,v])=><option key={k} value={k}>{tr(v)}</option>)}</select>
+      <CompactDateRange from={from} to={to} allTime={allTime} onAllTime={()=>{setFrom("");setTo("");setQ("");setKind("");setAllTime(true)}} onFromChange={value=>{setFrom(value);setAllTime(false)}} onToChange={value=>{setTo(value);setAllTime(false)}} />
+    </div></FramedSection>
+    {failure&&<div className="error">{failure}</div>}
+    {busy?<div className="report-loading">{tr("جاري تحميل السجلات…")}</div>:<Recent title={tr("كل السجلات القابلة للتتبع")} docs={docs} openDoc={openDoc}/>}
+  </section>;
 }
 const reportNames: Record<ReportType,string> = { overview:"التقرير الشامل",sales:"حركة المبيعات",purchases:"حركة المشتريات","product-sales":"حركة المنتجات",stock:"حركة المخزون",profit:"تحليل الأرباح",debts:"الحسابات والديون","party-ledger":"كشف حسابات الأطراف",financial:"الحركة المالية",expenses:"المصاريف" };
 const reportColumns = (type: ReportType, productId: string, groupBy: string): Array<[string,string,TableValueType]> => ({

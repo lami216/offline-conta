@@ -58,3 +58,6 @@ test("product picker and document overlay regression checkpoints remain mounted"
   assert.match(source, /\{doc && <div className="modal-overlay"/);
   assert.doesNotMatch(source, /\) : doc \? \(/);
 });
+
+
+test("records workspace reads audit history instead of posted bootstrap documents",()=>{const source=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),records=source.slice(source.indexOf("function Records"),source.indexOf("const reportNames"));assert.match(records,/\/api\/history\?/);assert.doesNotMatch(records,/status === "posted"/);assert.match(source,/resource=documents&id=/);});

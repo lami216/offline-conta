@@ -7,7 +7,7 @@ test("desktop navigation has eight unique destinations with reports before setti
 test("submenu current states require their parent view without resetting remembered selections", async () => {
   const source = normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
 
-  assert.match(source, /allowed=\{can\("banks\.view"\)\} active=\{view==="banks"&&bankTab===item\.id\}/);
+  assert.match(source, /allowed=\{can\(bankTabCapability\[item\.id\]\)\} active=\{view==="banks"&&effectiveBankTab===item\.id\}/);
   assert.match(source, /allowed=\{can\("reports\.view"\)\} active=\{view==="reports"&&reportType===id\}/);
   assert.match(source, /allowed=\{settingsAllowed\(item\.id\)\} active=\{view==="settings"&&settingsTab===item\.id\}/);
   assert.match(source, /invoiceNav\.map\(n=><PermissionNavItem[^>]+active=\{view===n\.id\}/);
@@ -24,7 +24,7 @@ test("permission-aware navigation stays complete and disabled items cannot activ
   for (const collection of ["invoiceNav", "warehouseNav", "partyNav", "bankNav", "reportOrder"])
     assert.match(source, new RegExp(`${collection}\\.map\\(`));
   assert.doesNotMatch(source, /(?:invoiceNav|warehouseNav|partyNav)\.filter\([^\n]*can/);
-  assert.match(source, /if \(!can\(viewCapability\[id\]\)\) return/);
+  assert.match(source, /if \(!canView\(id\)\) return/);
   assert.match(source, /disabled=\{!allowed\}/);
   assert.match(source, /aria-disabled=\{!allowed\?"true":undefined\}/);
   assert.match(source, /allowed&&active/);
@@ -77,3 +77,6 @@ test("party ledger filters real compatible roles and transient documents overlay
   assert.doesNotMatch(source, /\) : doc \? \(/);
   assert.match(source, /\{doc && <div className="modal-overlay"/);
 });
+
+
+test("bank movement-only permission has its own navigation gate",async()=>{const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));assert.match(source,/movements:"banks\.movements\.view"/);assert.match(source,/const canView=.*id==="banks".*bankNav\.some/);});

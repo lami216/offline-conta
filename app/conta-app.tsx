@@ -1154,6 +1154,7 @@ function Products({ data, run }: { data: BootstrapData; run: RunCommand }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState<Product | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [viewing, setViewing] = useState<Product | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false);
   const [sort, setSort] = useState<{ key: "price" | "cost" | "stock"; direction: "asc" | "desc" } | null>(null);
@@ -1167,7 +1168,7 @@ function Products({ data, run }: { data: BootstrapData; run: RunCommand }) {
   const products=useMemo(()=>sortTableRows(filteredProducts,sort,productSortColumns),[filteredProducts,sort,productSortColumns]);
   const toggleSort = (key: "price" | "cost" | "stock") => setSort(current => ({ key, direction: current?.key === key && current.direction === "asc" ? "desc" : "asc" }));
   const sortHeader = (id: "price" | "cost" | "stock", label: string) => <button className={sort?.key === id ? "sort-header active" : "sort-header"} onClick={() => toggleSort(id)}>{label}{sort?.key === id && <span>{sort.direction === "asc" ? "↑" : "↓"}</span>}</button>;
-  const openForm = (product: Product | null) => { setEditing(product); setFormOpen(true); };
+  const openForm = (product: Product | null) => { setViewing(null); setEditing(product); setFormOpen(true); };
   const remove = async (product: Product) => { if(await confirmAction({message:tr("سيُحذف المنتج من الاستخدام الجديد مع الاحتفاظ بمخزونه وتاريخه. هل تريد المتابعة؟"),confirmLabel:tr("حذف المنتج"),tone:"danger"}))await run({type:"product.delete",id:product.id},tr("تم حذف المنتج بأمان")); };
   return <section className="workspace-page products-page">
     <div className="toolbar workspace-toolbar">
@@ -1183,13 +1184,47 @@ function Products({ data, run }: { data: BootstrapData; run: RunCommand }) {
       </tr></thead><tbody>
         {products.map((product, index) => {
           const stock = Object.values(product.stocks).reduce((sum, value) => sum + Number(value), 0);
-          return <tr key={product.id}><td className="num-cell">{number(index + 1)}</td><td className="name-cell">{product.name}{product.isArchived&&<small>{tr("مؤرشف")}</small>}{isProductExpired(product)&&<small className="expired-badge">{tr("منتهي — غير قابل للبيع")}</small>}</td><td className="num-cell">{product.piecePrice == null ? "—" : money(product.piecePrice)}</td><td className="num-cell">{product.wholesalePrice == null ? "—" : money(product.wholesalePrice)}</td><td className="num-cell">{product.lastPurchaseCost == null ? "—" : money(product.lastPurchaseCost)}</td><td className="num-cell">{number(stock)}</td><td className="action-cell">{canEdit&&<button className="soft" onClick={() => openForm(product)}>{tr("تعديل")}</button>}<button className="soft" onClick={() => showTransientNotice(`${product.name}\nالباركود: ${product.barcode || "—"}\nتاريخ الانتهاء: ${product.expiryDate || tr("بدون تاريخ")}\nالحالة: ${isProductExpired(product) ? tr("منتهي — غير قابل للبيع") : tr("صالح للبيع")}${product.note ? `\nملاحظة: ${product.note}` : ""}\nسعر الشراء: ${product.pieceCost == null ? "—" : money(product.pieceCost)}\nسعر البيع للفرد: ${product.piecePrice == null ? "—" : money(product.piecePrice)}\nسعر البيع بالجملة: ${product.wholesalePrice == null ? "—" : money(product.wholesalePrice)}\nالمخزون: ${number(stock)}`)}>{tr("عرض التفاصيل")}</button>{product.isArchived?(canEdit&&<button className="soft" onClick={()=>void run({type:"product.restore",id:product.id},tr("تمت استعادة المنتج"))}>{tr("استعادة")}</button>):(canDelete&&<button className="danger compact-delete" onClick={() => void remove(product)}>{tr("حذف")}</button>)}</td></tr>;
+          return <tr key={product.id}><td className="num-cell">{number(index + 1)}</td><td className="name-cell">{product.name}{product.isArchived&&<small>{tr("مؤرشف")}</small>}{isProductExpired(product)&&<small className="expired-badge">{tr("منتهي — غير قابل للبيع")}</small>}</td><td className="num-cell">{product.piecePrice == null ? "—" : money(product.piecePrice)}</td><td className="num-cell">{product.wholesalePrice == null ? "—" : money(product.wholesalePrice)}</td><td className="num-cell">{product.lastPurchaseCost == null ? "—" : money(product.lastPurchaseCost)}</td><td className="num-cell">{number(stock)}</td><td className="action-cell">{canEdit&&<button className="soft" onClick={() => openForm(product)}>{tr("تعديل")}</button>}<button className="soft" onClick={() => setViewing(product)}>{tr("عرض التفاصيل")}</button>{product.isArchived?(canEdit&&<button className="soft" onClick={()=>void run({type:"product.restore",id:product.id},tr("تمت استعادة المنتج"))}>{tr("استعادة")}</button>):(canDelete&&<button className="danger compact-delete" onClick={() => void remove(product)}>{tr("حذف")}</button>)}</td></tr>;
         })}
         {!products.length && <tr><td colSpan={7}><Empty text={tr("لا توجد منتجات مطابقة للبحث")} /></td></tr>}
       </tbody></table></div>
     </FramedSection>
     {categoryDialogOpen && <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={tr("إضافة فئة")}><ProductCategoryDialog categories={data.categories} run={run} close={() => setCategoryDialogOpen(false)} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} /></div>}
+    {viewing && <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={viewing.name}><style>{`.product-modal{scrollbar-width:none;-ms-overflow-style:none}.product-modal::-webkit-scrollbar{display:none}`}</style><div className="modal-card product-modal"><ProductDetails product={viewing} warehouses={data.warehouses} categories={data.categories} canEdit={canEdit} close={() => setViewing(null)} edit={() => openForm(viewing)} /></div></div>}
     {formOpen && <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={editing ? `تعديل ${editing.name}` : tr("إضافة منتج")}><style>{`.product-modal{scrollbar-width:none;-ms-overflow-style:none}.product-modal::-webkit-scrollbar{display:none}`}</style><div className="modal-card product-modal"><ProductForm key={editing?.id??"new"} run={run} product={editing} warehouses={activeWarehouses(data.warehouses)} categories={data.categories} canAdjustOpening={canUseCapability(data.principal,"warehouses.adjust")} close={() => setFormOpen(false)} /></div></div>}
+  </section>;
+}
+
+function ProductDetails({product,warehouses,categories,canEdit,close,edit}:{product:Product;warehouses:BootstrapData["warehouses"];categories:BootstrapData["categories"];canEdit:boolean;close:()=>void;edit:()=>void}){
+  const category=product.categoryId?categories.find(item=>item.id===product.categoryId):null;
+  const openingWarehouse=product.openingWarehouseId?warehouses.find(item=>item.id===product.openingWarehouseId):null;
+  const stock=Object.values(product.stocks).reduce((sum,value)=>sum+Number(value),0);
+  const status=product.isArchived?tr("مؤرشف"):isProductExpired(product)?tr("منتهي — غير قابل للبيع"):tr("صالح للبيع");
+  const field=(label:string,value:ReactNode,className="")=><div className={`product-detail-field ${className}`.trim()}><small>{label}</small><strong>{value}</strong></div>;
+  return <section className="panel product-form product-details">
+    <div className="product-form-head"><div><small>{tr("بيانات المنتج")}</small><h2>{product.name}</h2></div><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}><X /></button></div>
+    <div className="product-form-halves">
+      <FramedSection title={tr("المعلومات الأساسية")} className="product-form-group product-detail-group">
+        {field(tr("اسم المنتج"),product.name)}
+        {product.sku?.trim()&&field(tr("رمز المنتج"),<bdi dir="ltr">{product.sku}</bdi>)}
+        {category&&field(tr("الفئة"),category.name)}
+        {product.barcode?.trim()&&field(tr("الباركود"),<bdi dir="ltr">{product.barcode}</bdi>)}
+        {product.expiryDate&&field(tr("تاريخ انتهاء الصلاحية — اختياري"),formatDate(product.expiryDate))}
+        {product.note?.trim()&&field(tr("ملاحظة عن المنتج — اختياري"),product.note,"product-detail-note")}
+        {field(tr("الحالة"),status)}
+      </FramedSection>
+      <FramedSection title={tr("الأسعار والمخزون")} className="product-form-group product-detail-group">
+        {product.pieceCost!=null&&field(tr("سعر الشراء للفرد"),money(product.pieceCost))}
+        {product.lastPurchaseCost!=null&&field(tr("سعر آخر شراء"),money(product.lastPurchaseCost))}
+        {product.piecePrice!=null&&field(tr("سعر البيع للفرد"),money(product.piecePrice))}
+        {product.wholesalePrice!=null&&field(tr("سعر البيع بالجملة"),money(product.wholesalePrice))}
+        {product.openingStock!=null&&field(tr("رصيد البداية"),number(product.openingStock))}
+        {product.openingCost!=null&&field(tr("opening.cost"),money(product.openingCost))}
+        {openingWarehouse&&field(tr("مخزن رصيد البداية"),openingWarehouse.name)}
+        {field(tr("المخزون"),number(stock))}
+      </FramedSection>
+    </div>
+    <div className="product-form-actions"><button type="button" className="soft" onClick={close}>{tr("إغلاق")}</button>{canEdit&&<button type="button" className="primary" onClick={edit}>{tr("تعديل المنتج")}</button>}</div>
   </section>;
 }
 

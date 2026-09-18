@@ -54,3 +54,22 @@ test("historical payment editors preserve only the selected inactive account",()
   assert.match(party,/historicalAccount=data\.paymentAccounts\.find/);
   assert.match(party,/activeOnly preserveSelected=\{Boolean\(editingPaymentId\)\}/);
 });
+
+
+test("product details open as a dedicated read-only product page and edit routes into the normal editor",()=>{
+  const products=app.slice(app.indexOf("function Products"),app.indexOf("type ProductOpeningView"));
+  assert.match(products,/const \[viewing, setViewing\] = useState<Product \| null>\(null\)/);
+  assert.match(products,/onClick=\{\(\) => setViewing\(product\)\}>\{tr\("عرض التفاصيل"\)\}/);
+  assert.doesNotMatch(products,/showTransientNotice\(\`\$\{product\.name\}/);
+  assert.match(products,/viewing && <div className="modal-overlay"[\s\S]*?<ProductDetails product=\{viewing\}/);
+  assert.match(products,/edit=\{\(\) => openForm\(viewing\)\}/);
+  const details=products.slice(products.indexOf("function ProductDetails"));
+  assert.match(details,/className="panel product-form product-details"/);
+  assert.match(details,/product\.barcode\?\.trim\(\)&&field/);
+  assert.match(details,/product\.expiryDate&&field/);
+  assert.match(details,/product\.note\?\.trim\(\)&&field/);
+  assert.match(details,/product\.pieceCost!=null&&field/);
+  assert.match(details,/product\.piecePrice!=null&&field/);
+  assert.match(details,/product\.wholesalePrice!=null&&field/);
+  assert.match(details,/canEdit&&<button type="button" className="primary" onClick=\{edit\}>\{tr\("تعديل المنتج"\)\}/);
+});

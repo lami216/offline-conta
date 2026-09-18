@@ -29,3 +29,6 @@ test("PermissionNavItem preserves the original navigation button structure",()=>
   assert.doesNotMatch(nav,/DisabledActionHint|BlockedAction|<span/);
   assert.match(nav,/return <button disabled=\{!allowed\}[\s\S]*onClick=\{onClick\}>\{children\}<\/button>;/);
 });
+
+
+test("workspace mutation controls follow API capabilities instead of view permission",()=>{for(const pattern of [/canCreateSale=canUseCapability\(data\.principal,"pos\.create"\)/,/canCreatePurchase=canUseCapability\(data\.principal,"purchases\.create"\)/,/canCreate=canUseCapability\(data\.principal,"expenses\.create"\)/,/canCreate=canUseCapability\(data\.principal,customer\?"customers\.create":"suppliers\.create"\)/,/canCreate=canUseCapability\(data\.principal,"products\.create"\)/,/canCreate=canUseCapability\(data\.principal,"warehouses\.create"\)/,/canCreatePayment=canUseCapability\(data\.principal,customer\?"customers\.collect":"suppliers\.pay"\)/,/canCreateWarehouse=canUseCapability\(data\.principal,"warehouses\.create"\)/])assert.match(app,pattern);assert.match(app,/canDelete=\{!editingDocument\|\|canDeleteSale\}/);assert.match(app,/canDelete=\{!editingDocument\|\|canDeletePurchase\}/);});

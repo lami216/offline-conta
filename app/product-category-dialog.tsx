@@ -32,7 +32,7 @@ const categoryDialogStyles = `
 @media(max-width:420px){.product-category-grid,.product-category-grid.wide-names{grid-template-columns:repeat(2,minmax(0,1fr))!important}.product-category-card{width:100%;min-width:0;max-width:none}.product-category-edit-card{min-width:0}}
 `;
 
-export default function ProductCategoryDialog({ categories, run, close }: { categories: ProductCategory[]; run: RunCommand; close: () => void }) {
+export default function ProductCategoryDialog({ categories, run, close, canCreate, canEdit, canDelete }: { categories: ProductCategory[]; run: RunCommand; close: () => void; canCreate:boolean; canEdit:boolean; canDelete:boolean }) {
   const confirmAction = useAppConfirm();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -53,13 +53,13 @@ export default function ProductCategoryDialog({ categories, run, close }: { cate
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!name.trim() || busy) return;
+    if (!canCreate || !name.trim() || busy) return;
     setBusy(true);
     try { await run({ type: "product-category.create", name: name.trim() }, tr("تمت إضافة الفئة")); setName(""); } finally { setBusy(false); }
   };
 
   const startEdit = (category: ProductCategory) => {
-    if (busyId) return;
+    if (!canEdit || busyId) return;
     setEditingId(category.id);
     setEditingName(category.name);
   };
@@ -84,7 +84,7 @@ export default function ProductCategoryDialog({ categories, run, close }: { cate
   };
 
   const removeCategory = async (category: ProductCategory) => {
-    if (busyId) return;
+    if (!canDelete || busyId) return;
     const accepted = await confirmAction({
       message: `${tr("common.delete")} — ${category.name}?`,
       confirmLabel: tr("common.delete"),
@@ -99,8 +99,8 @@ export default function ProductCategoryDialog({ categories, run, close }: { cate
 
   return <><style>{categoryDialogStyles}</style><div className="modal-card product-category-modal">
     <div className="product-form-head"><div><small>{tr("الفئات")}</small><h2>{tr("إضافة فئة")}</h2></div><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}><X /></button></div>
-    <form className="product-category-create" onSubmit={submit}><label>{tr("اسم الفئة")}<input autoFocus maxLength={80} value={name} onChange={event => setName(event.target.value)} /></label><button className="primary" disabled={busy || !name.trim()}><Plus />{busy ? tr("جاري الحفظ…") : tr("إضافة فئة")}</button></form>
-    <div className="product-category-list"><strong>{tr("الفئات الحالية")}</strong>{sortedCategories.length ? <div className={`product-category-grid${hasWideCategoryNames ? " wide-names" : ""}`}>{sortedCategories.map(category => editingId === category.id ? <form className="product-category-edit-card" key={category.id} onSubmit={event => void saveEdit(event, category)}><input autoFocus maxLength={80} value={editingName} onChange={event => setEditingName(event.target.value)} disabled={busyId === category.id} /><button type="submit" className="product-category-edit-action" disabled={busyId === category.id || !editingName.trim()} aria-label={tr("common.save")} title={tr("common.save")}><Check /></button><button type="button" className="product-category-edit-action" disabled={busyId === category.id} onClick={cancelEdit} aria-label={tr("common.cancel")} title={tr("common.cancel")}><X /></button></form> : <div className="product-category-card" key={category.id} tabIndex={0}><span className="product-category-name">{category.name}</span><div className="product-category-actions"><button type="button" className="product-category-action" onClick={() => startEdit(category)} disabled={Boolean(busyId)} aria-label={`${category.name} — ${tr("common.save")}`}><Pencil /></button><button type="button" className="product-category-action product-category-delete-action" onClick={() => void removeCategory(category)} disabled={Boolean(busyId)} aria-label={`${category.name} — ${tr("common.delete")}`}><Trash2 /></button></div></div>)}</div> : <p>{tr("لا توجد فئات حتى الآن")}</p>}</div>
+    {canCreate&&<form className="product-category-create" onSubmit={submit}><label>{tr("اسم الفئة")}<input autoFocus maxLength={80} value={name} onChange={event => setName(event.target.value)} /></label><button className="primary" disabled={busy || !name.trim()}><Plus />{busy ? tr("جاري الحفظ…") : tr("إضافة فئة")}</button></form>}
+    <div className="product-category-list"><strong>{tr("الفئات الحالية")}</strong>{sortedCategories.length ? <div className={`product-category-grid${hasWideCategoryNames ? " wide-names" : ""}`}>{sortedCategories.map(category => editingId === category.id ? <form className="product-category-edit-card" key={category.id} onSubmit={event => void saveEdit(event, category)}><input autoFocus maxLength={80} value={editingName} onChange={event => setEditingName(event.target.value)} disabled={busyId === category.id} /><button type="submit" className="product-category-edit-action" disabled={busyId === category.id || !editingName.trim()} aria-label={tr("common.save")} title={tr("common.save")}><Check /></button><button type="button" className="product-category-edit-action" disabled={busyId === category.id} onClick={cancelEdit} aria-label={tr("common.cancel")} title={tr("common.cancel")}><X /></button></form> : <div className="product-category-card" key={category.id} tabIndex={0}><span className="product-category-name">{category.name}</span>{(canEdit||canDelete)&&<div className="product-category-actions">{canEdit&&<button type="button" className="product-category-action" onClick={() => startEdit(category)} disabled={Boolean(busyId)} aria-label={`${category.name} — ${tr("common.save")}`}><Pencil /></button>}{canDelete&&<button type="button" className="product-category-action product-category-delete-action" onClick={() => void removeCategory(category)} disabled={Boolean(busyId)} aria-label={`${category.name} — ${tr("common.delete")}`}><Trash2 /></button>}</div>}</div>)}</div> : <p>{tr("لا توجد فئات حتى الآن")}</p>}</div>
     <div className="product-form-actions"><button type="button" className="soft" onClick={close}>{tr("إغلاق")}</button></div>
   </div></>;
 }

@@ -116,6 +116,28 @@ async function recomputePurchaseCosts(db: Db, session: ClientSession, productIds
     if (product) await currentProductCost(db, session, product);
   }
 }
+async function propagateWarehouseName(db: Db, session: ClientSession, warehouseId: string, previousName: string, currentName: string) {
+  if (!currentName || currentName === previousName) return;
+  const documents = await db.collection("documents").find({ $or: [{ warehouseId }, { destinationWarehouseId: warehouseId }] }, { session }).toArray();
+  for (const document of documents) {
+    const update: Record<string, unknown> = {};
+    if (String(document.warehouseId ?? "") === warehouseId) {
+      if (!document.warehouseNameOriginal && document.warehouseName) update.warehouseNameOriginal = document.warehouseName;
+      update.warehouseName = currentName;
+    }
+    if (String(document.destinationWarehouseId ?? "") === warehouseId) {
+      if (!document.destinationWarehouseNameOriginal && document.destinationWarehouseName) update.destinationWarehouseNameOriginal = document.destinationWarehouseName;
+      update.destinationWarehouseName = currentName;
+    }
+    if (Object.keys(update).length) await db.collection("documents").updateOne({ _id: document._id }, { $set: update }, { session });
+  }
+  const movements = await db.collection("stockMovements").find({ warehouseId }, { session }).toArray();
+  for (const movement of movements) {
+    const update: Record<string, unknown> = { warehouseName: currentName };
+    if (!movement.warehouseNameOriginal && movement.warehouseName) update.warehouseNameOriginal = movement.warehouseName;
+    await db.collection("stockMovements").updateOne({ _id: movement._id }, { $set: update }, { session });
+  }
+}
 async function refs(db: Db, session: ClientSession, body: Input, requireParty = false) {
   const warehouseId = text(body.warehouseId), partyId = text(body.partyId);
   const [warehouse, party] = await Promise.all([
@@ -165,7 +187,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   if (type === "party.create") {
     const name = text(body.name), phone = text(body.phone), partyType = text(body.partyType); if (!name) throw new CommandError("اسم الحساب مطلوب");
     if (!["customer", "supplier"].includes(partyType)) throw new CommandError("نوع الحساب غير صالح");
-    if (phone) { const existing = await db.collection("parties").findOne({ phone, partyType, isArchived: { $ne: true } }, { session }); if (existing) return String(existing.id); }
+    if (phone) { const existing = await db.collection("parties").findOne({ phone, partyType, isArchived: { $ne: true } }, { session }); if (existing) throw new CommandError("رقم الهاتف مستخدم لحساب آخر من النوع نفسه", 409); }
     const party = { id: id("party"), name, phone, partyType, receivable: 0, payable: 0, net: 0, createdAt: new Date() };
     await db.collection("parties").insertOne(party, { session }); return party.id;
   }
@@ -199,7 +221,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const name = text(body.name); if (!name) throw new CommandError("اسم المخزن مطلوب"); const _id = id("wh");
     await warehouses(db).insertOne({ _id, name, isSalesDefault: false, createdAt: new Date() }, { session }); return _id;
   }
-  if (type === "warehouse.update") { const name = text(body.name), warehouseId = text(body.id); if (!name) throw new CommandError("اسم المخزن مطلوب"); const r = await warehouses(db).updateOne({ _id: warehouseId }, { $set: { name } }, { session }); if (!r.matchedCount) throw new CommandError("المخزن غير موجود", 404); return warehouseId; }
+  if (type === "warehouse.update") { const name = text(body.name), warehouseId = text(body.id); if (!name) throw new CommandError("اسم المخزن مطلوب"); const warehouse=await warehouses(db).findOne({_id:warehouseId},{session});if(!warehouse)throw new CommandError("المخزن غير موجود",404);await propagateWarehouseName(db,session,warehouseId,String(warehouse.name??""),name);await warehouses(db).updateOne({_id:warehouseId},{$set:{name,updatedAt:new Date()}},{session});return warehouseId; }
   if (type === "warehouse.default") { const warehouseId = text(body.warehouseId); if (!await warehouses(db).findOne({ _id: warehouseId, isArchived: { $ne: true } }, { session })) throw new CommandError("المخزن غير موجود", 404); await warehouses(db).updateMany({}, { $set: { isSalesDefault: false } }, { session }); await warehouses(db).updateOne({ _id: warehouseId }, { $set: { isSalesDefault: true } }, { session }); return warehouseId; }
   if (type === "warehouse.delete") {
     const warehouseId=text(body.id), warehouse=await warehouses(db).findOne({_id:warehouseId},{session}); if(!warehouse)throw new CommandError("المخزن غير موجود",404);

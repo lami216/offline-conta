@@ -74,3 +74,19 @@ test("login clears accounting session drafts between users",async()=>{
  const source=await readFile(new URL("../app/login/page.tsx",import.meta.url),"utf8");
  assert.match(source,/key\.startsWith\("conta:"\)/);
 });
+
+
+test("warehouse rename propagates current identity while preserving the historical snapshot",async()=>{
+ const sale=await command({type:"sale.post",warehouseId:"a",paymentMethod:"cash",lines:[{productId:"p",quantity:1,piecePrice:10}]});
+ await command({type:"warehouse.update",id:"a",name:"Renamed A"});
+ const document=await db.collection("documents").findOne({id:sale}),movement=await db.collection("stockMovements").findOne({documentId:sale});
+ assert.equal(document.warehouseName,"Renamed A");assert.equal(document.warehouseNameOriginal,"A");
+ assert.equal(movement.warehouseName,"Renamed A");assert.equal(movement.warehouseNameOriginal,"A");
+});
+
+test("creating a duplicate same-role phone is rejected instead of reporting a false creation success",async()=>{
+ await command({type:"party.create",partyType:"customer",name:"One",phone:"222"});
+ await assert.rejects(command({type:"party.create",partyType:"customer",name:"Two",phone:"222"}),/رقم الهاتف مستخدم/);
+ const supplier=await command({type:"party.create",partyType:"supplier",name:"Supplier",phone:"222"});
+ assert.ok(supplier);
+});

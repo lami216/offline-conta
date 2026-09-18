@@ -44,7 +44,7 @@ export async function GET(request:Request){
    const currentPartyNames=new Map(parties.map(party=>[String(party.id??party._id??""),String(party.name??"")] as const));
    const access={...coarseAccess,customerPartyIds,supplierPartyIds};
    const authorized=candidates.filter(document=>canReadDocument(document,access)).map(document=>resolveCurrentPartyName(document,currentPartyNames));
-   const visible=search?authorized.filter(document=>String(document.number??"")+" "+String(document.sequence??"")+" "+String(document.legacyBillCode??"")+" "+String(document.partyName??"")+" "+String(document.title??"")+" "+String(document.kind??"")+" "+String(document.status??"").toLocaleLowerCase().includes(search)):authorized;
+   const visible=search?authorized.filter(document=>[document.number,document.sequence,document.legacyBillCode,document.partyName,document.title,document.kind,document.status].map(value=>String(value??"")).join(" ").toLocaleLowerCase().includes(search)):authorized;
    const total=visible.length,rows=visible.slice((page-1)*pageSize,page*pageSize);
    return Response.json({resource,page,pageSize,total,totalPages:Math.ceil(total/pageSize),rows:rows.map(({_id,...row})=>({id:row.id??String(_id),...row}))});
  }

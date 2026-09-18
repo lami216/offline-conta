@@ -133,3 +133,8 @@ test("historical report cost falls back to native opening but never invents Data
   assert.deepEqual([native.cost,native.profit,native.costKnown],[110,90,true]);
   assert.deepEqual([legacy.cost,legacy.profit,legacy.costKnown],[0,200,false]);
 });
+
+
+test("debt search treats regex metacharacters as literal text",async()=>{await db.collection("parties").insertMany([{id:"literal",name:"A.* Store",phone:"111",partyType:"customer",receivable:5,payable:0},{id:"other",name:"Anything",phone:"222",partyType:"customer",receivable:7,payable:0}]);const report=await buildReport(db,filters("debts",{search:".*"}));assert.deepEqual(report.rows.map(row=>row.id),["literal"]);});
+
+test("party ledger can report an archived party by stable id",async()=>{await db.collection("parties").insertOne({id:"old",name:"Archived",partyType:"customer",isArchived:true,receivable:10,payable:0});await db.collection("documents").insertOne(doc("old-sale","sale","2026-08-10",[line("l","a",1,10)],{partyId:"old",dueTotal:10}));const report=await buildReport(db,filters("party-ledger",{partyId:"old"}));assert.equal(report.summary.name,"Archived");assert.equal(report.rows.length,1);});

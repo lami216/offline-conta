@@ -34,7 +34,7 @@ async function applyPartyNetDelta(db: Db, session: ClientSession, partyId: unkno
   if (!party) { if (reversing) throw new LifecycleCommandError("لا يمكن تعديل رصيد الطرف", 409); return null; }
   const before = partyNet(party as { receivable?: unknown; payable?: unknown });
   const after = before + delta;
-  await db.collection("parties").updateOne({ _id: party._id }, { $set: { ...normalizePartyNet(after), lastMovementAt: new Date() } }, { session });
+  await db.collection("parties").updateOne({ _id: party._id }, { $set: { ...normalizePartyNet(after), lastMovementAt: new Date(), ...(party.isArchived===true&&after!==0?{isArchived:false,archivedAt:null}: {}) } }, { session });
   return { before, delta, after };
 }
 
@@ -65,7 +65,7 @@ export async function reverseFinancialMovement(db: Db, session: ClientSession, m
   const account = await paymentAccount(db, session, movement.paymentMethod, false);
   const reverseDirection: Direction = direction === "in" ? "out" : "in";
   const delta = reverseDirection === "in" ? amount : -amount;
-  const changed = await db.collection("paymentAccounts").updateOne({ id: account.id }, { $inc: { balance: delta } }, { session });
+  const changed = await db.collection("paymentAccounts").updateOne({ id: account.id }, { $inc: { balance: delta }, ...(account.isArchived===true?{$set:{isArchived:false,isActive:true,archivedAt:null,updatedAt:new Date()}}:{}) }, { session });
   if (!changed.matchedCount) throw new LifecycleCommandError("تعذر عكس الحركة المالية", 409);
   const now = new Date(), reversalId = id("fin");
   const reversed = await db.collection("financialMovements").updateOne(
@@ -104,6 +104,10 @@ async function changeStock(db: Db, session: ClientSession, product: Stored, ware
   if (!changed.matchedCount) throw new LifecycleCommandError("تغير المخزون أثناء العملية، أعد المحاولة", 409);
   const currentStocks = (product.stocks ??= {}) as Record<string, number>;
   currentStocks[warehouseId] = after;
+  if (after !== 0 && warehouse.isArchived === true) {
+    await db.collection("warehouses").updateOne({ _id: warehouseId, isArchived: true }, { $set: { isArchived: false, archivedAt: null, updatedAt: new Date() } }, { session });
+    warehouse.isArchived = false;
+  }
   await db.collection("stockMovements").insertOne({
     id: id("mov"), documentId: document.id, documentNumber: document.number, warehouseId,
     warehouseName: warehouse.name, productId, productName: product.name, type, quantityDelta: delta,

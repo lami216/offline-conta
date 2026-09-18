@@ -100,7 +100,7 @@ async function applyPartyNetDelta(db: Db, session: ClientSession, partyId: unkno
   if (!party) { if (reversing) throw new CommandError("لا يمكن تعديل رصيد الطرف", 409); return null; }
   const before = partyNet(party as {receivable?:unknown;payable?:unknown});
   const after = before + delta;
-  await db.collection("parties").updateOne({ _id: party._id }, { $set: { ...normalizePartyNet(after), lastMovementAt: new Date() } }, { session });
+  await db.collection("parties").updateOne({ _id: party._id }, { $set: { ...normalizePartyNet(after), lastMovementAt: new Date(), ...(party.isArchived===true&&after!==0?{isArchived:false,archivedAt:null}: {}) } }, { session });
   return { before, delta, after };
 }
 async function reverseInvoicePayment(db: Db, session: ClientSession, document: Record<string, unknown>, kind: "sale" | "purchase") {
@@ -140,6 +140,10 @@ async function changeStock(db: Db, session: ClientSession, product: Record<strin
   if (!result.matchedCount) throw new CommandError("تغير المخزون أثناء العملية، أعد المحاولة", 409);
   const currentStocks = (product.stocks ??= {}) as Record<string, number>;
   currentStocks[warehouseId] = after;
+  if (after !== 0 && warehouse.isArchived === true) {
+    await warehouses(db).updateOne({ _id: warehouseId, isArchived: true }, { $set: { isArchived: false, archivedAt: null, updatedAt: new Date() } }, { session });
+    warehouse.isArchived = false;
+  }
   await db.collection("stockMovements").insertOne({ id: id("mov"), documentId: document.id, documentNumber: document.number, warehouseId, warehouseName: warehouse.name, productId, productName: product.name, type, quantityDelta: delta, balanceBefore: before, balanceAfter: after, occurredAt: document.occurredAt, documentRevision: Number(document.revision ?? 0) }, { session });
   return { before, after };
 }

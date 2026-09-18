@@ -289,7 +289,7 @@ export function western(value: number | string) {
 }
 const DISPLAY_LOCALE = "fr-FR-u-nu-latn";
 const numberFormatter = new Intl.NumberFormat(DISPLAY_LOCALE, {
-  maximumFractionDigits: 0,
+  maximumFractionDigits: 3,
   numberingSystem: "latn",
 });
 

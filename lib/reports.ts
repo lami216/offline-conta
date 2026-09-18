@@ -205,7 +205,7 @@ if (f.type === "financial") {
   // overview is a current position snapshot, while `commercial` remains period-bound.
   const [parties,accounts,products,warehouses]=await Promise.all([
     db.collection("parties").find({isArchived:{$ne:true}}).sort({name:1}).toArray(),
-    db.collection("paymentAccounts").find({isActive:{$ne:false},isArchived:{$ne:true}}).sort({createdAt:1,name:1}).toArray(),
+    db.collection("paymentAccounts").find({isArchived:{$ne:true}}).sort({createdAt:1,name:1}).toArray(),
     // Archived products remain here because their on-hand stock still has value.
     db.collection("products").find().toArray().then(rows => productsWithCurrentCosts(db, rows)),
     db.collection("warehouses").find().sort({createdAt:1,name:1}).toArray(),

@@ -7,7 +7,7 @@ export function filterFinancialMovements(rows: FinancialMovement[], period: Comm
 export function filterTransfers<T extends { occurredAt: string; fromAccountId: string; toAccountId: string }>(rows: T[], period: CommittedPeriod, fromAccountId = "", toAccountId = "") { return rows.filter(row => inCommittedPeriod(row.occurredAt, period) && (!fromAccountId || row.fromAccountId === fromAccountId) && (!toAccountId || row.toAccountId === toAccountId)); }
 const nonOperatingMovementTypes = new Set(["transfer-in", "transfer-out", "opening-balance", "balance-correction"]);
 export function bankScopeMetrics(accounts: PaymentAccount[], movements: FinancialMovement[], parties: Party[]) {
-  const currentBalance = accounts.filter(account => account.isActive && !account.isArchived).reduce((sum, account) => sum + Number(account.balance || 0), 0);
+  const currentBalance = accounts.filter(account => !account.isArchived).reduce((sum, account) => sum + Number(account.balance || 0), 0);
   const operating = movements.filter(movement => !nonOperatingMovementTypes.has(financialMovementKind(movement.type)));
   const income = operating.filter(movement => movement.direction === "in").reduce((sum, movement) => sum + Number(movement.amount || 0), 0);
   const expenses = operating.filter(movement => movement.direction === "out").reduce((sum, movement) => sum + Number(movement.amount || 0), 0);

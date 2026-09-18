@@ -7,8 +7,8 @@ const source = normalizePresentationSource(await readFile(new URL("../app/conta-
 const between = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
 
 test("general invoice records open details before offering an explicit edit action", () => {
-  assert.match(source, /view === "records" && <Records data=\{data\} openDoc=\{openDoc\}/);
-  assert.doesNotMatch(source, /<Records data=\{data\} openDoc=\{id => editInvoice\(id\)\}/);
+  assert.match(source, /view === "records" && <Records openDoc=\{openDoc\}/);
+  assert.doesNotMatch(source, /<Records openDoc=\{id => editInvoice\(id\)\}/);
 
   const detail = between("function DocumentDetail", "function InvoiceQuickBrowser");
   assert.match(detail, /onEdit\?: \(\) => void/);

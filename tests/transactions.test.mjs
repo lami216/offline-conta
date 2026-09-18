@@ -302,7 +302,7 @@ test("sale update moves a settled invoice to another customer without moving its
   await command({ type: "sale.update", documentId: saleId, partyId: "customer-b", paymentMethod: "note", lines: [{ productId: "p1", quantity: 2, piecePrice: 150 }] });
   assert.equal((await db.collection("parties").findOne({ id: "party" })).receivable, 0);
   assert.equal((await db.collection("parties").findOne({ id: "customer-b" })).receivable, 300);
-  await command({ type: "payment.post", partyId: "customer-b", side: "receivable", amount: 300, paymentMethod: "cash-id" });
+  await command({ type: "party-cash.post", partyId: "customer-b", direction: "receive", amount: 300, paymentMethod: "cash-id" });
   const payment = await db.collection("documents").findOne({kind:"payment",partyId:"customer-b"});
   await command({ type: "sale.update", documentId: saleId, partyId: "party", paymentMethod: "note", lines: [{ productId: "p1", quantity: 1, piecePrice: 100 }] });
   assert.deepEqual(await db.collection("parties").findOne({id:"customer-b"},{projection:{_id:0,receivable:1,payable:1,net:1}}),{receivable:0,payable:300,net:-300});

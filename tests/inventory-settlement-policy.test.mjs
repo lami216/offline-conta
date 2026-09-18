@@ -76,7 +76,7 @@ test("invoice posting rejects partial or over payment and keeps note invoices wh
   assert.equal((await db.collection("parties").findOne({ id: "customer" })).receivable, 100);
   assert.equal(await db.collection("financialMovements").countDocuments({ documentId: saleId, type: "sale" }), 0);
 
-  const receiptId = await command({ type: "payment.post", partyId: "customer", side: "receivable", amount: 40, paymentMethod: "cash" });
+  const receiptId = await command({ type: "party-cash.post", partyId: "customer", direction: "receive", amount: 40, paymentMethod: "cash" });
   assert.equal((await db.collection("parties").findOne({ id: "customer" })).receivable, 60);
   invoice = await db.collection("documents").findOne({ id: saleId });
   assert.deepEqual([invoice.paidTotal, invoice.dueTotal], [0, 100], "receipt history stays separate from the invoice");

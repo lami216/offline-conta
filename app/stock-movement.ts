@@ -59,3 +59,18 @@ export function stockMovementMatchesFilter(type: unknown, filter: string | null 
   if (filter === "purchase") return current === "purchase" || current.startsWith("purchase-");
   return current === filter;
 }
+
+
+export function periodStockMovementQuantity(
+  movements: Array<{productId:string;warehouseId:string;type:string;quantityDelta:number;occurredAt:string}>,
+  productId:string,
+  warehouseIds:string|string[],
+  kind:"purchase"|"sale",
+  from:string,
+  to:string,
+) {
+  const ids=new Set(Array.isArray(warehouseIds)?warehouseIds:[warehouseIds]);
+  return movements
+    .filter(movement=>movement.productId===productId&&ids.has(movement.warehouseId)&&stockMovementMatchesFilter(movement.type,kind)&&(!from||movement.occurredAt.slice(0,10)>=from)&&(!to||movement.occurredAt.slice(0,10)<=to))
+    .reduce((sum,movement)=>sum+(kind==="sale"?-Number(movement.quantityDelta):Number(movement.quantityDelta)),0);
+}

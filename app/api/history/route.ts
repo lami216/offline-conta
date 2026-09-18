@@ -22,7 +22,8 @@ export async function GET(request:Request){
  const url=new URL(request.url),resource=url.searchParams.get("resource")??"documents",page=bounded(url.searchParams.get("page"),1,1_000_000),pageSize=bounded(url.searchParams.get("pageSize"),100,250),kind=url.searchParams.get("kind"),from=url.searchParams.get("from"),to=url.searchParams.get("to"),id=url.searchParams.get("id")?.trim()??"",search=url.searchParams.get("q")?.trim().toLocaleLowerCase()??"";
  if(!["documents","stockMovements","financialMovements"].includes(resource))return Response.json({error:"غير مصرح"},{status:403});
  const reportDocumentLookup=resource==="documents"&&Boolean(id)&&hasCapability(principal,"reports.view");
- const allowed=resource==="documents"?(documentCapabilities.some(capability=>hasCapability(principal,capability))||reportDocumentLookup):resource==="stockMovements"?hasCapability(principal,"warehouses.inventory.view"):hasCapability(principal,"banks.movements.view");
+ const recordsAccess=hasCapability(principal,"records.view");
+ const allowed=resource==="documents"?(documentCapabilities.some(capability=>hasCapability(principal,capability))||reportDocumentLookup):resource==="stockMovements"?(recordsAccess||hasCapability(principal,"warehouses.inventory.view")):(recordsAccess||hasCapability(principal,"banks.movements.view"));
  if(!allowed)return Response.json({error:"غير مصرح"},{status:403});
  const coarseAccess={can:(capability:string)=>hasCapability(principal,capability as Capability)};
  if(resource==="documents"&&kind&&!reportDocumentLookup&&!canReadDocumentKind(kind,coarseAccess))return Response.json({error:"غير مصرح"},{status:403});

@@ -116,7 +116,9 @@ test("archived product already present in a sale can be edited but cannot be new
 test("phone identity remains reserved while a historical party is archived",async()=>{
  await command({type:"party.create",partyType:"customer",name:"Phone Owner",phone:"333"});
  const owner=await db.collection("parties").findOne({phone:"333",partyType:"customer"});
+ await db.collection("documents").insertOne({id:"phone-history",number:"H-1",kind:"sale",status:"voided",partyId:owner.id,partyName:"Phone Owner",occurredAt:new Date().toISOString(),lines:[]});
  await command({type:"party.delete",id:owner.id});
+ assert.equal((await db.collection("parties").findOne({id:owner.id})).isArchived,true);
  await assert.rejects(command({type:"party.create",partyType:"customer",name:"Replacement",phone:"333"}),/رقم الهاتف مستخدم/);
 });
 

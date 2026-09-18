@@ -1,4 +1,4 @@
-import test from "node:test";import assert from "node:assert/strict";import {readFileSync} from "node:fs";import {bankScopeMetrics,filterFinancialMovements,filterTransfers} from "../app/bank-filters.ts";
+import test from "node:test";import assert from "node:assert/strict";import {readFileSync} from "node:fs";import {bankScopeBreakdown,bankScopeMetrics,filterFinancialMovements,filterTransfers} from "../app/bank-filters.ts";
 const movements=[{id:"1",paymentMethod:"a",type:"sale",occurredAt:"2026-08-10",amount:10},{id:"2",paymentMethod:"b",type:"expense",occurredAt:"2026-07-10",amount:4},{id:"3",paymentMethod:"a",type:"expense",occurredAt:"2026-08-12",amount:3}];
 test("all-time and committed period scopes remain independent of account/type changes",()=>{assert.equal(filterFinancialMovements(movements,null).length,3);const period={from:"2026-08-01",to:"2026-08-31"};assert.equal(filterFinancialMovements(movements,period).length,2);assert.equal(filterFinancialMovements(movements,period,"a").length,2);assert.equal(filterFinancialMovements(movements,period,"a","sale").length,1);assert.equal(filterFinancialMovements(movements,null,"a","sale").length,1)});
 test("bank summary keeps inactive non-archived balances, external cash movements, and net party debts",()=>{const accounts=[{id:"a",code:"a",balance:90,isActive:true},{id:"b",code:"b",balance:40,isActive:false}],rows=[{direction:"in",amount:100,type:"sale"},{direction:"out",amount:20,type:"expense"},{direction:"in",amount:50,type:"transfer-in"}];assert.deepEqual(bankScopeMetrics(accounts,rows,[{receivable:25,payable:5},{receivable:0,payable:10}]),{currentBalance:130,income:100,expenses:20,owedToUs:20,weOwe:10})});
@@ -15,3 +15,19 @@ test("bank movement filter does not offer opening rows that the operational list
 
 
 test("historical bank editors preserve archived account ids instead of replacing them with an empty selector",()=>{const source=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),banks=source.slice(source.indexOf("function Banks"),source.indexOf("function PaymentAccountDialog"));assert.match(banks,/const accountId=.*data\.paymentAccounts\.find/);assert.match(banks,/historicalAccounts=\(ids:string\[\]\)/);assert.doesNotMatch(banks,/activeAccountId/);});
+
+test("bank summary breakdown reconciles every card and keeps zero-value source kinds visible",()=>{
+  const accounts=[{id:"a",name:"A",balance:10,isActive:true},{id:"zero",name:"Zero",balance:0,isActive:false},{id:"archived",name:"Old",balance:99,isArchived:true}];
+  const rows=[{id:"sale",direction:"in",amount:25,type:"sale",paymentMethod:"a",documentNumber:"S-1",occurredAt:"2026-08-01"},{id:"expense",direction:"out",amount:7,type:"expense",paymentMethod:"a",documentNumber:"E-1",occurredAt:"2026-08-02"}];
+  const parties=[{id:"c",name:"C",partyType:"customer",receivable:12,payable:2},{id:"s",name:"S",partyType:"supplier",receivable:0,payable:5},{id:"z",name:"Z",partyType:"customer",receivable:0,payable:0}];
+  const metrics=bankScopeMetrics(accounts,rows,parties),details=bankScopeBreakdown(accounts,rows,parties);
+  assert.equal(details.accounts.reduce((sum,row)=>sum+row.value,0),metrics.currentBalance);
+  assert.equal(details.income.reduce((sum,row)=>sum+row.value,0),metrics.income);
+  assert.equal(details.expenses.reduce((sum,row)=>sum+row.value,0),metrics.expenses);
+  assert.equal(details.parties.reduce((sum,row)=>sum+row.owedToUs,0),metrics.owedToUs);
+  assert.equal(details.parties.reduce((sum,row)=>sum+row.weOwe,0),metrics.weOwe);
+  assert.ok(details.income.some(row=>row.kind==="purchase"&&row.value===0&&row.movement===null));
+  assert.ok(details.expenses.some(row=>row.kind==="manual-withdrawal"&&row.value===0&&row.movement===null));
+  assert.ok(details.accounts.some(row=>row.name==="Zero"&&row.value===0));
+  assert.ok(details.parties.some(row=>row.name==="Z"&&row.owedToUs===0&&row.weOwe===0));
+});

@@ -138,3 +138,19 @@ test("historical report cost falls back to native opening but never invents Data
 test("debt search treats regex metacharacters as literal text",async()=>{await db.collection("parties").insertMany([{id:"literal",name:"A.* Store",phone:"111",partyType:"customer",receivable:5,payable:0},{id:"other",name:"Anything",phone:"222",partyType:"customer",receivable:7,payable:0}]);const report=await buildReport(db,filters("debts",{search:".*"}));assert.deepEqual(report.rows.map(row=>row.id),["literal"]);});
 
 test("party ledger can report an archived party by stable id",async()=>{await db.collection("parties").insertOne({id:"old",name:"Archived",partyType:"customer",isArchived:true,receivable:10,payable:0});await db.collection("documents").insertOne(doc("old-sale","sale","2026-08-10",[line("l","a",1,10)],{partyId:"old",dueTotal:10}));const report=await buildReport(db,filters("party-ledger",{partyId:"old"}));assert.equal(report.summary.name,"Archived");assert.equal(report.rows.length,1);});
+
+test("overview breakdown rows reconcile every period KPI and net profit exactly",async()=>{
+  await db.collection("documents").insertMany([
+    doc("sale","sale","2026-08-10",[line("sl","a",2,100,60)]),
+    doc("return","return","2026-08-11",[line("rl","a",1,100,60)],{parentDocumentId:"sale"}),
+    doc("purchase","purchase","2026-08-12",[line("pl","a",3,50)]),
+    doc("expense","expense","2026-08-13",[],{total:25,title:"Rent"}),
+  ]);
+  const report=await buildReport(db,filters("overview")),sum=rows=>rows.reduce((total,row)=>total+Number(row.value||0),0);
+  assert.equal(sum(report.overviewDetails.sales),report.summary.sales);
+  assert.equal(sum(report.overviewDetails.purchases),report.summary.purchases);
+  assert.equal(sum(report.overviewDetails.expenses),report.summary.expenses);
+  assert.equal(report.overviewDetails.salesProfit.reduce((total,row)=>total+row.profit,0),report.summary.salesProfit);
+  assert.equal(report.overviewDetails.salesProfit.reduce((total,row)=>total+row.profit,0)-sum(report.overviewDetails.expenses),report.summary.netOperatingResult);
+  assert.ok(report.overviewDetails.sales.some(row=>row.kind==="return"&&row.value<0));
+});

@@ -13,7 +13,7 @@ export function bankScopeBreakdown(accounts: PaymentAccount[], movements: Financ
   const operating=movements.filter(movement=>!nonOperatingMovementTypes.has(financialMovementKind(movement.type)));
   const foundKinds=[...new Set(operating.map(movement=>financialMovementKind(movement.type)))];
   const kinds=[...bankSummaryMovementKinds,...foundKinds.filter(kind=>!bankSummaryMovementKinds.includes(kind as typeof bankSummaryMovementKinds[number]))];
-  const movementRows=(direction:"in"|"out"):BankSummaryMovementBreakdown[]=>kinds.flatMap(kind=>{
+  const movementRows=(direction:"in"|"out"):BankSummaryMovementBreakdown[]=>kinds.flatMap((kind):BankSummaryMovementBreakdown[]=>{
     const matching=operating.filter(movement=>movement.direction===direction&&financialMovementKind(movement.type)===kind);
     return matching.length?matching.map(movement=>({kind,movement,value:Number(movement.amount||0)})):[{kind,movement:null,value:0}];
   });

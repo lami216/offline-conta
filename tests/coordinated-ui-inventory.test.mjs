@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {compareTableValues,sortTableRows} from "../app/table-sorting.tsx";
+import {periodMovementQuantity} from "../app/conta-app.tsx";
 import { normalizePresentationSource } from "./presentation-source.mjs";
 const app=normalizePresentationSource(readFileSync(new URL("../app/conta-app.tsx",import.meta.url), "utf8")),css=readFileSync(new URL("../app/globals.css",import.meta.url),"utf8"),command=readFileSync(new URL("../app/api/command/route.ts",import.meta.url),"utf8");
 test("application selection guard preserves editable selection",()=>{assert.match(css,/user-select:none/);assert.match(css,/input,textarea,\[contenteditable="true"\],\[contenteditable=""\][^}]*user-select:text/)});
@@ -32,3 +33,7 @@ test("PermissionNavItem preserves the original navigation button structure",()=>
 
 
 test("workspace mutation controls follow API capabilities instead of view permission",()=>{for(const pattern of [/canCreateSale=canUseCapability\(data\.principal,"pos\.create"\)/,/canCreatePurchase=canUseCapability\(data\.principal,"purchases\.create"\)/,/canCreate=canUseCapability\(data\.principal,"expenses\.create"\)/,/canCreate=canUseCapability\(data\.principal,customer\?"customers\.create":"suppliers\.create"\)/,/canCreate=canUseCapability\(data\.principal,"products\.create"\)/,/canCreate=canUseCapability\(data\.principal,"warehouses\.create"\)/,/canCreatePayment=canUseCapability\(data\.principal,customer\?"customers\.collect":"suppliers\.pay"\)/,/canCreateWarehouse=canUseCapability\(data\.principal,"warehouses\.create"\)/])assert.match(app,pattern);assert.match(app,/canDelete=\{!editingDocument\|\|canDeleteSale\}/);assert.match(app,/canDelete=\{!editingDocument\|\|canDeletePurchase\}/);});
+
+
+test("inventory purchased and sold quantities derive from stock movements without commercial document access",()=>{const movements=[{id:"1",documentId:"s",documentNumber:"1",warehouseId:"w",warehouseName:"W",productId:"p",productName:"P",type:"sale",quantityDelta:-2,balanceBefore:5,balanceAfter:3,occurredAt:"2026-09-01T10:00:00.000Z"},{id:"2",documentId:"s",documentNumber:"1",warehouseId:"w",warehouseName:"W",productId:"p",productName:"P",type:"sale-edit",quantityDelta:1,balanceBefore:3,balanceAfter:4,occurredAt:"2026-09-01T11:00:00.000Z"},{id:"3",documentId:"p",documentNumber:"2",warehouseId:"w",warehouseName:"W",productId:"p",productName:"P",type:"purchase",quantityDelta:4,balanceBefore:4,balanceAfter:8,occurredAt:"2026-09-02T10:00:00.000Z"}];assert.equal(periodMovementQuantity(movements,"p","w","sale","",""),1);assert.equal(periodMovementQuantity(movements,"p","w","purchase","",""),4);});
+test("inventory movement panel has a stock-movement fallback when invoice documents are intentionally hidden",()=>{const area=app.slice(app.indexOf("function ProductMovementPanel"),app.indexOf("function Products"));assert.match(area,/fallbackMovements=data\.movements/);assert.match(area,/!visibleDocumentIds\.has\(movement\.documentId\)/);});

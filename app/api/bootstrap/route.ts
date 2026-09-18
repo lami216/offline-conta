@@ -51,7 +51,6 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
     }, 0);
     const nextProductCode = Math.max(highestLegacyCode, Number(productCounter?.value ?? 0)) + 1;
     const cleanParties = clean(parties).map(party => ({ ...party, partyType: resolvePartyType(party) })) as Array<Record<string, unknown> & { partyType: ReturnType<typeof resolvePartyType> }>;
-    const activeParties=cleanParties.filter(party=>party.isArchived!==true);
     const bankAccess=hasCapability(principal,"banks.view")||hasCapability(principal,"banks.movements.view"),partyAdmin=hasCapability(principal,"customers.view")||hasCapability(principal,"suppliers.view"),productAdmin=hasCapability(principal,"products.view"),inventoryCostAccess=productAdmin||hasCapability(principal,"warehouses.inventory.view");
     // Keep archived accounts exposed for historical name resolution; selectors filter them centrally.
     const selectorAccounts=(clean(accountRows) as Array<Record<string,unknown>>).map(account=>bankAccess?account:{id:account.id,code:account.code,name:account.name,isActive:account.isActive,isArchived:account.isArchived,allowNegativeBalance:false});

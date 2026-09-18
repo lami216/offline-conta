@@ -31,3 +31,5 @@ test("bank summary breakdown reconciles every card and keeps zero-value source k
   assert.ok(details.accounts.some(row=>row.name==="Zero"&&row.value===0));
   assert.ok(details.parties.some(row=>row.name==="Z"&&row.owedToUs===0&&row.weOwe===0));
 });
+
+test("bank summary cards are clickable and use the shared reconciliation dialog",()=>{const source=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),banks=source.slice(source.indexOf("function Banks"),source.indexOf("function PaymentAccountDialog"));assert.match(banks,/accountBreakdown=bankScopeBreakdown/);assert.match(banks,/setSummaryDetail\(accountBalanceDetail\)/);assert.match(banks,/movementSummaryDetail\("in"\)/);assert.match(banks,/debtDetail\("owedToUs"\)/);assert.match(source,/function SummaryBreakdownDialog/);});

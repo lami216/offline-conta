@@ -119,3 +119,14 @@ test("phone identity remains reserved while a historical party is archived",asyn
  await command({type:"party.delete",id:owner.id});
  await assert.rejects(command({type:"party.create",partyType:"customer",name:"Replacement",phone:"333"}),/رقم الهاتف مستخدم/);
 });
+
+
+test("editing a historical adjustment can reuse its archived payment account and restores it only when value returns",async()=>{
+ const deposit=await command({type:"account-adjustment.post",accountId:"bank",direction:"deposit",amount:5});
+ await command({type:"account-adjustment.post",accountId:"bank",direction:"withdrawal",amount:5});
+ await command({type:"payment-account.delete",accountId:"bank"});
+ assert.equal((await db.collection("paymentAccounts").findOne({id:"bank"})).isArchived,true);
+ await command({type:"account-adjustment.update",documentId:deposit,accountId:"bank",direction:"deposit",amount:6});
+ const account=await db.collection("paymentAccounts").findOne({id:"bank"});
+ assert.deepEqual([account.isArchived,account.isActive,account.balance],[false,true,1]);
+});

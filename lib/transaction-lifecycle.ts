@@ -65,7 +65,8 @@ export async function reverseFinancialMovement(db: Db, session: ClientSession, m
   const account = await paymentAccount(db, session, movement.paymentMethod, false);
   const reverseDirection: Direction = direction === "in" ? "out" : "in";
   const delta = reverseDirection === "in" ? amount : -amount;
-  const changed = await db.collection("paymentAccounts").updateOne({ id: account.id }, { $inc: { balance: delta }, ...(account.isArchived===true?{$set:{isArchived:false,isActive:true,archivedAt:null,updatedAt:new Date()}}:{}) }, { session });
+  const resultingBalance=Number(account.balance??0)+delta;
+  const changed = await db.collection("paymentAccounts").updateOne({ id: account.id }, { $inc: { balance: delta }, ...(account.isArchived===true&&resultingBalance!==0?{$set:{isArchived:false,isActive:true,archivedAt:null,updatedAt:new Date()}}:{}) }, { session });
   if (!changed.matchedCount) throw new LifecycleCommandError("تعذر عكس الحركة المالية", 409);
   const now = new Date(), reversalId = id("fin");
   const reversed = await db.collection("financialMovements").updateOne(
@@ -301,9 +302,11 @@ async function accountAdjustmentUpdate(db: Db, session: ClientSession, body: Inp
   const documentId = text(body.documentId), movement = await findActiveFinancialMovement(db, session, { documentId, type: { $in: ["manual-deposit", "manual-withdrawal"] } });
   if (!movement) throw new LifecycleCommandError("عملية السحب أو الإيداع غير موجودة أو ملغاة", 404);
   const storedDocument = await db.collection("documents").findOne({ id: documentId, kind: "account-adjustment", status: "posted" }, { session });
-  const direction = text(body.direction), amount = positive(body.amount, "المبلغ"), account = await paymentAccount(db, session, body.accountId);
+  const direction = text(body.direction), amount = positive(body.amount, "المبلغ"),requestedAccount=text(body.accountId),sameAccount=requestedAccount===String(movement.paymentMethod)||requestedAccount===String(movement.paymentCode??"");
+  const account = await paymentAccount(db, session, requestedAccount, !sameAccount);
   if (direction !== "deposit" && direction !== "withdrawal") throw new LifecycleCommandError("نوع العملية غير صالح");
   await reverseFinancialMovement(db, session, movement, "تعديل سحب أو إيداع");
+  if(sameAccount&&(account.isArchived===true||account.isActive===false))await db.collection("paymentAccounts").updateOne({id:account.id},{$set:{isArchived:false,isActive:true,archivedAt:null,updatedAt:new Date()}},{session});
   const revision = Number(storedDocument?.revision ?? movement.revision ?? 0) + 1, base = storedDocument ?? { id: documentId, number: movement.documentNumber, occurredAt: movement.occurredAt, kind: "account-adjustment", status: "posted", revision: 0, partyId: null, partyName: null, lines: [] };
   const revised = { paymentMethod: account.id, note: text(body.note) || null, total: amount, paidTotal: amount, cashAmount: amount, accountAdjustmentDirection: direction, updatedAt: new Date(), revision };
   await postFinancialMovement(db, session, { ...base, ...revised }, direction === "deposit" ? "in" : "out", amount, direction === "deposit" ? "manual-deposit" : "manual-withdrawal");
@@ -339,8 +342,10 @@ async function accountTransferUpdate(db: Db, session: ClientSession, body: Input
   const active = await db.collection("financialMovements").find({ transferId, status: { $ne: "reversed" }, isReversal: { $ne: true } }, { session }).toArray();
   const transferMovements = active.filter(movement => movement.type === "transfer-out" || movement.type === "transfer-in");
   if (transferMovements.length !== 2) throw new LifecycleCommandError("سجل التحويل البنكي غير مكتمل ولا يمكن تعديله بأمان", 409);
+  const requestedFrom=text(body.fromAccountId),requestedTo=text(body.toAccountId),sameFrom=requestedFrom===String(transfer.fromAccountId),sameTo=requestedTo===String(transfer.toAccountId);
+  const [from,to]=await Promise.all([paymentAccount(db,session,requestedFrom,!sameFrom),paymentAccount(db,session,requestedTo,!sameTo)]),amount=positive(body.amount,"المبلغ");
   for (const movement of transferMovements) await reverseFinancialMovement(db, session, movement, "تعديل تحويل بنكي");
-  const from = await paymentAccount(db, session, body.fromAccountId), to = await paymentAccount(db, session, body.toAccountId), amount = positive(body.amount, "المبلغ");
+  for(const account of [from,to])if(account.isArchived===true||account.isActive===false)await db.collection("paymentAccounts").updateOne({id:account.id},{$set:{isArchived:false,isActive:true,archivedAt:null,updatedAt:new Date()}},{session});
   if (from.id === to.id) throw new LifecycleCommandError("اختر حسابين مختلفين");
   const storedDocument = await db.collection("documents").findOne({ id: String(transfer.documentId ?? transferId), kind: "account-transfer" }, { session });
   const revision = Number(transfer.revision ?? storedDocument?.revision ?? 0) + 1, doc = storedDocument ?? { id: transferId, number: transfer.number, kind: "account-transfer", status: "posted", occurredAt: transfer.occurredAt, partyId: null, partyName: null, lines: [] };

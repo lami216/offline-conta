@@ -95,19 +95,17 @@ test("sale update is the only correction workflow and adjusts stock in both dire
   await assert.rejects(command({ type: "sale.return", saleId, lines: [{ productId: "p1", quantity: 1 }] }), /العملية غير مدعومة/);
 });
 
-test("payments, offset, settlement, expense and invalid input preserve balance invariant", async t => {
-  await db.collection("parties").updateOne({ id: "party" }, { $set: { receivable: 10000, payable: 7000, net: 3000 } });
-  await command({ type: "offset.post", partyId: "party", amount: 7000 });
-  await command({ type: "payment.post", partyId: "party", side: "receivable", amount: 1000, paymentMethod: "cash-id" });
-  await command({ type: "settlement.post", partyId: "party", side: "receivable", amount: 500 });
-  const party = await db.collection("parties").findOne({ id: "party" }); assert.deepEqual([party.receivable, party.payable, party.net], [1500, 0, 1500]);
+test("party cash, expense and invalid input preserve balance invariant", async t => {
+  await db.collection("parties").updateOne({ id: "party" }, { $set: { receivable: 3000, payable: 0, net: 3000 } });
+  await command({ type: "party-cash.post", partyId: "party", direction: "receive", amount: 1000, paymentMethod: "cash-id" });
+  await command({ type: "party-cash.post", partyId: "party", direction: "pay", amount: 500, paymentMethod: "cash-id" });
+  const party = await db.collection("parties").findOne({ id: "party" }); assert.deepEqual([party.receivable, party.payable, party.net], [2500, 0, 2500]);
   await command({ type: "expense.post", title: "Rent", amount: 100, occurredAt: "2026-08-15", paymentMethod: "cash-id" });
   assert.equal(await db.collection("documents").countDocuments({ kind: "expense" }), 1);
   const count = await db.collection("documents").countDocuments();
   await assert.rejects(command({ type: "purchase.post", warehouseId: "unknown", partyId: "supplier", lines: [{ productId: "p1", quantity: -1, unitPrice: 1 }] }));
   assert.equal(await db.collection("documents").countDocuments(), count);
 });
-
 test("product codes are atomic, sequential, unique, and independent from barcodes", async t => {
   await db.collection("products").insertOne({ id: "legacy", name: "Legacy", sku: "9", barcode: "14313143", stocks: {} });
   const firstId = await command({ type: "product.create", name: "Product A" });
@@ -202,7 +200,7 @@ test("paid purchase update obeys enabled cash overdraft",async()=>{
 });
 
 test("cash manual withdrawal, transfer, and party payment may overdraw",async()=>{
- await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:false}});const bank=await command({type:"payment-account.create",name:"Destination"});await db.collection("parties").updateOne({id:"supplier"},{$set:{payable:100,net:-100}});await command({type:"account-adjustment.post",accountId:"cash-id",direction:"withdrawal",amount:100});await command({type:"account-transfer.post",fromAccountId:"cash-id",toAccountId:bank,amount:100});await command({type:"payment.post",partyId:"supplier",side:"payable",amount:100,paymentMethod:"cash-id"});assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,(await db.collection("paymentAccounts").findOne({id:bank})).balance],[-300,100]);
+ await db.collection("paymentAccounts").updateOne({id:"cash-id"},{$set:{balance:0,allowNegativeBalance:false}});const bank=await command({type:"payment-account.create",name:"Destination"});await db.collection("parties").updateOne({id:"supplier"},{$set:{payable:100,net:-100}});await command({type:"account-adjustment.post",accountId:"cash-id",direction:"withdrawal",amount:100});await command({type:"account-transfer.post",fromAccountId:"cash-id",toAccountId:bank,amount:100});await command({type:"party-cash.post",partyId:"supplier",direction:"pay",amount:100,paymentMethod:"cash-id"});assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,(await db.collection("paymentAccounts").findOne({id:bank})).balance],[-300,100]);
 });
 
 test("invoice reversal bypasses normal overdraft policy",async t=>{
@@ -214,16 +212,12 @@ test("invoice reversal bypasses normal overdraft policy",async t=>{
   assert.equal((await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,-80);
 });
 
-test("offset has no cash movement, payment has one, and settlement remains compatible", async t => {
-  await db.collection("parties").updateOne({ id: "party" }, { $set: { receivable: 5000, payable: 3000, net: 2000 } });
-  await command({ type: "offset.post", partyId: "party", amount: 1000 });
-  assert.equal(await db.collection("financialMovements").countDocuments(), 0);
-  await command({ type: "payment.post", partyId: "party", side: "receivable", amount: 500, paymentMethod: "cash-id" });
-  assert.equal(await db.collection("financialMovements").countDocuments(), 1);
-  await command({ type: "settlement.post", partyId: "party", side: "payable", amount: 500 });
-  assert.ok(await db.collection("documents").findOne({ kind: "settlement" }));
+test("retired party mutation commands are read-only while party-cash remains auditable", async t => {
+  await db.collection("parties").updateOne({ id: "party" }, { $set: { receivable: 5000, payable: 0, net: 5000 } });
+  for (const type of ["offset.post","payment.post","settlement.post"]) await assert.rejects(command({ type, partyId: "party", side: "receivable", amount: 100, paymentMethod: "cash-id" }), /المسار المحاسبي القديم/);
+  const paymentId=await command({ type: "party-cash.post", partyId: "party", direction: "receive", amount: 500, paymentMethod: "cash-id" });
+  assert.equal(await db.collection("financialMovements").countDocuments({documentId:paymentId,type:"party-receipt"}),1);
 });
-
 test("payment accounts create and update without exposing the legacy icon", async t => {
   const id = await command({ type: "payment-account.create", name: "Bank", color: "#1677c8" });
   let account = await db.collection("paymentAccounts").findOne({ id });
@@ -330,7 +324,7 @@ test("settled note sales reconcile through zero while preserving receipts and mo
   ]) {
     await db.collection("parties").insertOne({id,name:id,partyType:"customer",receivable:0,payable:0,net:0});
     const saleId=await command({type:"sale.post",warehouseId:"wh-main",partyId:id,paymentMethod:"note",lines:[{productId:"p1",quantity:1,piecePrice:100}]});
-    const paymentId=settlement ? await command({type:"payment.post",partyId:id,side:"receivable",amount:settlement,paymentMethod:"cash-id"}) : null;
+    const paymentId=settlement ? await command({type:"party-cash.post",partyId:id,direction:"receive",amount:settlement,paymentMethod:"cash-id"}) : null;
     await command({type:"sale.update",documentId:saleId,partyId:id,paymentMethod:method,lines:[{productId:"p1",quantity:1,piecePrice:newTotal}]});
     const party=await db.collection("parties").findOne({id}), invoice=await db.collection("documents").findOne({id:saleId});
     assert.deepEqual([party.receivable,party.payable,party.net],[Math.max(expectedNet,0),Math.max(-expectedNet,0),expectedNet],id);
@@ -346,7 +340,7 @@ test("settled note sales reconcile through zero while preserving receipts and mo
 
 test("a settled note purchase corrected to direct retains supplier payment as an advance", async () => {
   const purchaseId=await command({type:"purchase.post",warehouseId:"wh-main",partyId:"supplier",paymentMethod:"note",lines:[{productId:"p1",quantity:1,unitPrice:100}]});
-  const paymentId=await command({type:"payment.post",partyId:"supplier",side:"payable",amount:100,paymentMethod:"cash-id"});
+  const paymentId=await command({type:"party-cash.post",partyId:"supplier",direction:"pay",amount:100,paymentMethod:"cash-id"});
   await command({type:"purchase.update",documentId:purchaseId,warehouseId:"wh-main",partyId:"supplier",paymentMethod:"cash-id",lines:[{productId:"p1",quantity:1,unitPrice:100}]});
   const supplier=await db.collection("parties").findOne({id:"supplier"}), invoice=await db.collection("documents").findOne({id:purchaseId});
   assert.deepEqual([supplier.receivable,supplier.payable,supplier.net],[100,0,100]);
@@ -467,3 +461,5 @@ test("expense void after edit reverses only the current account and amount",asyn
   await command({type:"expense.void",documentId:expenseId});
   assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:"cash-id"})).balance,(await db.collection("paymentAccounts").findOne({id:"bankily"})).balance],[10000,1000]);
 });
+
+test("opening balance correction supports audited update and void only on the latest correction",async()=>{const bank=await command({type:"payment-account.create",name:"Lifecycle Bank",openingBalance:100});const first=await command({type:"account-opening-balance-correction.post",accountId:bank,newOpeningBalance:150,reason:"first"});const second=await command({type:"account-opening-balance-correction.post",accountId:bank,newOpeningBalance:180,reason:"second"});await assert.rejects(command({type:"account-opening-balance-correction.update",movementId:first,newOpeningBalance:140,reason:"old edit"}),/آخر تصحيح/);const replacement=await command({type:"account-opening-balance-correction.update",movementId:second,newOpeningBalance:170,reason:"revised"});let account=await db.collection("paymentAccounts").findOne({id:bank});assert.deepEqual([account.openingBalance,account.balance],[170,170]);assert.equal((await db.collection("financialMovements").findOne({id:second})).status,"reversed");assert.ok(await db.collection("financialMovements").findOne({id:replacement,type:"opening-balance-correction",replacesMovementId:second}));await command({type:"account-opening-balance-correction.void",movementId:replacement});account=await db.collection("paymentAccounts").findOne({id:bank});assert.deepEqual([account.openingBalance,account.balance],[150,150]);assert.equal((await db.collection("financialMovements").findOne({id:replacement})).status,"reversed");});

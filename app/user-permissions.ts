@@ -22,7 +22,7 @@ export const permissionRows: Array<{
   { name: "حركة الحسابات", actions: { view: "banks.movements.view" } },
   { name: "التحويلات البنكية", actions: { view: "banks.view", create: "banks.transfer", edit: "banks.transfer.edit", delete: "banks.transfer.delete" } },
   { name: "السحب والإيداع", actions: { view: "banks.view", create: "banks.deposit_withdraw", edit: "banks.deposit_withdraw.edit", delete: "banks.deposit_withdraw.delete" } },
-  { name: "تصحيح رصيد بنك/وسيلة دفع", actions: { view: "banks.view", create: "banks.balance_correct" } },
+  { name: "تصحيح رصيد بنك/وسيلة دفع", actions: { view: "banks.view", create: "banks.balance_correct", edit: "banks.balance_correct.edit", delete: "banks.balance_correct.delete" } },
   { name: "المصاريف", actions: { view: "expenses.view", create: "expenses.create", edit: "expenses.edit", delete: "expenses.delete" } },
   { name: "التقارير", actions: { view: "reports.view" } },
   { name: "الإعدادات", actions: { view: "settings.view" } },

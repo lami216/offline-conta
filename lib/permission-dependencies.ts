@@ -40,6 +40,9 @@ const prerequisites: Readonly<Record<PermissionName, readonly PermissionName[]>>
   "banks.transfer.delete": ["banks.view"],
   "banks.deposit_withdraw.edit": ["banks.view"],
   "banks.deposit_withdraw.delete": ["banks.view"],
+  "banks.balance_correct": ["banks.view"],
+  "banks.balance_correct.edit": ["banks.view"],
+  "banks.balance_correct.delete": ["banks.view"],
   "expenses.edit": ["expenses.view"],
   "expenses.delete": ["expenses.view"],
 };

@@ -35,16 +35,17 @@ test("nonzero balance requires confirmation then writes an audit settlement and 
   await db.collection("documents").insertOne({id:"sale",kind:"sale",status:"posted",partyId:"customer",partyName:"Customer",total:100,lines:[]});
   await db.collection("financialMovements").insertOne({id:"movement",partyId:"customer",partyName:"Customer",direction:"in",amount:20});
   await db.collection("importMappings").insertOne({id:"mapping",targetEntityType:"parties",targetId:"customer"});
-  await assert.rejects(command({type:"party.delete",id:"customer"}),/تأكيد تصفية/);
+  await assert.rejects(command({type:"party.delete",id:"customer"}),/تأكيد شطب/);
   assert.notEqual(await db.collection("parties").findOne({id:"customer"}),null);
-  const result=await command({type:"party.delete",id:"customer",settleBalance:true});
+  const result=await command({type:"party.delete",id:"customer",writeOffBalance:true});
   assert.deepEqual(result,{id:"customer",disposition:"archived"});
   const party=await db.collection("parties").findOne({id:"customer"});
   assert.deepEqual([party.isArchived,party.receivable,party.payable,party.net],[true,0,0,0]);
   assert.equal((await db.collection("documents").findOne({id:"sale"})).partyName,"Customer");
   assert.equal((await db.collection("financialMovements").findOne({id:"movement"})).partyName,"Customer");
-  const settlement=await db.collection("documents").findOne({partyDeletionSettlement:true});
+  const settlement=await db.collection("documents").findOne({partyDeletionWriteOff:true});
   assert.deepEqual([settlement.partyName,settlement.settledReceivable,settlement.settledPayable,settlement.partyBalanceBefore,settlement.partyBalanceDelta,settlement.partyBalanceAfter],["Customer",80,20,60,-60,0]);
+  assert.equal(settlement.paymentMethod,null);
 });
 
 test("party update rejects duplicate phone within the same role",async()=>{

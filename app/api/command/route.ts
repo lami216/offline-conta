@@ -251,10 +251,10 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if(!party)throw new CommandError("الطرف غير موجود",404);
     const rawReceivable=Number(party.receivable??0),rawPayable=Number(party.payable??0),receivable=Number.isFinite(rawReceivable)?Math.max(0,rawReceivable):0,payable=Number.isFinite(rawPayable)?Math.max(0,rawPayable):0;
     const hasBalance=receivable>0||payable>0;
-    if(hasBalance&&body.settleBalance!==true)throw new CommandError("يجب تأكيد تصفية رصيد الطرف قبل الحذف",409);
+    if(hasBalance&&body.writeOffBalance!==true)throw new CommandError("يجب تأكيد شطب رصيد الطرف قبل الحذف",409);
     const historicalReference=await db.collection("documents").findOne({partyId},{session})||await db.collection("financialMovements").findOne({partyId},{session});
     if(hasBalance){
-      const balanceBefore=receivable-payable,settlement={...baseDocument("settlement","SET-DEL"),partyId,partyName:party.name,warehouseId:null,warehouseName:null,destinationWarehouseId:null,destinationWarehouseName:null,parentDocumentId:null,paymentMethod:null,title:"تصفية الحساب قبل حذف الطرف",total:receivable+payable,dueTotal:0,paidTotal:0,lines:[],partyBalanceBefore:balanceBefore,partyBalanceDelta:-balanceBefore,partyBalanceAfter:0,settledReceivable:receivable,settledPayable:payable,partyDeletionSettlement:true};
+      const balanceBefore=receivable-payable,settlement={...baseDocument("settlement","WRITEOFF-DEL"),partyId,partyName:party.name,warehouseId:null,warehouseName:null,destinationWarehouseId:null,destinationWarehouseName:null,parentDocumentId:null,paymentMethod:null,title:"شطب الرصيد قبل حذف الطرف",total:receivable+payable,dueTotal:0,paidTotal:0,lines:[],partyBalanceBefore:balanceBefore,partyBalanceDelta:-balanceBefore,partyBalanceAfter:0,settledReceivable:receivable,settledPayable:payable,partyDeletionSettlement:true,partyDeletionWriteOff:true};
       await db.collection("documents").insertOne(settlement,{session});
     }
     if(historicalReference||hasBalance){await db.collection("parties").updateOne({id:partyId},{$set:{isArchived:true,archivedAt:new Date(),receivable:0,payable:0,net:0,updatedAt:new Date()}},{session});return {id:partyId,disposition:"archived"};}

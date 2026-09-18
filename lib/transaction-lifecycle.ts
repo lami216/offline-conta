@@ -28,6 +28,16 @@ async function paymentAccount(db: Db, session: ClientSession, value: unknown, ac
   if (!account) throw new LifecycleCommandError("يجب اختيار وسيلة دفع صالحة");
   return account;
 }
+async function paymentAccountForHistoricalEdit(db: Db, session: ClientSession, value: unknown, originalValue: unknown) {
+  const account = await paymentAccount(db, session, value, false), originalKey = text(originalValue);
+  const sameOriginal = Boolean(originalKey) && (String(account.id) === originalKey || String(account.code ?? "") === originalKey);
+  if (!sameOriginal && (account.isActive !== true || account.isArchived === true)) throw new LifecycleCommandError("يجب اختيار وسيلة دفع صالحة");
+  return { account, sameOriginal };
+}
+async function reactivateHistoricalPaymentAccount(db: Db, session: ClientSession, account: Stored, sameOriginal: boolean) {
+  if (!sameOriginal || (account.isActive === true && account.isArchived !== true)) return;
+  await db.collection("paymentAccounts").updateOne({ id: account.id }, { $set: { isActive: true, isArchived: false, archivedAt: null, updatedAt: new Date() } }, { session });
+}
 
 async function applyPartyNetDelta(db: Db, session: ClientSession, partyId: unknown, delta: number, reversing = false) {
   const party = await db.collection("parties").findOne({ id: String(partyId) }, { session });
@@ -263,12 +273,13 @@ async function partyCashUpdate(db: Db, session: ClientSession, body: Input) {
   if (!party) throw new LifecycleCommandError("الطرف غير موجود", 409);
   const amount = positive(body.amount, "المبلغ"), direction = text(body.direction), method = text(body.paymentMethod);
   if (direction !== "receive" && direction !== "pay") throw new LifecycleCommandError("اتجاه الحركة غير صالح");
-  await paymentAccount(db, session, method);
+  const historicalPayment = await paymentAccountForHistoricalEdit(db, session, method, original.paymentMethod);
   const oldAmount = Number(original.cashAmount ?? original.total ?? 0), oldDelta = Number.isFinite(Number(original.partyBalanceDelta)) ? Number(original.partyBalanceDelta) : partyCashDelta(String(original.partyCashDirection), oldAmount);
   await applyPartyNetDelta(db, session, original.partyId, -oldDelta, true);
   const movement = await findActiveFinancialMovement(db, session, { documentId, type: { $in: ["party-receipt", "party-payment"] } });
   if (!movement) throw new LifecycleCommandError("تعذر العثور على حركة الحساب المالي الأصلية", 409);
   await reverseFinancialMovement(db, session, movement, "تعديل حركة طرف");
+  await reactivateHistoricalPaymentAccount(db, session, historicalPayment.account, historicalPayment.sameOriginal);
   const snapshot = await applyPartyNetDelta(db, session, original.partyId, partyCashDelta(direction, amount));
   const revision = Number(original.revision ?? 0) + 1;
   const revised = { paymentMethod: method, title: direction === "receive" ? "استلام من الطرف" : "دفع للطرف", note: text(body.note) || null, total: amount, paidTotal: amount, cashAmount: amount, partyCashDirection: direction, partyBalanceBefore: snapshot!.before, partyBalanceDelta: snapshot!.delta, partyBalanceAfter: snapshot!.after, updatedAt: new Date(), revision };

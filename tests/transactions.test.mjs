@@ -463,3 +463,53 @@ test("expense void after edit reverses only the current account and amount",asyn
 });
 
 test("opening balance correction supports audited update and void only on the latest correction",async()=>{const bank=await command({type:"payment-account.create",name:"Lifecycle Bank",openingBalance:100});const first=await command({type:"account-opening-balance-correction.post",accountId:bank,newOpeningBalance:150,reason:"first"});const second=await command({type:"account-opening-balance-correction.post",accountId:bank,newOpeningBalance:180,reason:"second"});await assert.rejects(command({type:"account-opening-balance-correction.update",movementId:first,newOpeningBalance:140,reason:"old edit"}),/آخر تصحيح/);const replacement=await command({type:"account-opening-balance-correction.update",movementId:second,newOpeningBalance:170,reason:"revised"});let account=await db.collection("paymentAccounts").findOne({id:bank});assert.deepEqual([account.openingBalance,account.balance],[170,170]);assert.equal((await db.collection("financialMovements").findOne({id:second})).status,"reversed");assert.ok(await db.collection("financialMovements").findOne({id:replacement,type:"opening-balance-correction",replacesMovementId:second}));await command({type:"account-opening-balance-correction.void",movementId:replacement});account=await db.collection("paymentAccounts").findOne({id:bank});assert.deepEqual([account.openingBalance,account.balance],[150,150]);assert.equal((await db.collection("financialMovements").findOne({id:replacement})).status,"reversed");});
+
+
+test("sale update may keep its original archived payment account but rejects another archived account",async()=>{
+  await db.collection("products").updateOne({id:"p1"},{$set:{"stocks.wh-main":5}});
+  await db.collection("paymentAccounts").insertMany([
+    {id:"sale-old",code:"sale-old",name:"Historic Sale",isActive:true,isArchived:false,balance:0},
+    {id:"sale-other",code:"sale-other",name:"Other Archived",isActive:false,isArchived:true,balance:0},
+  ]);
+  const saleId=await command({type:"sale.post",warehouseId:"wh-main",paymentMethod:"sale-old",lines:[{productId:"p1",quantity:1,piecePrice:100}]});
+  await db.collection("paymentAccounts").updateOne({id:"sale-old"},{$set:{isActive:false,isArchived:true}});
+  await command({type:"sale.update",documentId:saleId,warehouseId:"wh-main",paymentMethod:"sale-old",lines:[{productId:"p1",quantity:1,piecePrice:120}]});
+  const account=await db.collection("paymentAccounts").findOne({id:"sale-old"}),document=await db.collection("documents").findOne({id:saleId});
+  assert.deepEqual([account.isActive,account.isArchived,account.balance],[true,false,120]);
+  assert.deepEqual([document.paymentMethod,document.total,document.revision],["sale-old",120,1]);
+  await assert.rejects(command({type:"sale.update",documentId:saleId,warehouseId:"wh-main",paymentMethod:"sale-other",lines:[{productId:"p1",quantity:1,piecePrice:130}]}),/وسيلة دفع صالحة/);
+  const unchanged=await db.collection("documents").findOne({id:saleId});
+  assert.deepEqual([unchanged.paymentMethod,unchanged.total,unchanged.revision],["sale-old",120,1]);
+});
+
+test("purchase update may keep its original archived payment account but rejects another archived account",async()=>{
+  await db.collection("paymentAccounts").insertMany([
+    {id:"purchase-old",code:"purchase-old",name:"Historic Purchase",isActive:true,isArchived:false,balance:100},
+    {id:"purchase-other",code:"purchase-other",name:"Other Archived",isActive:false,isArchived:true,balance:0},
+  ]);
+  const purchaseId=await command({type:"purchase.post",warehouseId:"wh-main",paymentMethod:"purchase-old",lines:[{productId:"p1",quantity:1,unitPrice:100}]});
+  await db.collection("paymentAccounts").updateOne({id:"purchase-old"},{$set:{isActive:false,isArchived:true}});
+  await command({type:"purchase.update",documentId:purchaseId,warehouseId:"wh-main",paymentMethod:"purchase-old",lines:[{productId:"p1",quantity:1,unitPrice:120}]});
+  const account=await db.collection("paymentAccounts").findOne({id:"purchase-old"}),document=await db.collection("documents").findOne({id:purchaseId});
+  assert.deepEqual([account.isActive,account.isArchived,account.balance],[true,false,-20]);
+  assert.deepEqual([document.paymentMethod,document.total,document.revision],["purchase-old",120,1]);
+  await assert.rejects(command({type:"purchase.update",documentId:purchaseId,warehouseId:"wh-main",paymentMethod:"purchase-other",lines:[{productId:"p1",quantity:1,unitPrice:130}]}),/وسيلة دفع صالحة/);
+  const unchanged=await db.collection("documents").findOne({id:purchaseId});
+  assert.deepEqual([unchanged.paymentMethod,unchanged.total,unchanged.revision],["purchase-old",120,1]);
+});
+
+test("expense update may keep its original archived payment account but rejects another archived account",async()=>{
+  await db.collection("paymentAccounts").insertMany([
+    {id:"expense-old",code:"expense-old",name:"Historic Expense",isActive:true,isArchived:false,balance:100},
+    {id:"expense-other",code:"expense-other",name:"Other Archived",isActive:false,isArchived:true,balance:0},
+  ]);
+  const expenseId=await command({type:"expense.post",title:"Original",amount:100,occurredAt:"2026-08-15",paymentMethod:"expense-old"});
+  await db.collection("paymentAccounts").updateOne({id:"expense-old"},{$set:{isActive:false,isArchived:true}});
+  await command({type:"expense.update",documentId:expenseId,title:"Corrected",amount:120,occurredAt:"2026-08-16",paymentMethod:"expense-old"});
+  const account=await db.collection("paymentAccounts").findOne({id:"expense-old"}),document=await db.collection("documents").findOne({id:expenseId});
+  assert.deepEqual([account.isActive,account.isArchived,account.balance],[true,false,-20]);
+  assert.deepEqual([document.paymentMethod,document.total,document.revision],["expense-old",120,1]);
+  await assert.rejects(command({type:"expense.update",documentId:expenseId,title:"Rejected",amount:130,occurredAt:"2026-08-17",paymentMethod:"expense-other"}),/وسيلة دفع صالحة/);
+  const unchanged=await db.collection("documents").findOne({id:expenseId});
+  assert.deepEqual([unchanged.paymentMethod,unchanged.total,unchanged.revision],["expense-old",120,1]);
+});

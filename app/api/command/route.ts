@@ -70,6 +70,16 @@ async function paymentAccount(db: Db, session: ClientSession, value: unknown, ac
   if (!account) throw new CommandError("يجب اختيار وسيلة دفع صالحة");
   return account;
 }
+async function paymentAccountForHistoricalEdit(db: Db, session: ClientSession, value: unknown, originalValue: unknown) {
+  const account = await paymentAccount(db, session, value, false), originalKey = text(originalValue);
+  const sameOriginal = Boolean(originalKey) && (String(account.id) === originalKey || String(account.code ?? "") === originalKey);
+  if (!sameOriginal && (account.isActive !== true || account.isArchived === true)) throw new CommandError("يجب اختيار وسيلة دفع صالحة");
+  return { account, sameOriginal };
+}
+async function reactivateHistoricalPaymentAccount(db: Db, session: ClientSession, account: Record<string, unknown>, sameOriginal: boolean) {
+  if (!sameOriginal || (account.isActive === true && account.isArchived !== true)) return;
+  await db.collection("paymentAccounts").updateOne({ id: account.id }, { $set: { isActive: true, isArchived: false, archivedAt: null, updatedAt: new Date() } }, { session });
+}
 async function financialMovement(db: Db, session: ClientSession, document: Record<string, unknown>, direction: "in" | "out", amount: number, type: string) {
   if (!amount) return;
   const account = await paymentAccount(db, session, document.paymentMethod);
@@ -376,7 +386,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const updateBody={...body,warehouseId:isSale?original.warehouseId:body.warehouseId};
     const { warehouse, party, warehouseId, partyId } = await invoiceUpdateRefs(db, session, updateBody, original, paymentMethod === "note");
     if (party && party.partyType !== (isSale ? "customer" : "supplier")) throw new CommandError(isSale ? "يجب اختيار عميل صالح" : "يجب اختيار مورد صالح");
-    if (paymentMethod !== "note") await paymentAccount(db, session, paymentMethod);
+    const historicalPayment = paymentMethod !== "note" ? await paymentAccountForHistoricalEdit(db, session, paymentMethod, original.paymentMethod) : null;
     const oldLines = original.lines as Line[],oldProductIds=new Set(oldLines.map(line=>String(line.productId))),newProducts=await productsForUpdate(db,session,input,oldProductIds), oldByProduct = new Map(oldLines.map(line => [line.productId, line]));
     if (isSale && input.some(line => isProductExpired(newProducts.get(line.productId)!, String(original.businessDate ?? String(original.occurredAt).slice(0, 10))))) throw new CommandError("انتهت صلاحية هذا المنتج ولا يمكن بيعه.");
     const calculated = [] as Record<string, unknown>[];
@@ -408,6 +418,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     }
     if (Number(original.dueTotal) > 0) await changePartyDebt(db, session, original.partyId, kind, -Number(original.dueTotal), true);
     await reverseInvoicePayment(db, session, original, kind);
+    if (historicalPayment) await reactivateHistoricalPaymentAccount(db, session, historicalPayment.account, historicalPayment.sameOriginal);
     const partyEffect = party ? (isSale ? dueTotal : -dueTotal) : 0;
     const snapshot = party ? await applyPartyNetDelta(db, session, partyId, partyEffect) : null;
     const revised = { partyId: partyId || null, partyName: party?.name ?? (isSale ? "بيع مباشر" : "شراء مباشر"), warehouseId, warehouseName: warehouse.name, paymentMethod, total, paidTotal, cashAmount: paidTotal, dueTotal, lines: calculated, ...(snapshot ? { partyBalanceBefore: snapshot.before, partyBalanceDelta: snapshot.delta, partyBalanceAfter: snapshot.after } : {}), ...(isSale ? { pricingMode: body.pricingMode === "wholesale" ? "wholesale" : "retail" } : {}), updatedAt: new Date(), revision: Number(original.revision ?? 0) + 1 };
@@ -500,9 +511,11 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if(!title||!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(parsedDate.valueOf())||parsedDate.toISOString().slice(0,10)!==date)throw new CommandError("العنوان والتاريخ غير صالحين");
     const original=await db.collection("documents").findOne({id:documentId,kind:"expense",status:"posted"},{session});
     if(!original||original.legacyKey)throw new CommandError("المصروف غير موجود أو غير قابل للتعديل",404);
+    const historicalPayment=await paymentAccountForHistoricalEdit(db,session,method,original.paymentMethod);
     const movement=await findActiveFinancialMovement(db,session,{documentId,type:"expense"});
     if(!movement)throw new CommandError("تعذر العثور على حركة المصروف الأصلية",409);
     await reverseFinancialMovement(db,session,movement,"تعديل مصروف");
+    await reactivateHistoricalPaymentAccount(db,session,historicalPayment.account,historicalPayment.sameOriginal);
     const occurredAt=parsedDate.toISOString(),lineId=(original.lines as Line[]|undefined)?.[0]?.id??id("line");
     const revised={title,total:amount,dueTotal:0,paidTotal:amount,cashAmount:amount,paymentMethod:method,occurredAt,lines:[{id:lineId,productId:null,description:title,quantity:1,unitPrice:amount,lineTotal:amount}],updatedAt:new Date(),revision:Number(original.revision??0)+1};
     await financialMovement(db,session,{...original,...revised},"out",amount,"expense");

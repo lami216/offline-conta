@@ -201,3 +201,21 @@ test("party cash update can correct an archived historical party movement withou
  await command({type:"party-cash.update",documentId:id,direction:"receive",amount:10,paymentMethod:"cash"});
  const doc=await db.collection("documents").findOne({id});assert.equal(doc.partyId,"archived-cash");
 });
+
+
+test("party cash update may keep its original archived payment account but rejects another archived account", async () => {
+  await insertCustomer(200);
+  await db.collection("paymentAccounts").insertMany([
+    { id: "party-old", code: "party-old", name: "Historic Party Account", isActive: true, isArchived: false, balance: 100 },
+    { id: "party-other", code: "party-other", name: "Other Archived", isActive: false, isArchived: true, balance: 0 },
+  ]);
+  const documentId = await command({ type: "party-cash.post", partyId: "c", direction: "pay", amount: 100, paymentMethod: "party-old", note: "first" });
+  await db.collection("paymentAccounts").updateOne({ id: "party-old" }, { $set: { isActive: false, isArchived: true } });
+  await command({ type: "party-cash.update", documentId, direction: "pay", amount: 120, paymentMethod: "party-old", note: "corrected" });
+  const account = await db.collection("paymentAccounts").findOne({ id: "party-old" }), document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([account.isActive, account.isArchived, account.balance], [true, false, -20]);
+  assert.deepEqual([document.paymentMethod, document.total, document.revision], ["party-old", 120, 1]);
+  await assert.rejects(command({ type: "party-cash.update", documentId, direction: "pay", amount: 130, paymentMethod: "party-other", note: "rejected" }), /وسيلة دفع صالحة/);
+  const unchanged = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([unchanged.paymentMethod, unchanged.total, unchanged.revision], ["party-old", 120, 1]);
+});

@@ -41,3 +41,16 @@ test("inventory movement panel has a stock-movement fallback when invoice docume
 
 test("edit and delete product permissions can open category administration without create permission",()=>{const products=app.slice(app.indexOf("function Products"),app.indexOf("type ProductOpeningView"));assert.match(products,/\(canCreate\|\|canEdit\|\|canDelete\).*setCategoryDialogOpen\(true\)/);});
 test("archived payment-account restore control is gated by banks edit permission",()=>{const banks=app.slice(app.indexOf("function Banks"),app.indexOf("function PaymentAccountDialog"));assert.match(banks,/canAccountEdit&&<button[\s\S]*?payment-account\.restore/);});
+
+
+test("historical payment editors preserve only the selected inactive account",()=>{
+  const selector=app.slice(app.indexOf("type PaymentAccountSelectProps"),app.indexOf("function InvoiceEditorToolbar"));
+  assert.match(selector,/preserveSelected/);
+  assert.match(selector,/selected=activeOnly&&preserveSelected&&value\?accounts\.find\(account=>account\.id===value\|\|account\.code===value\):undefined/);
+  assert.equal((app.match(/preserveSelected=\{Boolean\(editingDocumentId\)\}/g)??[]).length,2);
+  const expenses=app.slice(app.indexOf("function Expenses"),app.indexOf("type FinancialDetail"));
+  assert.match(expenses,/activeOnly preserveSelected=\{Boolean\(editingExpenseId\)\}/);
+  const party=app.slice(app.indexOf("function PartyPage"),app.indexOf("export const ALL_WAREHOUSES"));
+  assert.match(party,/historicalAccount=data\.paymentAccounts\.find/);
+  assert.match(party,/activeOnly preserveSelected=\{Boolean\(editingPaymentId\)\}/);
+});

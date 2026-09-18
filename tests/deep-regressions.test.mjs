@@ -90,3 +90,32 @@ test("creating a duplicate same-role phone is rejected instead of reporting a fa
  const supplier=await command({type:"party.create",partyType:"supplier",name:"Supplier",phone:"222"});
  assert.ok(supplier);
 });
+
+
+test("archived invoice party stays visible only inside its old invoice edit and preserves identity",async()=>{
+ const sale=await command({type:"sale.post",warehouseId:"a",partyId:"c",paymentMethod:"cash",lines:[{productId:"p",quantity:1,piecePrice:10}]});
+ await command({type:"party.delete",id:"c"});
+ const archived=await db.collection("parties").findOne({id:"c"});assert.equal(archived.isArchived,true);
+ await command({type:"sale.update",documentId:sale,partyId:"c",paymentMethod:"cash",lines:[{productId:"p",quantity:1,piecePrice:11}]});
+ const updated=await db.collection("documents").findOne({id:sale});assert.equal(updated.partyId,"c");assert.equal(updated.partyName,"Customer");
+ const source=await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8");
+ assert.match(source,/currentCustomer\?\.isArchived/);assert.match(source,/currentSupplier\?\.isArchived/);
+ assert.match(source,/p\.isArchived!==true&&resolvePartyType\(p\)==="customer"/);
+ assert.match(source,/p\.isArchived!==true&&resolvePartyType\(p\)==="supplier"/);
+});
+
+test("archived product already present in a sale can be edited but cannot be newly introduced",async()=>{
+ const sale=await command({type:"sale.post",warehouseId:"a",paymentMethod:"cash",lines:[{productId:"p",quantity:1,piecePrice:10}]});
+ await command({type:"product.delete",id:"p"});
+ await command({type:"sale.update",documentId:sale,paymentMethod:"cash",lines:[{productId:"p",quantity:1,piecePrice:12}]});
+ assert.equal((await db.collection("documents").findOne({id:sale})).lines[0].unitPrice,12);
+ await db.collection("products").insertOne({id:"p2",sku:"2",name:"Old",piecePrice:5,lastPurchaseCost:2,stocks:{a:1},isArchived:true});
+ await assert.rejects(command({type:"sale.update",documentId:sale,paymentMethod:"cash",lines:[{productId:"p",quantity:1,piecePrice:12},{productId:"p2",quantity:1,piecePrice:5}]}),/لا يمكن إضافة منتج محذوف/);
+});
+
+test("phone identity remains reserved while a historical party is archived",async()=>{
+ await command({type:"party.create",partyType:"customer",name:"Phone Owner",phone:"333"});
+ const owner=await db.collection("parties").findOne({phone:"333",partyType:"customer"});
+ await command({type:"party.delete",id:owner.id});
+ await assert.rejects(command({type:"party.create",partyType:"customer",name:"Replacement",phone:"333"}),/رقم الهاتف مستخدم/);
+});

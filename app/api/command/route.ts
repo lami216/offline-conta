@@ -183,6 +183,21 @@ async function products(db: Db, session: ClientSession, input: Line[]) {
   if (found.length !== input.length) throw new CommandError("أحد المنتجات غير موجود", 404);
   return new Map(found.map(p => [p.id as string, p]));
 }
+async function productsForUpdate(db: Db, session: ClientSession, input: Line[], originalProductIds: ReadonlySet<string>) {
+  const ids=input.map(line=>line.productId),found=await db.collection("products").find({id:{$in:ids}},{session}).toArray();
+  if(found.length!==new Set(ids).size)throw new CommandError("أحد المنتجات غير موجود",404);
+  for(const product of found)if(product.isArchived===true&&!originalProductIds.has(String(product.id)))throw new CommandError("لا يمكن إضافة منتج محذوف إلى فاتورة",409);
+  return new Map(found.map(product=>[String(product.id),product]));
+}
+async function invoiceUpdateRefs(db:Db,session:ClientSession,body:Input,original:Record<string,unknown>,requireParty:boolean){
+  const warehouseId=text(body.warehouseId),partyId=text(body.partyId),originalWarehouseId=String(original.warehouseId??""),originalPartyId=String(original.partyId??"");
+  const warehouse=warehouseId?await warehouses(db).findOne({_id:warehouseId,...(warehouseId===originalWarehouseId?{}:{isArchived:{$ne:true}})},{session}):null;
+  const party=partyId?await db.collection("parties").findOne({id:partyId,...(partyId===originalPartyId?{}:{isArchived:{$ne:true}})},{session}):null;
+  if(!warehouse)throw new CommandError("المخزن غير موجود",404);
+  if(requireParty&&!party)throw new CommandError("الطرف غير موجود",404);
+  if(partyId&&partyId!==originalPartyId&&!party)throw new CommandError("الطرف غير موجود",404);
+  return {warehouse,party,warehouseId,partyId};
+}
 async function changeStock(db: Db, session: ClientSession, product: Record<string, unknown>, warehouse: Record<string, unknown>, delta: number, document: Record<string, unknown>, type: string) {
   const warehouseId = String(warehouse._id), productId = String(product.id), before = Number((product.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0), after = before + delta;
   if (after < 0) throw new CommandError(`المخزون غير كافٍ للمنتج ${product.name}`);
@@ -217,7 +232,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   if (type === "party.create") {
     const name = text(body.name), phone = text(body.phone), partyType = text(body.partyType); if (!name) throw new CommandError("اسم الحساب مطلوب");
     if (!["customer", "supplier"].includes(partyType)) throw new CommandError("نوع الحساب غير صالح");
-    if (phone) { const existing = await db.collection("parties").findOne({ phone, partyType, isArchived: { $ne: true } }, { session }); if (existing) throw new CommandError("رقم الهاتف مستخدم لحساب آخر من النوع نفسه", 409); }
+    if (phone) { const existing = await db.collection("parties").findOne({ phone, partyType }, { session }); if (existing) throw new CommandError("رقم الهاتف مستخدم لحساب آخر من النوع نفسه", 409); }
     const party = { id: id("party"), name, phone, partyType, receivable: 0, payable: 0, net: 0, createdAt: new Date() };
     await db.collection("parties").insertOne(party, { session }); return party.id;
   }
@@ -226,7 +241,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if(!party)throw new CommandError("الطرف غير موجود",404);
     const name=text(body.name),phone=text(body.phone),partyType=resolvePartyType(party);
     if(!name)throw new CommandError("اسم الحساب مطلوب");
-    if(phone&&await db.collection("parties").findOne({phone,partyType,id:{$ne:partyId},isArchived:{$ne:true}},{session}))throw new CommandError("رقم الهاتف مستخدم لحساب آخر من النوع نفسه",409);
+    if(phone&&await db.collection("parties").findOne({phone,partyType,id:{$ne:partyId}},{session}))throw new CommandError("رقم الهاتف مستخدم لحساب آخر من النوع نفسه",409);
     await propagatePartyName(db,session,partyId,String(party.name??""),name);
     await db.collection("parties").updateOne({id:partyId},{$set:{name,phone,updatedAt:new Date()}},{session});
     return partyId;
@@ -358,10 +373,11 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if (original.legacyKey) throw new CommandError("الفواتير المرحلة متاحة للعرض فقط", 409);
     if (isSale && await db.collection("documents").findOne({ kind: "return", status: "posted", parentDocumentId: documentId }, { session })) throw new CommandError("لا يمكن تعديل هذه الفاتورة القديمة لوجود حركة تاريخية مرتبطة بها.", 409);
     const input = lines(body), paymentMethod = text(body.paymentMethod);
-    const { warehouse, party, warehouseId, partyId } = await refs(db, session, { ...body, warehouseId: isSale ? original.warehouseId : body.warehouseId }, paymentMethod === "note");
+    const updateBody={...body,warehouseId:isSale?original.warehouseId:body.warehouseId};
+    const { warehouse, party, warehouseId, partyId } = await invoiceUpdateRefs(db, session, updateBody, original, paymentMethod === "note");
     if (party && party.partyType !== (isSale ? "customer" : "supplier")) throw new CommandError(isSale ? "يجب اختيار عميل صالح" : "يجب اختيار مورد صالح");
     if (paymentMethod !== "note") await paymentAccount(db, session, paymentMethod);
-    const newProducts = await products(db, session, input), oldLines = original.lines as Line[], oldByProduct = new Map(oldLines.map(line => [line.productId, line]));
+    const oldLines = original.lines as Line[],oldProductIds=new Set(oldLines.map(line=>String(line.productId))),newProducts=await productsForUpdate(db,session,input,oldProductIds), oldByProduct = new Map(oldLines.map(line => [line.productId, line]));
     if (isSale && input.some(line => isProductExpired(newProducts.get(line.productId)!, String(original.businessDate ?? String(original.occurredAt).slice(0, 10))))) throw new CommandError("انتهت صلاحية هذا المنتج ولا يمكن بيعه.");
     const calculated = [] as Record<string, unknown>[];
     for (const line of input) {

@@ -153,11 +153,12 @@ async function updateTransfer(db: Db, session: ClientSession, body: Input) {
   const input = parseTransferLines(body), fromId = text(body.fromWarehouseId), toId = text(body.toWarehouseId);
   if (!fromId || !toId || fromId === toId) throw new LifecycleCommandError("اختر مخزنين مختلفين");
   const [from, to] = await Promise.all([
-    db.collection("warehouses").findOne({ _id: fromId, isArchived: { $ne: true } }, { session }),
-    db.collection("warehouses").findOne({ _id: toId, isArchived: { $ne: true } }, { session }),
+    db.collection("warehouses").findOne({ _id: fromId, ...(fromId===String(original.warehouseId)?{}:{isArchived:{ $ne:true }}) }, { session }),
+    db.collection("warehouses").findOne({ _id: toId, ...(toId===String(original.destinationWarehouseId)?{}:{isArchived:{ $ne:true }}) }, { session }),
   ]);
   if (!from || !to) throw new LifecycleCommandError("أحد المخازن غير موجود", 404);
-  const products = await loadProducts(db, session, input.map(line => line.productId), true);
+  const requestedIds=input.map(line=>line.productId),products=await loadProducts(db,session,requestedIds);
+  for(const product of products.values())if(product.isArchived===true&&!oldIds.includes(String(product.id)))throw new LifecycleCommandError("لا يمكن إضافة منتج محذوف إلى تحويل مخزون",409);
   const lines: Stored[] = [];
   for (const line of input) {
     const product = products.get(line.productId)!;
@@ -257,7 +258,7 @@ async function partyCashPost(db: Db, session: ClientSession, body: Input) {
 async function partyCashUpdate(db: Db, session: ClientSession, body: Input) {
   const documentId = text(body.documentId), original = await db.collection("documents").findOne({ id: documentId, kind: "payment", status: "posted" }, { session });
   if (!original || (original.partyCashDirection !== "receive" && original.partyCashDirection !== "pay")) throw new LifecycleCommandError("الحركة المالية للطرف غير موجودة أو غير قابلة للتعديل", 404);
-  const party = await db.collection("parties").findOne({ id: String(original.partyId), isArchived: { $ne: true } }, { session });
+  const party = await db.collection("parties").findOne({ id: String(original.partyId) }, { session });
   if (!party) throw new LifecycleCommandError("الطرف غير موجود", 409);
   const amount = positive(body.amount, "المبلغ"), direction = text(body.direction), method = text(body.paymentMethod);
   if (direction !== "receive" && direction !== "pay") throw new LifecycleCommandError("اتجاه الحركة غير صالح");

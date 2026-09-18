@@ -192,3 +192,12 @@ test("expense update and void keep financial audit rows instead of deleting them
   assert.equal(activeFinancial(rows).length, 0);
   assert.equal((await db.collection("documents").findOne({ id: expenseId })).status, "voided");
 });
+
+
+test("party cash update can correct an archived historical party movement without silently changing the party",async()=>{
+ await db.collection("parties").insertOne({id:"archived-cash",name:"Old",partyType:"customer",receivable:10,payable:0,net:10});
+ const id=await command({type:"party-cash.post",partyId:"archived-cash",direction:"receive",amount:10,paymentMethod:"cash"});
+ await command({type:"party.delete",id:"archived-cash"});
+ await command({type:"party-cash.update",documentId:id,direction:"receive",amount:10,paymentMethod:"cash"});
+ const doc=await db.collection("documents").findOne({id});assert.equal(doc.partyId,"archived-cash");
+});

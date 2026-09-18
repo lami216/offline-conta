@@ -14,7 +14,7 @@ test("submenu current states require their parent view without resetting remembe
   assert.match(source, /warehouseNav\.map\(n=><PermissionNavItem[^>]+active=\{view===n\.id\}/);
   assert.match(source, /partyNav\.map\(item=><PermissionNavItem[^>]+active=\{view===item\.id\}/);
 
-  const navigateBody = source.match(/const navigate = \(id: View\) => \{([\s\S]*?)\n  \};/)?.[1];
+  const navigateBody = source.match(/const navigate = (?:async )?\(id: View\) => \{([\s\S]*?)\n  \};/)?.[1];
   assert.ok(navigateBody);
   assert.doesNotMatch(navigateBody, /setBankTab|setReportType/);
 });

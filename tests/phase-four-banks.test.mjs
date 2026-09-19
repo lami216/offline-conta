@@ -49,9 +49,9 @@ test("bank summary cards are clickable and use the shared reconciliation dialog"
 
 test("bank summary details link category totals to their source areas",()=>{
   const source=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),banks=source.slice(source.indexOf("function Banks"),source.indexOf("function PaymentAccountDialog"));
-  assert.match(banks,/kind==="sale"\)return\{kind:"report",reportType:"sales"\}/);
-  assert.match(banks,/kind==="purchase"\)return\{kind:"report",reportType:"purchases"\}/);
-  assert.match(banks,/kind==="expense"\)return\{kind:"report",reportType:"expenses"\}/);
+  assert.match(banks,/kind==="sale"\)return\{kind:"report",reportType:"sales",period:null\}/);
+  assert.match(banks,/kind==="purchase"\)return\{kind:"report",reportType:"purchases",period:null\}/);
+  assert.match(banks,/kind==="expense"\)return\{kind:"report",reportType:"expenses",period:null\}/);
   assert.match(banks,/party-receipt:customer/);
   assert.match(banks,/party-payment:supplier/);
   assert.match(banks,/openSource=\{openSource\}/);

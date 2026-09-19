@@ -47,6 +47,12 @@ async function applyPartyNetDelta(db: Db, session: ClientSession, partyId: unkno
   await db.collection("parties").updateOne({ _id: party._id }, { $set: { ...normalizePartyNet(after), lastMovementAt: new Date(), ...(party.isArchived===true&&after!==0?{isArchived:false,archivedAt:null}: {}) } }, { session });
   return { before, delta, after };
 }
+async function preserveHistoricalPartyArchiveIfBalanced(db:Db,session:ClientSession,partyId:string,wasArchived:boolean,archivedAt:unknown){
+  if(!wasArchived)return;
+  const party=await db.collection("parties").findOne({id:partyId},{session});
+  if(!party||partyNet(party as {receivable?:unknown;payable?:unknown})!==0)return;
+  await db.collection("parties").updateOne({id:partyId},{$set:{isArchived:true,archivedAt:archivedAt??new Date(),updatedAt:new Date()}},{session});
+}
 
 export async function postFinancialMovement(db: Db, session: ClientSession, document: Stored, direction: Direction, amount: number, type: string) {
   if (!amount) return null;
@@ -271,6 +277,7 @@ async function partyCashUpdate(db: Db, session: ClientSession, body: Input) {
   if (!original || (original.partyCashDirection !== "receive" && original.partyCashDirection !== "pay")) throw new LifecycleCommandError("الحركة المالية للطرف غير موجودة أو غير قابلة للتعديل", 404);
   const party = await db.collection("parties").findOne({ id: String(original.partyId) }, { session });
   if (!party) throw new LifecycleCommandError("الطرف غير موجود", 409);
+  const wasArchived=party.isArchived===true,archivedAt=party.archivedAt;
   const amount = positive(body.amount, "المبلغ"), direction = text(body.direction), method = text(body.paymentMethod);
   if (direction !== "receive" && direction !== "pay") throw new LifecycleCommandError("اتجاه الحركة غير صالح");
   const historicalPayment = await paymentAccountForHistoricalEdit(db, session, method, original.paymentMethod);
@@ -285,6 +292,7 @@ async function partyCashUpdate(db: Db, session: ClientSession, body: Input) {
   const revised = { paymentMethod: method, title: direction === "receive" ? "استلام من الطرف" : "دفع للطرف", note: text(body.note) || null, total: amount, paidTotal: amount, cashAmount: amount, partyCashDirection: direction, partyBalanceBefore: snapshot!.before, partyBalanceDelta: snapshot!.delta, partyBalanceAfter: snapshot!.after, updatedAt: new Date(), revision };
   await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: revised }, { session });
   await postFinancialMovement(db, session, { ...original, ...revised }, direction === "receive" ? "in" : "out", amount, direction === "receive" ? "party-receipt" : "party-payment");
+  await preserveHistoricalPartyArchiveIfBalanced(db,session,String(original.partyId),wasArchived,archivedAt);
   return documentId;
 }
 

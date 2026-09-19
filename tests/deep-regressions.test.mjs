@@ -28,14 +28,15 @@ test("voiding an old sale reactivates an archived warehouse before returned stoc
  assert.equal((await db.collection("warehouses").findOne({_id:"a"})).isArchived,false);
 });
 
-test("voiding history reactivates an archived party when its balance becomes nonzero",async()=>{
+test("party with an open debt cannot be archived until the originating history is corrected",async()=>{
  const sale=await command({type:"sale.post",warehouseId:"a",partyId:"c",paymentMethod:"note",lines:[{productId:"p",quantity:1,piecePrice:10}]});
- await command({type:"party.delete",id:"c",writeOffBalance:true});
- assert.equal((await db.collection("parties").findOne({id:"c"})).isArchived,true);
+ await assert.rejects(command({type:"party.delete",id:"c"}),/رصيد قائم/);
+ assert.equal((await db.collection("parties").findOne({id:"c"})).isArchived===true,false);
  await command({type:"sale.void",documentId:sale});
- const party=await db.collection("parties").findOne({id:"c"});
- assert.equal(party.isArchived,false);
- assert.notEqual(Number(party.receivable??0)-Number(party.payable??0),0);
+ assert.equal(Number((await db.collection("parties").findOne({id:"c"})).receivable??0),0);
+ const result=await command({type:"party.delete",id:"c"});
+ assert.deepEqual(result,{id:"c",disposition:"archived"});
+ assert.equal((await db.collection("parties").findOne({id:"c"})).isArchived,true);
 });
 
 test("reversing a movement on an archived payment account automatically restores the account",async()=>{

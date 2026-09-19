@@ -131,8 +131,9 @@ test("invoice editors expose explicit new, edit, void, history routing and autho
   assert.match(pos, /type: "sale\.void"/);
   assert.match(purchase, /type: wasEditing \? "purchase\.update" : "purchase\.post"/);
   assert.match(purchase, /type: "purchase\.void"/);
-  assert.match(app, /setSaleEditRequest\(id\); setView\("pos"\)/);
-  assert.match(app, /setPurchaseEditRequest\(id\); setView\("purchases"\)/);
+  assert.match(app, /navigate\(target,\{replaceEditor:true\}\)/);
+  assert.match(app, /document\.kind === "sale"\) setSaleEditRequest\(id\)/);
+  assert.match(app, /else setPurchaseEditRequest\(id\)/);
   assert.match(app, /printPreparedDocument\(await loadPrintSettings\(\), true\)/);
 });
 
@@ -181,7 +182,7 @@ test("invoice history renders every filtered record and expense actions are stru
 test("party history footer and framed bank workflows preserve semantic hierarchy", () => {
   const party = between("function PartyPage", "export function periodQuantity");
   assert.doesNotMatch(party, /دفع للطرف/);
-  assert.match(party, /دفع لل\{customer\?"عميل":"مورد"\}/);
+  assert.match(party, /customer\?"دفع للعميل":"دفع للمورد"/);
   assert.match(party, /className="party-history-toolbar"><CompactDateRange/);
   assert.ok(party.indexOf('<Recent title="الحركات"') < party.indexOf('<PartyMetricStrip'));
   assert.match(css, /\.party-payment-row\{[^}]*grid-template-columns:280px 130px 105px minmax\(150px,1fr\)/);

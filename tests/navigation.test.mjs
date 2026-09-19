@@ -87,12 +87,12 @@ test("traceable records open details first and expose a source-navigation action
   assert.match(source,/onSource&&!onEdit&&<button className="primary" onClick=\{onSource\}>الانتقال إلى المصدر<\/button>/);
   assert.match(source,/const openDocumentSource = async \(document: DocumentRecord\)/);
   for(const mapping of [
-    /document\.kind==="sale"[\s\S]*?navigate\("pos"\)/,
-    /document\.kind==="purchase"[\s\S]*?navigate\("purchases"\)/,
-    /document\.kind==="expense"[\s\S]*?navigate\("expenses"\)/,
+    /document\.kind==="sale"[\s\S]*?navigate\("pos",\{replaceEditor:edit\}\)/,
+    /document\.kind==="purchase"[\s\S]*?navigate\("purchases",\{replaceEditor:edit\}\)/,
+    /document\.kind==="expense"[\s\S]*?navigate\("expenses",\{replaceEditor:edit\}\)/,
     /document\.kind==="payment"[\s\S]*?setPartyDetail\(party\)/,
-    /document\.kind==="transfer"[\s\S]*?navigate\("transfers"\)/,
-    /document\.kind==="adjustment"[\s\S]*?navigate\("adjustments"\)/,
+    /document\.kind==="transfer"[\s\S]*?navigate\("transfers",\{replaceEditor:edit\}\)/,
+    /document\.kind==="adjustment"[\s\S]*?navigate\("adjustments",\{replaceEditor:edit\}\)/,
     /document\.kind==="account-transfer"[\s\S]*?setBankTab\("transfers"\)/,
     /document\.kind==="account-adjustment"[\s\S]*?setBankTab\("adjustment"\)/,
   ]) assert.match(source,mapping);
@@ -105,7 +105,7 @@ test("traceable records open details first and expose a source-navigation action
 test("expense history follows the universal detail-then-source flow",async()=>{
   const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
   assert.match(source,/sortedExpenses\.map\(document=><tr key=\{document\.id\} onClick=\{\(\)=>openDoc\(document\.id\)\}/);
-  assert.match(source,/document\.kind==="expense"[\s\S]*?navigate\("expenses"\)[\s\S]*?setExpenseEditRequest\(document\.id\)/);
+  assert.match(source,/document\.kind==="expense"[\s\S]*?navigate\("expenses",\{replaceEditor:edit\}\)[\s\S]*?setExpenseEditRequest\(document\.id\)/);
 });
 
 

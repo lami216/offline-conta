@@ -103,7 +103,7 @@ type RegisterEditorGuard = (guard: ActiveEditorGuard | null) => void;
 type BankTab = "accounts" | "movements" | "transfers" | "adjustment";
 type SummarySourceTarget =
   | { kind: "view"; view: View; bankTab?: BankTab }
-  | { kind: "report"; reportType: ReportType }
+  | { kind: "report"; reportType: ReportType; period: CommittedPeriod }
   | { kind: "party"; partyId: string };
 type BankSourceRequest = { kind: "transfer" | "adjustment"; documentId: string };
 type SettingsTab = "general" | "users" | "data" | "license" | "contact";
@@ -231,6 +231,7 @@ function ContaAppContent() {
     [transferEditRequest, setTransferEditRequest] = useState<string | null>(null),
     [adjustmentEditRequest, setAdjustmentEditRequest] = useState<string | null>(null),
     [bankSourceRequest, setBankSourceRequest] = useState<BankSourceRequest | null>(null),
+    [reportSourceRequest, setReportSourceRequest] = useState<{reportType:ReportType;period:CommittedPeriod}|null>(null),
     [autoPrintId, setAutoPrintId] = useState<string | null>(null),
     [partyDetail, setPartyDetail] = useState<Party | null>(null),
     [adjustmentPrefill, setAdjustmentPrefill] = useState<AdjustmentPrefill | null>(null);
@@ -277,7 +278,7 @@ function ContaAppContent() {
       }
     }
     if (id !== "adjustments") setAdjustmentPrefill(null);
-    setExpenseEditRequest(null); setPartyPaymentEditRequest(null); setTransferEditRequest(null); setAdjustmentEditRequest(null); setBankSourceRequest(null);
+    setExpenseEditRequest(null); setPartyPaymentEditRequest(null); setTransferEditRequest(null); setAdjustmentEditRequest(null); setBankSourceRequest(null); setReportSourceRequest(null);
     setView(id); setDoc(null); setPartyDetail(null); setMenu(false); setWarehouseMenu(false); setInvoiceMenu(false); setReportMenu(false); setPartyMenu(false); setBankMenu(false); setSettingsMenu(false);
   };
   const closeNavigationMenus = () => { setWarehouseMenu(false); setInvoiceMenu(false); setReportMenu(false); setPartyMenu(false); setBankMenu(false); setSettingsMenu(false); };
@@ -355,7 +356,7 @@ function ContaAppContent() {
   };
   const openSummarySource = async (target: SummarySourceTarget) => {
     setDoc(null);
-    if (target.kind === "report") { setReportType(target.reportType); await navigate("reports"); return; }
+    if (target.kind === "report") { setReportType(target.reportType); await navigate("reports"); setReportSourceRequest({reportType:target.reportType,period:target.period}); return; }
     if (target.kind === "party") {
       const party=data.parties.find(item=>item.id===target.partyId);
       if(!party)return;
@@ -468,7 +469,7 @@ function ContaAppContent() {
               )}{" "}
               {view === "records" && <Records data={data} openDoc={openDoc} />}{" "}
               {view === "reports" && (
-                <Reports key={reportType} data={data} openDoc={openDoc} openSource={openSummarySource} type={reportType} />
+                <Reports key={reportType} data={data} openDoc={openDoc} openSource={openSummarySource} type={reportType} sourceRequest={reportSourceRequest} clearSourceRequest={()=>setReportSourceRequest(null)} />
               )}{" "}
               {view === "banks" && <Banks data={data} run={run} openDoc={openDoc} openSource={openSummarySource} tab={effectiveBankTab} sourceRequest={bankSourceRequest} clearSourceRequest={() => setBankSourceRequest(null)} />}{" "}
               {view === "settings" && <SettingsPage data={data} reload={reload} tab={settingsTab} />}{" "}

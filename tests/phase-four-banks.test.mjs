@@ -18,7 +18,14 @@ test("historical bank editors preserve archived account ids instead of replacing
 
 test("bank summary breakdown reconciles every card and keeps zero-value source kinds visible",()=>{
   const accounts=[{id:"a",name:"A",balance:10,isActive:true},{id:"zero",name:"Zero",balance:0,isActive:false},{id:"archived",name:"Old",balance:99,isArchived:true}];
-  const rows=[{id:"sale",direction:"in",amount:25,type:"sale",paymentMethod:"a",documentNumber:"S-1",occurredAt:"2026-08-01"},{id:"expense",direction:"out",amount:7,type:"expense",paymentMethod:"a",documentNumber:"E-1",occurredAt:"2026-08-02"}];
+  const rows=[
+    {id:"sale",direction:"in",amount:25,type:"sale",paymentMethod:"a",documentNumber:"S-1",occurredAt:"2026-08-01",partyId:null},
+    {id:"expense",direction:"out",amount:7,type:"expense",paymentMethod:"a",documentNumber:"E-1",occurredAt:"2026-08-02",partyId:null},
+    {id:"customer-receipt",direction:"in",amount:6,type:"party-receipt",paymentMethod:"a",documentNumber:"P-1",occurredAt:"2026-08-03",partyId:"c"},
+    {id:"supplier-receipt",direction:"in",amount:3,type:"party-receipt",paymentMethod:"a",documentNumber:"P-2",occurredAt:"2026-08-04",partyId:"s"},
+    {id:"customer-payment",direction:"out",amount:4,type:"party-payment",paymentMethod:"a",documentNumber:"P-3",occurredAt:"2026-08-05",partyId:"c"},
+    {id:"supplier-payment",direction:"out",amount:5,type:"party-payment",paymentMethod:"a",documentNumber:"P-4",occurredAt:"2026-08-06",partyId:"s"},
+  ];
   const parties=[{id:"c",name:"C",partyType:"customer",receivable:12,payable:2},{id:"s",name:"S",partyType:"supplier",receivable:0,payable:5},{id:"z",name:"Z",partyType:"customer",receivable:0,payable:0}];
   const metrics=bankScopeMetrics(accounts,rows,parties),details=bankScopeBreakdown(accounts,rows,parties);
   assert.equal(details.accounts.reduce((sum,row)=>sum+row.value,0),metrics.currentBalance);
@@ -26,9 +33,10 @@ test("bank summary breakdown reconciles every card and keeps zero-value source k
   assert.equal(details.expenses.reduce((sum,row)=>sum+row.value,0),metrics.expenses);
   assert.equal(details.parties.reduce((sum,row)=>sum+row.owedToUs,0),metrics.owedToUs);
   assert.equal(details.parties.reduce((sum,row)=>sum+row.weOwe,0),metrics.weOwe);
-  assert.deepEqual(details.income.map(row=>row.kind),["sale","party-receipt","manual-deposit"]);
-  assert.deepEqual(details.expenses.map(row=>row.kind),["purchase","expense","party-payment","manual-withdrawal"]);
-  assert.ok(details.income.some(row=>row.kind==="party-receipt"&&row.value===0&&row.count===0));
+  assert.deepEqual(details.income.map(row=>row.kind),["sale","party-receipt:customer","party-receipt:supplier","manual-deposit"]);
+  assert.deepEqual(details.expenses.map(row=>row.kind),["purchase","expense","party-payment:customer","party-payment:supplier","manual-withdrawal"]);
+  assert.deepEqual(details.income.filter(row=>row.kind.startsWith("party-receipt:")).map(row=>[row.kind,row.count,row.value]),[["party-receipt:customer",1,6],["party-receipt:supplier",1,3]]);
+  assert.deepEqual(details.expenses.filter(row=>row.kind.startsWith("party-payment:")).map(row=>[row.kind,row.count,row.value]),[["party-payment:customer",1,4],["party-payment:supplier",1,5]]);
   assert.ok(details.expenses.some(row=>row.kind==="manual-withdrawal"&&row.value===0&&row.count===0));
   assert.equal(details.income.some(row=>row.kind==="purchase"),false);
   assert.equal(details.expenses.some(row=>row.kind==="sale"),false);

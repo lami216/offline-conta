@@ -1,4 +1,4 @@
-import type { FinancialMovement, Party, PaymentAccount } from "./domain";
+import { resolvePartyType, type FinancialMovement, type Party, type PaymentAccount } from "./domain";
 
 export type CommittedPeriod = { from: string; to: string } | null;
 export const inCommittedPeriod = (occurredAt: string, period: CommittedPeriod) => !period || ((!period.from || occurredAt.slice(0, 10) >= period.from) && (!period.to || occurredAt.slice(0, 10) <= period.to));
@@ -7,19 +7,25 @@ export function filterFinancialMovements(rows: FinancialMovement[], period: Comm
 export function filterTransfers<T extends { occurredAt: string; fromAccountId: string; toAccountId: string }>(rows: T[], period: CommittedPeriod, fromAccountId = "", toAccountId = "") { return rows.filter(row => inCommittedPeriod(row.occurredAt, period) && (!fromAccountId || row.fromAccountId === fromAccountId) && (!toAccountId || row.toAccountId === toAccountId)); }
 const nonOperatingMovementTypes = new Set(["transfer-in", "transfer-out", "opening-balance", "opening-balance-correction", "balance-correction"]);
 export const bankSummaryMovementKinds = {
-  in: ["sale","party-receipt","manual-deposit"],
-  out: ["purchase","expense","party-payment","manual-withdrawal"],
+  in: ["sale","party-receipt:customer","party-receipt:supplier","manual-deposit"],
+  out: ["purchase","expense","party-payment:customer","party-payment:supplier","manual-withdrawal"],
 } as const;
 export type BankSummaryMovementBreakdown = { kind:string; count:number; value:number };
 export function bankScopeBreakdown(accounts: PaymentAccount[], movements: FinancialMovement[], parties: Party[]) {
   const accountsUsed=accounts.filter(account=>!account.isArchived).map(account=>({id:account.id,name:account.name,isActive:account.isActive,value:Number(account.balance||0)}));
   const operating=movements.filter(movement=>!nonOperatingMovementTypes.has(financialMovementKind(movement.type)));
+  const partyTypes=new Map(parties.map(party=>[party.id,resolvePartyType(party)] as const));
+  const summaryKind=(movement:FinancialMovement)=>{
+    const kind=financialMovementKind(movement.type);
+    if(kind!=="party-receipt"&&kind!=="party-payment")return kind;
+    return `${kind}:${movement.partyId?partyTypes.get(movement.partyId)??"unknown":"unknown"}`;
+  };
   const movementRows=(direction:"in"|"out"):BankSummaryMovementBreakdown[]=>{
     const configured=[...bankSummaryMovementKinds[direction]] as string[];
-    const found=[...new Set(operating.filter(movement=>movement.direction===direction).map(movement=>financialMovementKind(movement.type)))];
+    const found=[...new Set(operating.filter(movement=>movement.direction===direction).map(summaryKind))];
     const kinds=[...configured,...found.filter(kind=>!configured.includes(kind))];
     return kinds.map(kind=>{
-      const matching=operating.filter(movement=>movement.direction===direction&&financialMovementKind(movement.type)===kind);
+      const matching=operating.filter(movement=>movement.direction===direction&&summaryKind(movement)===kind);
       return {kind,count:matching.length,value:matching.reduce((sum,movement)=>sum+Number(movement.amount||0),0)};
     });
   };

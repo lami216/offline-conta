@@ -73,9 +73,11 @@ test("representative report and screen columns use the same central semantics", 
   assert.deepEqual(sortTableRows(monetaryRows, { key: "total", direction: "asc" }, [{ key: "total", type: "money", get: row => row.total }]).map(row => row.total), [500, 2000, 10000]);
 });
 
-test("sorting-enabled screens and reports are wired to the shared sorter", () => {
+test("sorting-enabled screens keep the shared sorter while reports use global server sorting", () => {
   const source = fs.readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
-  assert.match(source, /sortTableRows\(table\.rows,sortState,reportSortColumns,locale\)/);
+  assert.match(source, /q\.set\("sortKey",requestedSort\.key\)/);
+  assert.match(source, /q\.set\("sortDirection",requestedSort\.direction\)/);
+  assert.match(source, /toggleReportSort=.*runReport\(committedPeriod,1,next\)/);
   assert.doesNotMatch(source, /numeric=typeof leftValue===\"number\"\|\|typeof rightValue===\"number\"/);
   assert.match(source, /sales:productId\?\[\[\"number\",tr\(\"رقم الفاتورة\"\),\"number\"\]/);
   assert.match(source, /purchases:productId\?\[\[\"number\",tr\(\"رقم الفاتورة\"\),\"number\"\]/);

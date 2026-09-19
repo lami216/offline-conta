@@ -10,37 +10,35 @@ after(async()=>harness.close());
 beforeEach(async()=>harness.reset());
 const command=body=>db.transaction(session=>execute(db,session,body));
 
-test("party editing changes the current card but preserves historical names",async()=>{
+test("party editing propagates the current name while preserving the first historical snapshot",async()=>{
   await db.collection("parties").insertOne({id:"customer",name:"Old Name",phone:"111",partyType:"customer",receivable:0,payable:0,net:0});
   await db.collection("documents").insertOne({id:"sale",kind:"sale",status:"posted",partyId:"customer",partyName:"Old Name",total:20,lines:[]});
   await command({type:"party.update",id:"customer",name:"New Name",phone:"222"});
   assert.deepEqual(await db.collection("parties").findOne({id:"customer"},{projection:{_id:0,name:1,phone:1}}),{name:"New Name",phone:"222"});
-  assert.equal((await db.collection("documents").findOne({id:"sale"})).partyName,"Old Name");
+  const document=await db.collection("documents").findOne({id:"sale"});
+  assert.deepEqual([document.partyName,document.partyNameOriginal],["New Name","Old Name"]);
 });
 
-test("balanced party is deleted while historical documents remain unchanged",async()=>{
+test("balanced party with history is archived while historical documents remain addressable",async()=>{
   await db.collection("parties").insertOne({id:"supplier",name:"Supplier",phone:"",partyType:"supplier",receivable:0,payable:0,net:0});
   await db.collection("documents").insertOne({id:"purchase",kind:"purchase",status:"posted",partyId:"supplier",partyName:"Supplier",total:50,lines:[]});
-  await command({type:"party.delete",id:"supplier"});
-  assert.equal(await db.collection("parties").findOne({id:"supplier"}),null);
+  const result=await command({type:"party.delete",id:"supplier"});
+  assert.deepEqual(result,{id:"supplier",disposition:"archived"});
+  const party=await db.collection("parties").findOne({id:"supplier"});
+  assert.equal(party.isArchived,true);
   assert.equal((await db.collection("documents").findOne({id:"purchase"})).partyName,"Supplier");
   assert.equal(await db.collection("documents").countDocuments({partyDeletionSettlement:true}),0);
 });
 
-test("nonzero balance requires confirmation then writes an audit settlement and removes current references",async()=>{
+test("nonzero balances block deletion and archiving without manufacturing a writeoff",async()=>{
   await db.collection("parties").insertOne({id:"customer",name:"Customer",phone:"",partyType:"customer",receivable:80,payable:20,net:60});
   await db.collection("documents").insertOne({id:"sale",kind:"sale",status:"posted",partyId:"customer",partyName:"Customer",total:100,lines:[]});
   await db.collection("financialMovements").insertOne({id:"movement",partyId:"customer",partyName:"Customer",direction:"in",amount:20});
-  await db.collection("importMappings").insertOne({id:"mapping",targetEntityType:"parties",targetId:"customer"});
-  await assert.rejects(command({type:"party.delete",id:"customer"}),/تأكيد تصفية/);
-  assert.notEqual(await db.collection("parties").findOne({id:"customer"}),null);
-  await command({type:"party.delete",id:"customer",settleBalance:true});
-  assert.equal(await db.collection("parties").findOne({id:"customer"}),null);
-  assert.equal(await db.collection("importMappings").findOne({targetId:"customer"}),null);
-  assert.equal((await db.collection("documents").findOne({id:"sale"})).partyName,"Customer");
-  assert.equal((await db.collection("financialMovements").findOne({id:"movement"})).partyName,"Customer");
-  const settlement=await db.collection("documents").findOne({partyDeletionSettlement:true});
-  assert.deepEqual([settlement.partyName,settlement.settledReceivable,settlement.settledPayable,settlement.partyBalanceBefore,settlement.partyBalanceDelta,settlement.partyBalanceAfter],["Customer",80,20,60,-60,0]);
+  await assert.rejects(command({type:"party.delete",id:"customer"}),/رصيد قائم/);
+  await assert.rejects(command({type:"party.delete",id:"customer",writeOffBalance:true}),/رصيد قائم/);
+  const party=await db.collection("parties").findOne({id:"customer"});
+  assert.deepEqual([party.isArchived===true,party.receivable,party.payable,party.net],[false,80,20,60]);
+  assert.equal(await db.collection("documents").countDocuments({partyDeletionWriteOff:true}),0);
 });
 
 test("party update rejects duplicate phone within the same role",async()=>{
@@ -60,4 +58,14 @@ test("delete permission is resolved from the stored party role",async()=>{
   assert.equal(response.status,200);
   assert.equal(await db.collection("parties").findOne({id:"customer"}),null);
   assert.notEqual(await db.collection("parties").findOne({id:"supplier"}),null);
+});
+
+
+test("archived balanced party can be restored without changing historical records",async()=>{
+  await db.collection("parties").insertOne({id:"supplier",name:"Supplier",phone:"",partyType:"supplier",receivable:0,payable:0,net:0,isArchived:true,archivedAt:new Date()});
+  await db.collection("documents").insertOne({id:"purchase",kind:"purchase",status:"posted",partyId:"supplier",partyName:"Supplier",total:50,lines:[]});
+  await command({type:"party.restore",id:"supplier"});
+  const party=await db.collection("parties").findOne({id:"supplier"});
+  assert.deepEqual([party.isArchived,party.archivedAt],[false,null]);
+  assert.equal((await db.collection("documents").findOne({id:"purchase"})).partyName,"Supplier");
 });

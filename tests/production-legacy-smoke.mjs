@@ -28,7 +28,9 @@ const server=spawn(process.execPath,["server.js"],{cwd:".next/standalone",window
 const closed=once(server,"close");
 let logs=""; server.stdout.on("data",d=>logs+=d);server.stderr.on("data",d=>logs+=d);
 try {
-  for(let i=0;i<60;i++){try{if((await fetch(`${origin}/login`)).status<500)break;}catch{}await delay(250);}
+  let ready=false;
+  for(let i=0;i<120;i++){try{if((await fetch(`${origin}/login`)).status<500){ready=true;break;}}catch{}if(server.exitCode!==null)break;await delay(250);}
+  if(!ready)throw new Error(`Production server did not become ready (exit code: ${server.exitCode ?? "running"})`);
   const start=await fetch(`${origin}/api/settings/legacy/upload/start`,{method:"POST",headers:{...headers,"content-type":"application/json"},body:JSON.stringify({size:bytes.length})});
   if(start.status!==200)assert.fail(`start returned ${start.status}: ${await start.text()}`);const upload=await start.json();
   for(let index=0,offset=0;offset<bytes.length;index++,offset+=upload.chunkSize){const response=await fetch(`${origin}/api/settings/legacy/upload/chunk?uploadId=${upload.uploadId}&index=${index}`,{method:"POST",headers:{...headers,"content-type":"application/octet-stream"},body:bytes.slice(offset,offset+upload.chunkSize)});if(response.status!==200)assert.fail(`chunk returned ${response.status}: ${await response.text()}`);}

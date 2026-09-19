@@ -73,3 +73,29 @@ test("product categories survive backup/restore and pre-category backups remain 
   assert.equal(await h.db.collection("productCategories").countDocuments(),0);
   assert.ok(await h.db.collection("products").findOne({id:"legacy-product"}));
 });
+
+
+test("import mappings are part of current backups and old backups clear stale mappings",async t=>{
+  const h=await sqliteHarness();t.after(()=>h.close());
+  await h.db.collection("products").insertOne({id:"mapped",sku:"700",name:"Mapped",stocks:{}});
+  await h.db.collection("importMappings").insertOne({id:"map-1",sourceType:"dataacc-sqlite",sourceEntityType:"products",sourceKey:"dataacc:itemsTB:1",targetEntityType:"products",targetId:"mapped"});
+  const current=await createNativeBackup(h.db);
+  assert.equal(current.collections.importMappings.length,1);
+  await h.db.collection("importMappings").deleteMany({});
+  await h.db.transaction(session=>restoreNativeBackup(h.db,current,session));
+  assert.equal((await h.db.collection("importMappings").findOne({id:"map-1"})).targetId,"mapped");
+
+  const old=legacyBackup();delete old.collections.importMappings;delete old.counts.importMappings;
+  await h.db.collection("importMappings").insertOne({id:"stale",sourceType:"dataacc-sqlite",sourceEntityType:"products",sourceKey:"old",targetEntityType:"products",targetId:"mapped"});
+  const parsed=parseAndValidateBackup(JSON.stringify(old));
+  assert.deepEqual(parsed.collections.importMappings,[]);
+  await h.db.transaction(session=>restoreNativeBackup(h.db,parsed,session));
+  assert.equal(await h.db.collection("importMappings").countDocuments(),0);
+});
+
+test("backup validation rejects dangling operational references and mappings",()=>{
+  const broken=legacyBackup();broken.collections.documents[0].destinationWarehouseId="missing";
+  assert.throws(()=>parseAndValidateBackup(stringifyBackup(broken)),/مخزن وجهة/);
+  const mapping=legacyBackup();mapping.collections.importMappings=[{id:"m",sourceType:"dataacc-sqlite",sourceEntityType:"products",sourceKey:"x",targetEntityType:"products",targetId:"missing"}];
+  assert.throws(()=>parseAndValidateBackup(stringifyBackup(mapping)),/خريطة استيراد/);
+});

@@ -18,7 +18,7 @@ test("summary includes known and unknown cost sales without null financial value
 test("product filters retain legacy adjustments without exposing a returns report",async()=>{await db.collection("documents").insertMany([doc("s","sale","2026-08-10",[line("a","a",10,100,70),line("b","b",1,5000,100)]),doc("p","purchase","2026-08-10",[line("pa","a",3,50),line("pb","b",1,900)]),doc("r","return","2026-08-11",[line("ra","a",2,100,70),line("rb","b",1,5000,100)],{parentDocumentId:"s"})]);const sales=await buildReport(db,filters("sales",{productId:"a"})),purchases=await buildReport(db,filters("purchases",{productId:"a"})),profit=await buildReport(db,filters("profit",{productId:"a"}));assert.equal(sales.summary.netSales,800);assert.equal(sales.summary.profit,240);assert.equal(purchases.summary.total,150);assert.equal(profit.summary.revenue,800);assert.equal(profit.rows.some(row=>row.productId==="b"),false);assert.throws(()=>parse("type=returns&from=2026-08-01&to=2026-08-31"),/نوع التقرير/);});
 test("product profit invoiceCount is unique per document",async()=>{await db.collection("documents").insertMany([doc("s1","sale","2026-08-10",[line("1","a",1,100,70),line("2","a",2,100,70)]),doc("s2","sale","2026-08-11",[line("3","a",1,100,70)])]);const report=await buildReport(db,filters("profit",{groupBy:"product"}));assert.equal(report.rows[0].invoiceCount,2);});
 test("financial transfers are excluded from operating totals",async()=>{await db.collection("financialMovements").insertMany([{id:"1",occurredAt:"2026-08-10T12:00:00Z",type:"sale",direction:"in",amount:100},{id:"2",occurredAt:"2026-08-10T12:00:00Z",type:"transfer-in",direction:"in",amount:500},{id:"3",occurredAt:"2026-08-10T12:00:00Z",type:"transfer-out",direction:"out",amount:500}]);const report=await buildReport(db,filters("financial"));assert.equal(report.summary.incoming,600);assert.equal(report.summary.operatingIncoming,100);assert.equal(report.summary.operatingNet,100);});
-test("overview uses typed party balances and every authoritative active payment account",async()=>{await db.collection("paymentAccounts").insertMany([{id:"cash-id",code:"cash",name:"Cash",balance:1000,isActive:true},{id:"a",code:"a",name:"Bank A",balance:500,isActive:true},{id:"b",code:"b",name:"Bank B",balance:300,isActive:true},{id:"off",code:"off",name:"Inactive",balance:900,isActive:false}]);await db.collection("parties").insertMany([{id:"legacy",name:"Legacy",receivable:0,payable:20},{id:"c",name:"C",partyType:"customer",receivable:300,payable:99},{id:"s",name:"S",partyType:"supplier",payable:300,receivable:88}]);const report=await buildReport(db,filters("overview"));assert.equal(report.summary.customerReceivables,201);assert.equal(report.summary.supplierPayables,232);assert.deepEqual([report.summary.customerCount,report.summary.supplierCount],[1,2]);assert.deepEqual(report.bankAccounts.map(a=>[a.name,a.balance]),[["Bank A",500],["Bank B",300],["Cash",1000]]);assert.equal(report.summary.bankBalance,1800);assert.equal(report.summary.bankBalance,report.bankAccounts.reduce((sum,a)=>sum+a.balance,0));});
+test("overview uses typed party balances and every authoritative non-archived payment account",async()=>{await db.collection("paymentAccounts").insertMany([{id:"cash-id",code:"cash",name:"Cash",balance:1000,isActive:true},{id:"a",code:"a",name:"Bank A",balance:500,isActive:true},{id:"b",code:"b",name:"Bank B",balance:300,isActive:true},{id:"off",code:"off",name:"Inactive",balance:900,isActive:false}]);await db.collection("parties").insertMany([{id:"legacy",name:"Legacy",receivable:0,payable:20},{id:"c",name:"C",partyType:"customer",receivable:300,payable:99},{id:"s",name:"S",partyType:"supplier",payable:300,receivable:88}]);const report=await buildReport(db,filters("overview"));assert.equal(report.summary.customerReceivables,201);assert.equal(report.summary.supplierPayables,232);assert.deepEqual([report.summary.customerCount,report.summary.supplierCount],[1,2]);assert.deepEqual(report.bankAccounts.map(a=>[a.name,a.balance]),[["Bank A",500],["Bank B",300],["Cash",1000],["Inactive",900]]);assert.equal(report.summary.bankBalance,2700);assert.equal(report.summary.bankBalance,report.bankAccounts.reduce((sum,a)=>sum+a.balance,0));});
 
 
 test("overview current position is netted, complete, finite, and independent of the selected period",async()=>{
@@ -132,4 +132,25 @@ test("historical report cost falls back to native opening but never invents Data
   const native=report.rows.find(row=>row.productId==="native"),legacy=report.rows.find(row=>row.productId==="legacy");
   assert.deepEqual([native.cost,native.profit,native.costKnown],[110,90,true]);
   assert.deepEqual([legacy.cost,legacy.profit,legacy.costKnown],[0,200,false]);
+});
+
+
+test("debt search treats regex metacharacters as literal text",async()=>{await db.collection("parties").insertMany([{id:"literal",name:"A.* Store",phone:"111",partyType:"customer",receivable:5,payable:0},{id:"other",name:"Anything",phone:"222",partyType:"customer",receivable:7,payable:0}]);const report=await buildReport(db,filters("debts",{search:".*"}));assert.deepEqual(report.rows.map(row=>row.id),["literal"]);});
+
+test("party ledger can report an archived party by stable id",async()=>{await db.collection("parties").insertOne({id:"old",name:"Archived",partyType:"customer",isArchived:true,receivable:10,payable:0});await db.collection("documents").insertOne(doc("old-sale","sale","2026-08-10",[line("l","a",1,10)],{partyId:"old",dueTotal:10}));const report=await buildReport(db,filters("party-ledger",{partyId:"old"}));assert.equal(report.summary.name,"Archived");assert.equal(report.rows.length,1);});
+
+test("overview breakdown rows reconcile every period KPI and net profit exactly",async()=>{
+  await db.collection("documents").insertMany([
+    doc("sale","sale","2026-08-10",[line("sl","a",2,100,60)]),
+    doc("return","return","2026-08-11",[line("rl","a",1,100,60)],{parentDocumentId:"sale"}),
+    doc("purchase","purchase","2026-08-12",[line("pl","a",3,50)]),
+    doc("expense","expense","2026-08-13",[],{total:25,title:"Rent"}),
+  ]);
+  const report=await buildReport(db,filters("overview")),sum=rows=>rows.reduce((total,row)=>total+Number(row.value||0),0);
+  assert.equal(sum(report.overviewDetails.sales),report.summary.sales);
+  assert.equal(sum(report.overviewDetails.purchases),report.summary.purchases);
+  assert.equal(sum(report.overviewDetails.expenses),report.summary.expenses);
+  assert.equal(report.overviewDetails.salesProfit.reduce((total,row)=>total+row.profit,0),report.summary.salesProfit);
+  assert.equal(report.overviewDetails.salesProfit.reduce((total,row)=>total+row.profit,0)-sum(report.overviewDetails.expenses),report.summary.netOperatingResult);
+  assert.ok(report.overviewDetails.sales.some(row=>row.kind==="return"&&row.value<0));
 });

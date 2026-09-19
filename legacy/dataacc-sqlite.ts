@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import initSqlJs, { type Database } from "sql.js";
 import { createRequire } from "node:module";
 import { isAbsolute, join } from "node:path";

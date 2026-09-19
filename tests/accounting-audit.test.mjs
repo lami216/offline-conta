@@ -160,9 +160,11 @@ test("party permissions use stored party type rather than user-supplied type or 
   await db.collection("users").insertOne({ id: "collector", username: "collector", name: "Collector", isActive: true, permissions: ["customers.view", "customers.collect", "customers.edit"] });
   await db.collection("parties").insertMany([{ id: "customer", name: "Customer", partyType: "customer", receivable: 40, payable: 0, net: 40 }, { id: "supplier", name: "Supplier", partyType: "supplier", receivable: 20, payable: 50, net: -30 }]);
   const headers = { Cookie: `conta_session=${createSession({ principalType: "user", userId: "collector" })}`, Host: "localhost", Origin: "http://localhost", "Content-Type": "application/json" };
-  for (const type of ["party-cash.post", "payment.post", "settlement.post", "offset.post"]) {
-    const response = await postCommand(new Request("http://localhost/api/command", { method: "POST", headers: { ...headers, "Idempotency-Key": type }, body: JSON.stringify({ type, partyId: "supplier", partyType: "customer", side: "receivable", direction: "receive", amount: 10, paymentMethod: "cash" }) }));
-    assert.equal(response.status, 403, type);
+  const response = await postCommand(new Request("http://localhost/api/command", { method: "POST", headers: { ...headers, "Idempotency-Key": "party-cash-supplier" }, body: JSON.stringify({ type: "party-cash.post", partyId: "supplier", partyType: "customer", direction: "receive", amount: 10, paymentMethod: "cash" }) }));
+  assert.equal(response.status, 403, "stored supplier role controls the permission");
+  for (const type of ["payment.post", "settlement.post", "offset.post"]) {
+    const retired = await postCommand(new Request("http://localhost/api/command", { method: "POST", headers: { ...headers, "Idempotency-Key": type }, body: JSON.stringify({ type, partyId: "supplier", side: "receivable", amount: 10, paymentMethod: "cash" }) }));
+    assert.equal(retired.status, 400, type);
   }
   const data = await (await bootstrap(new Request("http://localhost/api/bootstrap", { headers }))).json();
   assert.equal(data.parties.find(p => p.id === "customer").receivable, 40);

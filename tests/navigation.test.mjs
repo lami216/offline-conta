@@ -7,14 +7,14 @@ test("desktop navigation has eight unique destinations with reports before setti
 test("submenu current states require their parent view without resetting remembered selections", async () => {
   const source = normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
 
-  assert.match(source, /allowed=\{can\("banks\.view"\)\} active=\{view==="banks"&&bankTab===item\.id\}/);
+  assert.match(source, /allowed=\{can\(bankTabCapability\[item\.id\]\)\} active=\{view==="banks"&&effectiveBankTab===item\.id\}/);
   assert.match(source, /allowed=\{can\("reports\.view"\)\} active=\{view==="reports"&&reportType===id\}/);
   assert.match(source, /allowed=\{settingsAllowed\(item\.id\)\} active=\{view==="settings"&&settingsTab===item\.id\}/);
   assert.match(source, /invoiceNav\.map\(n=><PermissionNavItem[^>]+active=\{view===n\.id\}/);
   assert.match(source, /warehouseNav\.map\(n=><PermissionNavItem[^>]+active=\{view===n\.id\}/);
   assert.match(source, /partyNav\.map\(item=><PermissionNavItem[^>]+active=\{view===item\.id\}/);
 
-  const navigateBody = source.match(/const navigate = \(id: View\) => \{([\s\S]*?)\n  \};/)?.[1];
+  const navigateBody = source.match(/const navigate = (?:async )?\(id: View\) => \{([\s\S]*?)\n  \};/)?.[1];
   assert.ok(navigateBody);
   assert.doesNotMatch(navigateBody, /setBankTab|setReportType/);
 });
@@ -24,7 +24,7 @@ test("permission-aware navigation stays complete and disabled items cannot activ
   for (const collection of ["invoiceNav", "warehouseNav", "partyNav", "bankNav", "reportOrder"])
     assert.match(source, new RegExp(`${collection}\\.map\\(`));
   assert.doesNotMatch(source, /(?:invoiceNav|warehouseNav|partyNav)\.filter\([^\n]*can/);
-  assert.match(source, /if \(!can\(viewCapability\[id\]\)\) return/);
+  assert.match(source, /if \(!canView\(id\)\) return/);
   assert.match(source, /disabled=\{!allowed\}/);
   assert.match(source, /aria-disabled=\{!allowed\?"true":undefined\}/);
   assert.match(source, /allowed&&active/);
@@ -76,4 +76,34 @@ test("party ledger filters real compatible roles and transient documents overlay
   assert.match(source, /setPartyTypeFilter\("supplier"\);setPartyId\(""\);setResult\(null\)/);
   assert.doesNotMatch(source, /\) : doc \? \(/);
   assert.match(source, /\{doc && <div className="modal-overlay"/);
+});
+
+
+test("bank movement-only permission has its own navigation gate",async()=>{const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));assert.match(source,/movements:"banks\.movements\.view"/);assert.match(source,/const canView=.*id==="banks".*bankNav\.some/);});
+
+test("traceable records open details first and expose a source-navigation action",async()=>{
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.match(source,/function DocumentDetail\([^)]*onSource/);
+  assert.match(source,/onSource&&!onEdit&&<button className="primary" onClick=\{onSource\}>الانتقال إلى المصدر<\/button>/);
+  assert.match(source,/const openDocumentSource = async \(document: DocumentRecord\)/);
+  for(const mapping of [
+    /document\.kind==="sale"[\s\S]*?navigate\("pos"\)/,
+    /document\.kind==="purchase"[\s\S]*?navigate\("purchases"\)/,
+    /document\.kind==="expense"[\s\S]*?navigate\("expenses"\)/,
+    /document\.kind==="payment"[\s\S]*?setPartyDetail\(party\)/,
+    /document\.kind==="transfer"[\s\S]*?navigate\("transfers"\)/,
+    /document\.kind==="adjustment"[\s\S]*?navigate\("adjustments"\)/,
+    /document\.kind==="account-transfer"[\s\S]*?setBankTab\("transfers"\)/,
+    /document\.kind==="account-adjustment"[\s\S]*?setBankTab\("adjustment"\)/,
+  ]) assert.match(source,mapping);
+  assert.match(source,/stockRows\.map\(row=><tr key=\{row\.id\} onClick=\{\(\)=>row\.documentId&&openDoc\(row\.documentId\)\}/);
+  assert.match(source,/financialRows\.map\(row=><tr key=\{row\.id\} onClick=\{\(\)=>row\.documentId&&openDoc\(row\.documentId\)\}/);
+  assert.match(source,/fallbackMovements\.map\(movement=><tr[^>]+onClick=\{\(\)=>movement\.documentId&&openDoc\(movement\.documentId\)\}/);
+});
+
+
+test("expense history follows the universal detail-then-source flow",async()=>{
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.match(source,/sortedExpenses\.map\(document=><tr key=\{document\.id\} onClick=\{\(\)=>openDoc\(document\.id\)\}/);
+  assert.match(source,/document\.kind==="expense"[\s\S]*?navigate\("expenses"\)[\s\S]*?setExpenseEditRequest\(document\.id\)/);
 });

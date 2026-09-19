@@ -1,12 +1,48 @@
-import {access, cp, lstat, mkdir, readdir, readlink, realpath, rm, writeFile} from "node:fs/promises";
+import {access, cp, lstat, mkdir, readFile, readdir, readlink, realpath, rm, writeFile} from "node:fs/promises";
 import {createRequire} from "node:module";
 import path from "node:path";
 
 const repositoryRoot = await realpath(process.cwd());
-const output = path.join(repositoryRoot, "desktop-dist", "app");
+const desktopOutput = path.join(repositoryRoot, "desktop-dist");
+const output = path.join(desktopOutput, "app");
+const shellOutput = path.join(desktopOutput, "shell");
 
-await rm(path.dirname(output), {recursive: true, force: true});
+await rm(desktopOutput, {recursive: true, force: true});
 await mkdir(output, {recursive: true});
+await mkdir(shellOutput, {recursive: true});
+
+// Package only the lightweight Electron shell. The full Next.js runtime is
+// copied as an authoritative external resource by electron-after-pack.cjs.
+// Keeping a separate app directory with only a tiny marker dependency prevents
+// electron-builder from falling back to the repository dependency tree and
+// compressing the production runtime a second time into app.asar.
+const repositoryPackage = JSON.parse(await readFile(path.join(repositoryRoot, "package.json"), "utf8"));
+const shellMarkerName = "alkarna-shell-runtime-marker";
+const shellPackage = {
+  name: repositoryPackage.name,
+  version: repositoryPackage.version,
+  description: repositoryPackage.description,
+  author: repositoryPackage.author,
+  private: true,
+  main: "desktop/main.cjs",
+  dependencies: {[shellMarkerName]: "1.0.0"},
+};
+await cp(path.join(repositoryRoot, "desktop"), path.join(shellOutput, "desktop"), {recursive: true});
+await writeFile(path.join(shellOutput, "package.json"), `${JSON.stringify(shellPackage, null, 2)}\n`);
+const shellMarkerOutput = path.join(shellOutput, "node_modules", shellMarkerName);
+await mkdir(shellMarkerOutput, {recursive: true});
+await writeFile(path.join(shellMarkerOutput, "package.json"), `${JSON.stringify({name: shellMarkerName, version: "1.0.0", private: true, main: "index.cjs"}, null, 2)}\n`);
+await writeFile(path.join(shellMarkerOutput, "index.cjs"), "module.exports = Object.freeze({shell: true});\n");
+await writeFile(path.join(shellOutput, "package-lock.json"), `${JSON.stringify({
+  name: shellPackage.name,
+  version: shellPackage.version,
+  lockfileVersion: 3,
+  requires: true,
+  packages: {
+    "": {name: shellPackage.name, version: shellPackage.version, dependencies: shellPackage.dependencies},
+    [`node_modules/${shellMarkerName}`]: {version: "1.0.0"},
+  },
+}, null, 2)}\n`);
 // Materialize traced links so staging also works without Windows symlink privileges.
 // The external aliases below are then replaced with relocatable local shims.
 await cp(path.join(repositoryRoot, ".next", "standalone"), output, {recursive: true, dereference: true});

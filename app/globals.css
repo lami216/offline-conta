@@ -1936,7 +1936,7 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 .scanner-switch{display:flex;align-items:center;gap:7px;height:30px;min-height:30px;padding:3px 9px;border:1px solid var(--line);border-radius:6px;color:var(--text);background:#fff}
 .scanner-indicator{display:grid;place-items:center;width:18px;height:18px;border:2px solid var(--brand);border-radius:50%}
 .scanner-indicator-dot{width:7px;height:7px;border-radius:50%;background:var(--brand)}
-.product-form-halves{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-height:0}.product-form-group{display:grid;align-content:start;gap:6px}.product-form-group label{display:grid;gap:3px}.product-form-group textarea{resize:vertical;min-height:48px;max-height:80px}.expired-badge{display:block;color:#b42318;font-size:9px;font-weight:900}.product-form{display:grid;gap:8px;max-height:min(88vh,650px);overflow:auto}@media(max-width:760px){.product-form-halves{grid-template-columns:1fr}}
+.product-form-halves{display:grid;grid-template-columns:1fr 1fr;gap:8px;min-height:0}.product-form-group{display:grid;align-content:start;gap:6px}.product-form-group label{display:grid;gap:3px}.product-form-group textarea{resize:vertical;min-height:48px;max-height:80px}.product-detail-group{grid-auto-rows:max-content}.product-detail-field{display:grid;gap:2px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff;min-width:0}.product-detail-field small{color:var(--muted);font-size:10px;font-weight:800}.product-detail-field strong{font-size:13px;font-weight:800;overflow-wrap:anywhere}.product-detail-note strong{white-space:pre-wrap;font-weight:600}.expired-badge{display:block;color:#b42318;font-size:9px;font-weight:900}.product-form{display:grid;gap:8px;max-height:min(88vh,650px);overflow:auto}@media(max-width:760px){.product-form-halves{grid-template-columns:1fr}}
 
 @media(max-width:1050px){.parties-controls{grid-template-columns:1fr}.warehouse-head{align-items:stretch}.warehouse-actions{flex-wrap:wrap}}
 .expense-fields input,.expense-fields select,.expense-form-body button{height:34px;min-height:34px}
@@ -2397,3 +2397,26 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
   color: #fff !important;
   background: #1967d2 !important;
 }
+
+/* Auditable KPI drill-downs: clickable summaries expose the exact contributing rows. */
+.summary-drilldown-button{appearance:none;font:inherit;text-align:inherit;color:inherit;cursor:pointer}
+.bank-summary>button.summary-drilldown-button{display:grid;align-content:center;gap:6px;min-width:0;min-height:76px;padding:7px 9px;border:1px solid #273238;border-radius:5px;background:#fff}
+.bank-summary>button.summary-drilldown-button:hover,.report-kpi.summary-drilldown-button:hover{outline:2px solid color-mix(in srgb,var(--brand) 28%,transparent);outline-offset:-2px}
+.bank-debt-values .summary-drilldown-sub{appearance:none;display:grid;gap:2px;min-width:0;padding:3px 5px;border:0;border-radius:4px;background:transparent;font:inherit;text-align:inherit;cursor:pointer}
+.bank-debt-values .summary-drilldown-sub:hover{background:#f3f7f7}
+.report-kpi.summary-drilldown-button{width:100%;border:0;border-radius:0;background:transparent}
+.summary-breakdown-modal{width:min(820px,calc(100vw - 28px));display:grid;gap:10px}
+.summary-breakdown-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.summary-breakdown-head h2{margin:2px 0 0;font-size:18px}.summary-breakdown-head small{color:var(--text-muted);font-weight:900}
+.summary-breakdown-table{max-height:min(58vh,520px);overflow:auto}
+.summary-breakdown-table tfoot th{position:sticky;bottom:0;z-index:1;background:#fff;border-top:2px solid var(--grid-line)}
+@media(max-width:700px){.summary-breakdown-modal{width:100%}}
+
+.bank-debt-values .summary-drilldown-sub{text-align:center}
+.bank-debt-values .summary-drilldown-sub+.summary-drilldown-sub{border-inline-start:1px solid var(--grid-line)}
+
+.summary-breakdown-note{display:block;margin-top:2px;color:var(--text-muted);font-weight:600}
+
+.summary-source-link{display:inline-flex;align-items:center;margin-inline-start:8px;padding:2px 7px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--brand);font:inherit;font-size:10px;font-weight:900;cursor:pointer}
+.summary-source-link:hover,.summary-source-link:focus-visible{background:#eef5ff}
+.archived-parties-dialog{width:min(760px,calc(100vw - 28px));display:grid;gap:10px}

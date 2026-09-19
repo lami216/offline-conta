@@ -80,3 +80,23 @@ test("party ledger filters real compatible roles and transient documents overlay
 
 
 test("bank movement-only permission has its own navigation gate",async()=>{const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));assert.match(source,/movements:"banks\.movements\.view"/);assert.match(source,/const canView=.*id==="banks".*bankNav\.some/);});
+
+test("traceable records open details first and expose a source-navigation action",async()=>{
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.match(source,/function DocumentDetail\([^)]*onSource/);
+  assert.match(source,/onSource&&<button className="primary" onClick=\{onSource\}>الانتقال إلى المصدر<\/button>/);
+  assert.match(source,/const openDocumentSource = async \(document: DocumentRecord\)/);
+  for(const mapping of [
+    /document\.kind==="sale"[\s\S]*?navigate\("pos"\)/,
+    /document\.kind==="purchase"[\s\S]*?navigate\("purchases"\)/,
+    /document\.kind==="expense"[\s\S]*?navigate\("expenses"\)/,
+    /document\.kind==="payment"[\s\S]*?setPartyDetail\(party\)/,
+    /document\.kind==="transfer"[\s\S]*?navigate\("transfers"\)/,
+    /document\.kind==="adjustment"[\s\S]*?navigate\("adjustments"\)/,
+    /document\.kind==="account-transfer"[\s\S]*?setBankTab\("transfers"\)/,
+    /document\.kind==="account-adjustment"[\s\S]*?setBankTab\("adjustment"\)/,
+  ]) assert.match(source,mapping);
+  assert.match(source,/stockRows\.map\(row=><tr key=\{row\.id\} onClick=\{\(\)=>row\.documentId&&openDoc\(row\.documentId\)\}/);
+  assert.match(source,/financialRows\.map\(row=><tr key=\{row\.id\} onClick=\{\(\)=>row\.documentId&&openDoc\(row\.documentId\)\}/);
+  assert.match(source,/fallbackMovements\.map\(movement=><tr[^>]+onClick=\{\(\)=>movement\.documentId&&openDoc\(movement\.documentId\)\}/);
+});

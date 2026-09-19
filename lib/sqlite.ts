@@ -48,6 +48,7 @@ const sqlScalarFields = new Set([
   "_id","id","key","kind","status","partyId","partyType","paymentMethod","type","direction","productId","categoryId",
   "documentId","parentDocumentId","warehouseId","recurringId","code","legacyKey","usernameNormalized","sourceType",
   "sourceEntityType","sourceKey","businessDate","isArchived","isReversal","isActive","isSalesDefault","occurrenceKey",
+  "expiryDate","receivable","payable",
 ]);
 const sqlRangeFields = new Set(["occurredAt","createdAt","updatedAt","expiresAt","archivedAt","businessDate","expiryDate","receivable","payable"]);
 const sqlFieldName = /^[A-Za-z_][A-Za-z0-9_]*$/;

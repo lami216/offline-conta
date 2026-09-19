@@ -256,18 +256,19 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     await db.collection("parties").updateOne({id:partyId},{$set:{name,phone,updatedAt:new Date()}},{session});
     return partyId;
   }
+  if (type === "party.restore") {
+    const partyId=text(body.id),party=await db.collection("parties").findOne({id:partyId,isArchived:true},{session});
+    if(!party)throw new CommandError("الطرف المؤرشف غير موجود",404);
+    await db.collection("parties").updateOne({id:partyId},{$set:{isArchived:false,archivedAt:null,updatedAt:new Date()}},{session});
+    return partyId;
+  }
   if (type === "party.delete") {
     const partyId=text(body.id),party=await db.collection("parties").findOne({id:partyId,isArchived:{$ne:true}},{session});
     if(!party)throw new CommandError("الطرف غير موجود",404);
     const rawReceivable=Number(party.receivable??0),rawPayable=Number(party.payable??0),receivable=Number.isFinite(rawReceivable)?Math.max(0,rawReceivable):0,payable=Number.isFinite(rawPayable)?Math.max(0,rawPayable):0;
-    const hasBalance=receivable>0||payable>0;
-    if(hasBalance&&body.writeOffBalance!==true)throw new CommandError("يجب تأكيد شطب رصيد الطرف قبل الحذف",409);
+    if(receivable>0||payable>0)throw new CommandError("لا يمكن حذف أو أرشفة الطرف ما دام لديه رصيد قائم. سوِّ الحساب أولاً.",409);
     const historicalReference=await db.collection("documents").findOne({partyId},{session})||await db.collection("financialMovements").findOne({partyId},{session});
-    if(hasBalance){
-      const balanceBefore=receivable-payable,settlement={...baseDocument("settlement","WRITEOFF-DEL"),partyId,partyName:party.name,warehouseId:null,warehouseName:null,destinationWarehouseId:null,destinationWarehouseName:null,parentDocumentId:null,paymentMethod:null,title:"شطب الرصيد قبل حذف الطرف",total:receivable+payable,dueTotal:0,paidTotal:0,lines:[],partyBalanceBefore:balanceBefore,partyBalanceDelta:-balanceBefore,partyBalanceAfter:0,settledReceivable:receivable,settledPayable:payable,partyDeletionSettlement:true,partyDeletionWriteOff:true};
-      await db.collection("documents").insertOne(settlement,{session});
-    }
-    if(historicalReference||hasBalance){await db.collection("parties").updateOne({id:partyId},{$set:{isArchived:true,archivedAt:new Date(),receivable:0,payable:0,net:0,updatedAt:new Date()}},{session});return {id:partyId,disposition:"archived"};}
+    if(historicalReference){await db.collection("parties").updateOne({id:partyId},{$set:{isArchived:true,archivedAt:new Date(),updatedAt:new Date()}},{session});return {id:partyId,disposition:"archived"};}
     await db.collection("importMappings").deleteMany({targetEntityType:"parties",targetId:partyId},{session});
     await db.collection("parties").deleteOne({id:partyId},{session});
     return {id:partyId,disposition:"deleted"};
@@ -546,9 +547,9 @@ export async function POST(request: Request) {const licenseDenied=await requireV
   let type = "unknown";
   try {
     const body = await request.json() as Input; type = text(body.type);
-    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete"};
+    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
     let capability=map[type];
-    if(["party-cash.post","party.update","party.delete"].includes(type)){
+    if(["party-cash.post","party.update","party.delete","party.restore"].includes(type)){
       const party=await getDatabase().collection("parties").findOne({id:text(body.partyId??body.id)});
       if(party){const supplier=resolvePartyType(party)==="supplier";capability=type==="party-cash.post"?(supplier?"suppliers.pay":"customers.collect"):type==="party.delete"?(supplier?"suppliers.delete":"customers.delete"):(supplier?"suppliers.edit":"customers.edit");}
     }

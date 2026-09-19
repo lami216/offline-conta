@@ -58,10 +58,10 @@ const jsonExpr = (field:string) => `json_extract(data_json,'${jsonPath(field)}')
 const jsonTypeExpr = (field:string) => `json_type(data_json,'${jsonPath(field)}')`;
 function sqlFieldCandidate(field:string, expected:unknown):SqlCandidate {
   if (!sqlFieldName.test(field) || field.includes(".") || !sqlScalarFields.has(field)) return {sql:"",params:[],complete:false};
-  const keyField=["_id","id","key"].includes(field),expr=keyField?"record_key":jsonExpr(field),typeExpr=keyField?"":jsonTypeExpr(field);
+  const keyField=field==="_id",expr=keyField?"record_key":jsonExpr(field),typeExpr=keyField?"":jsonTypeExpr(field);
   if (sqlPrimitive(expected)) {
     if (expected === null) return keyField ? {sql:"0",params:[],complete:true} : {sql:`${typeExpr}='null'`,params:[],complete:true};
-    return {sql:`${expr}=?`,params:[String(expected)],complete:true};
+    return {sql:`${expr}=?`,params:[keyField?String(expected):sqlValue(expected)],complete:true};
   }
   if (!expected || typeof expected !== "object" || Array.isArray(expected) || expected instanceof Date) return {sql:"",params:[],complete:false};
   const clauses:string[]=[],params:Array<string|number|null>=[];let complete=true;
@@ -181,6 +181,9 @@ export function ensureDatabaseSchema(input:Database.Database|SqliteDatabase){con
  ["users_username_normalized_unique","users","json_extract(data_json,'$.usernameNormalized')","json_extract(data_json,'$.usernameNormalized') IS NOT NULL AND json_extract(data_json,'$.usernameNormalized')<>''"],
  ["import_mapping_source_unique","import_mappings","json_extract(data_json,'$.sourceType'),json_extract(data_json,'$.sourceEntityType'),json_extract(data_json,'$.sourceKey')","json_extract(data_json,'$.sourceType') IS NOT NULL AND json_extract(data_json,'$.sourceEntityType') IS NOT NULL AND json_extract(data_json,'$.sourceKey') IS NOT NULL"],
  ] as const;db.transaction(()=>{for(const[name,table,expression,predicate]of indexes){try{db.exec(`CREATE UNIQUE INDEX ${name} ON ${table}(${expression}) WHERE ${predicate}`)}catch(error){throw new Error(`SQLite migration v2 cannot create ${name}; existing duplicate data must be corrected without deleting records: ${String((error as Error).message)}`)}}db.prepare("INSERT INTO schema_migrations VALUES(2,?)").run(new Date().toISOString())})();version=2}if(version<3){const indexes=[["warehouses_legacy_key_unique","warehouses"],["parties_legacy_key_unique","parties"]] as const;db.transaction(()=>{for(const[name,table]of indexes){try{db.exec(`CREATE UNIQUE INDEX ${name} ON ${table}(json_extract(data_json,'$.legacyKey')) WHERE json_extract(data_json,'$.legacyKey') IS NOT NULL AND json_extract(data_json,'$.legacyKey')<>''`)}catch(error){throw new Error(`SQLite migration v3 cannot create ${name}; existing duplicate data must be corrected without deleting records: ${String((error as Error).message)}`)}}db.prepare("INSERT INTO schema_migrations VALUES(3,?)").run(new Date().toISOString())})();version=3}if(version<4){db.transaction(()=>{db.exec(`CREATE TABLE IF NOT EXISTS product_categories(record_key TEXT PRIMARY KEY,data_json TEXT NOT NULL)`);db.prepare("INSERT INTO schema_migrations VALUES(4,?)").run(new Date().toISOString())})();version=4}if(version<5){db.transaction(()=>{db.exec(`DROP INDEX IF EXISTS financial_document_type_unique;CREATE UNIQUE INDEX financial_document_type_active_unique ON financial_movements(json_extract(data_json,'$.documentId'),json_extract(data_json,'$.type')) WHERE json_extract(data_json,'$.documentId') IS NOT NULL AND json_extract(data_json,'$.type') IS NOT NULL AND COALESCE(json_extract(data_json,'$.status'),'posted')<>'reversed' AND COALESCE(json_extract(data_json,'$.isReversal'),0)<>1;`);db.prepare("INSERT INTO schema_migrations VALUES(5,?)").run(new Date().toISOString())})();version=5}if(version<6){const indexes=[
+["documents_id_idx","documents","json_extract(data_json,'$.id')"],
+["products_id_idx","products","json_extract(data_json,'$.id')"],
+["parties_id_idx","parties","json_extract(data_json,'$.id')"],
 ["documents_kind_status_time_idx","documents","json_extract(data_json,'$.kind'),json_extract(data_json,'$.status'),json_extract(data_json,'$.occurredAt')"],
 ["documents_party_status_time_idx","documents","json_extract(data_json,'$.partyId'),json_extract(data_json,'$.status'),json_extract(data_json,'$.occurredAt')"],
 ["documents_payment_time_idx","documents","json_extract(data_json,'$.paymentMethod'),json_extract(data_json,'$.occurredAt')"],

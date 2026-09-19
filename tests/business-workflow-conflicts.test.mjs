@@ -266,6 +266,17 @@ test("a mixed business day can be unwound in dependency order back to the exact 
   assert.equal((await activeFinancial({})).length,0);
   for(const id of [purchaseId,transferId,cashSaleId,creditSaleId,receiptId,expenseId])assert.equal((await db.collection("documents").findOne({id})).status,"voided");
   assert.equal((await db.collection("accountTransfers").findOne({id:bankTransferId})).status,"voided");
+  const [salesReport,purchasesReport,expenseReport,financialReport,stockReport,overview]=await Promise.all([
+    buildReport(db,allTime("sales")),
+    buildReport(db,allTime("purchases")),
+    buildReport(db,allTime("expenses")),
+    buildReport(db,allTime("financial")),
+    buildReport(db,allTime("stock")),
+    buildReport(db,allTime("overview")),
+  ]);
+  assert.deepEqual([salesReport.summary.netSales,purchasesReport.summary.total,expenseReport.summary.total,financialReport.summary.incoming,financialReport.summary.outgoing,financialReport.summary.net],[0,0,0,0,0,0]);
+  assert.equal(stockReport.summary.netChange,10);
+  assert.deepEqual([overview.summary.sales,overview.summary.purchases,overview.summary.expenses,overview.summary.currentReceivable,overview.summary.currentPayable,overview.summary.currentInventoryValue,overview.summary.currentAccountsBalance],[0,0,0,0,0,500,1000]);
 });
 
 test("latest opening-balance correction can be reversed after later bank activity without undoing that activity",async()=>{

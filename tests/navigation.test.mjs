@@ -153,3 +153,21 @@ test("party, stock, and bank transaction drafts register with the shared unsaved
   assert.match(source,/tab==="transfers"\)registerEditorGuard/);
   assert.match(source,/tab==="adjustment"\)registerEditorGuard/);
 });
+
+
+test("local edit actions and same-view bank tab changes cannot replace a dirty editor without confirmation", async () => {
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.match(source,/const prepareEditorReplacement = async \(\) =>/);
+  assert.match(source,/if \(\(id !== view \|\| options\.replaceEditor\) && !await prepareEditorReplacement\(\)\) return false/);
+  assert.match(source,/const startEdit=async\(document:DocumentRecord\)=>\{if\(await p\.prepareEditorReplacement\(\)\)setEditing\(document\)\}/);
+  assert.match(source,/const startTransferEdit=async\([^\n]+prepareEditorReplacement\(\)\)loadTransfer/);
+  assert.match(source,/const startAdjustmentEdit=async\([^\n]+prepareEditorReplacement\(\)\)loadAdjustment/);
+  assert.match(source,/item\.id===effectiveBankTab\|\|await navigate\("banks",\{replaceEditor:true\}\)/);
+});
+
+test("menu destination state changes only after guarded navigation succeeds", async () => {
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.match(source,/if\(await navigate\("reports"\)\)setReportType\(id\)/);
+  assert.match(source,/if\(await navigate\("settings"\)\)setSettingsTab\(item\.id\)/);
+  assert.match(source,/if\(!await prepareEditorReplacement\(\)\)return;setSettingsTab\(item\.id\);setView\("settings"\)/);
+});

@@ -1410,8 +1410,8 @@ function MultiStockForm({
     setLines(values.lines);
     editorBaseline.current=JSON.stringify(values);
   },[editingDocument,mode,setFrom,setLines,setReason,setTo]);
-  const resetEditor=()=>{setLines([]);setReason("");setQ("");editorBaseline.current="";onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
-  const discardEditor=()=>{setLines([]);setReason("");setQ("");if(mode==="transfer")setTo("");editorBaseline.current="";onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
+  const resetEditor=()=>{setLines([]);setReason("");setQ("");onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
+  const discardEditor=()=>{setLines([]);setReason("");setQ("");if(mode==="transfer")setTo("");onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
   useEffect(()=>{registerEditorGuard({isEditing:()=>Boolean(editingDocument)||draftDirty(),isDirty:draftDirty,discard:discardEditor});return()=>registerEditorGuard(null)});
   async function submit() {
     const body = mode === "transfer"

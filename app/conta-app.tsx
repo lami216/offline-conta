@@ -1156,7 +1156,7 @@ function PartyEditDialog({party,run,canEdit,canDelete,close}:{party:Party;run:Ru
 }
 function PartyPage({party,data,openDoc,run,editRequest,clearEditRequest}:{party:Party;data:BootstrapData;openDoc:(id:string)=>void;run:RunCommand;editRequest:string|null;clearEditRequest:()=>void}) {
   const confirmAction=useAppConfirm();
-  const today=localBusinessDay(),[from,setFrom]=useState(party.isArchived?"":today),[to,setTo]=useState(party.isArchived?"":today),[amount,setAmount]=useState(""),[paymentMethod,setPaymentMethod]=useState(""),[direction,setDirection]=useState<"receive"|"pay">("receive"),[note,setNote]=useState(""),[editingPaymentId,setEditingPaymentId]=useState<string|null>(null);
+  const today=localBusinessDay(),[from,setFrom]=useState(today),[to,setTo]=useState(today),[amount,setAmount]=useState(""),[paymentMethod,setPaymentMethod]=useState(""),[direction,setDirection]=useState<"receive"|"pay">("receive"),[note,setNote]=useState(""),[editingPaymentId,setEditingPaymentId]=useState<string|null>(null);
   const customer=resolvePartyType(party)==="customer", archived=party.isArchived===true, balance=party.receivable-party.payable,summary=data.partyFinancialSummaries.find(item=>item.partyId===party.id),metrics=partyTradeMetrics(summary,customer?"customer":"supplier");
   useEffect(()=>{if(archived){setFrom("");setTo("")}},[party.id,archived]);
   const canCreatePayment=!archived&&canUseCapability(data.principal,customer?"customers.collect":"suppliers.pay"),canEditPayment=!archived&&canUseCapability(data.principal,customer?"customers.collect.edit":"suppliers.pay.edit"),canDeletePayment=!archived&&canUseCapability(data.principal,customer?"customers.collect.delete":"suppliers.pay.delete");

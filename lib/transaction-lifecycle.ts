@@ -53,6 +53,12 @@ async function preserveHistoricalPartyArchiveIfBalanced(db:Db,session:ClientSess
   if(!party||partyNet(party as {receivable?:unknown;payable?:unknown})!==0)return;
   await db.collection("parties").updateOne({id:partyId},{$set:{isArchived:true,archivedAt:archivedAt??new Date(),updatedAt:new Date()}},{session});
 }
+async function preserveHistoricalWarehouseArchiveIfEmpty(db:Db,session:ClientSession,warehouseId:string,wasArchived:boolean,archivedAt:unknown){
+  if(!wasArchived)return;
+  const occupied=await db.collection("products").findOne({[`stocks.${warehouseId}`]:{$exists:true,$ne:0}},{session});
+  if(occupied)return;
+  await db.collection("warehouses").updateOne({_id:warehouseId},{$set:{isArchived:true,isSalesDefault:false,archivedAt:archivedAt??new Date(),updatedAt:new Date()}},{session});
+}
 
 export async function postFinancialMovement(db: Db, session: ClientSession, document: Stored, direction: Direction, amount: number, type: string) {
   if (!amount) return null;
@@ -159,6 +165,7 @@ async function updateTransfer(db: Db, session: ClientSession, body: Input) {
   const oldFrom = await db.collection("warehouses").findOne({ _id: String(original.warehouseId) }, { session });
   const oldTo = await db.collection("warehouses").findOne({ _id: String(original.destinationWarehouseId) }, { session });
   if (!oldFrom || !oldTo) throw new LifecycleCommandError("تعذر تحديد مخازن التحويل الأصلية", 409);
+  const oldFromWasArchived=oldFrom.isArchived===true,oldFromArchivedAt=oldFrom.archivedAt,oldToWasArchived=oldTo.isArchived===true,oldToArchivedAt=oldTo.archivedAt;
   const oldLines = (original.lines ?? []) as Stored[], oldIds = oldLines.map(line => String(line.productId));
   const oldProducts = await loadProducts(db, session, oldIds), revision = Number(original.revision ?? 0) + 1, audit = stockAuditDocument(original, revision);
   for (const line of oldLines) {
@@ -184,6 +191,8 @@ async function updateTransfer(db: Db, session: ClientSession, body: Input) {
     lines.push({ id: (oldLines.find(old => old.productId === line.productId)?.id as string | undefined) ?? id("line"), productId: line.productId, description: product.name, quantity: line.quantity, unitPrice: 0, lineTotal: 0 });
   }
   await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: { warehouseId: fromId, warehouseName: from.name, destinationWarehouseId: toId, destinationWarehouseName: to.name, lines, updatedAt: new Date(), revision } }, { session });
+  await preserveHistoricalWarehouseArchiveIfEmpty(db,session,String(oldFrom._id),oldFromWasArchived,oldFromArchivedAt);
+  await preserveHistoricalWarehouseArchiveIfEmpty(db,session,String(oldTo._id),oldToWasArchived,oldToArchivedAt);
   return documentId;
 }
 
@@ -225,6 +234,7 @@ async function updateAdjustment(db: Db, session: ClientSession, body: Input) {
   if (input.length !== oldIds.length || input.some(line => !oldIds.includes(line.productId))) throw new LifecycleCommandError("لا يمكن تغيير منتجات سند التصحيح بعد اعتماده؛ عدّل الكميات فقط أو ألغ السند وأنشئ سندًا جديدًا", 409);
   const warehouse = await db.collection("warehouses").findOne({ _id: String(original.warehouseId) }, { session });
   if (!warehouse) throw new LifecycleCommandError("مخزن التصحيح غير موجود", 409);
+  const warehouseWasArchived=warehouse.isArchived===true,warehouseArchivedAt=warehouse.archivedAt;
   const products = await loadProducts(db, session, oldIds), revision = Number(original.revision ?? 0) + 1, audit = stockAuditDocument(original, revision);
   for (const old of oldLines) {
     const product = products.get(String(old.productId))!, oldDelta = Number(old.quantity ?? 0);
@@ -241,6 +251,7 @@ async function updateAdjustment(db: Db, session: ClientSession, body: Input) {
     revisedLines.push({ ...old, description: `${product.name} — ${reason} (قبل ${before}، بعد ${line.actualQuantity})`, quantity: delta, balanceBefore: before, balanceAfter: line.actualQuantity });
   }
   await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: { title: reason, lines: revisedLines, updatedAt: new Date(), revision } }, { session });
+  await preserveHistoricalWarehouseArchiveIfEmpty(db,session,String(warehouse._id),warehouseWasArchived,warehouseArchivedAt);
   return documentId;
 }
 

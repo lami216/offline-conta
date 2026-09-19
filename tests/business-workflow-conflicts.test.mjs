@@ -348,3 +348,26 @@ test("editing a settled historical movement must not make an archived zero-balan
   customer=await party("customer");
   assert.deepEqual([customer.isArchived,customer.receivable,customer.payable,customer.net],[true,0,0,0]);
 });
+
+test("net-neutral historical stock edits keep an empty archived warehouse archived",async()=>{
+  const productId=await product(10),transferId=await command({type:"transfer.post",fromWarehouseId:"a",toWarehouseId:"b",lines:[{productId,quantity:10}]});
+  await command({type:"warehouse.default",warehouseId:"b"});
+  await command({type:"warehouse.delete",id:"a"});
+  assert.equal((await db.collection("warehouses").findOne({_id:"a"})).isArchived,true);
+  await command({type:"transfer.update",documentId:transferId,fromWarehouseId:"a",toWarehouseId:"b",lines:[{productId,quantity:10}]});
+  assert.deepEqual([(await db.collection("warehouses").findOne({_id:"a"})).isArchived,await stock(productId,"a"),await stock(productId,"b")],[true,0,10]);
+
+  await command({type:"transfer.void",documentId:transferId});
+  assert.deepEqual([(await db.collection("warehouses").findOne({_id:"a"})).isArchived,await stock(productId,"a"),await stock(productId,"b")],[false,10,0]);
+});
+
+test("net-neutral adjustment edit does not resurrect an archived empty warehouse",async()=>{
+  const productId=await product(10),adjustmentId=await command({type:"adjustment.post",warehouseId:"a",reason:"count zero",lines:[{productId,actualQuantity:0}]});
+  await command({type:"warehouse.default",warehouseId:"b"});
+  await command({type:"warehouse.delete",id:"a"});
+  assert.equal((await db.collection("warehouses").findOne({_id:"a"})).isArchived,true);
+  await command({type:"adjustment.update",documentId:adjustmentId,reason:"confirmed zero",lines:[{productId,actualQuantity:0}]});
+  assert.deepEqual([(await db.collection("warehouses").findOne({_id:"a"})).isArchived,await stock(productId,"a")],[true,0]);
+  await command({type:"adjustment.void",documentId:adjustmentId});
+  assert.deepEqual([(await db.collection("warehouses").findOne({_id:"a"})).isArchived,await stock(productId,"a")],[false,10]);
+});

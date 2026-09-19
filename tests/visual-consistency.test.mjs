@@ -231,3 +231,14 @@ test("account overview is accounts-only, global, and uses a two-region semantic 
   assert.match(css, /\.bank-summary\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.doesNotMatch(css, /\.banks-workspace\{[^}]*grid-template-rows:[^}]*bank-summary/);
 });
+
+
+test("new audit dialogs share escape and focus containment behavior", () => {
+  const app=normalizePresentationSource(source);
+  assert.match(app,/function handleModalKeyboard/);
+  assert.match(app,/event\.key==="Escape"/);
+  assert.match(app,/event\.key!=="Tab"/);
+  assert.match(app,/summary-breakdown-modal[\s\S]*?autoFocus[^>]+aria-label="إغلاق"/);
+  assert.match(app,/archived-parties-dialog[\s\S]*?autoFocus[^>]+aria-label="إغلاق"/);
+  assert.match(app,/وسائل الدفع المؤرشفة[\s\S]*?handleModalKeyboard/);
+});

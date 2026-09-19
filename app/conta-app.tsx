@@ -104,7 +104,8 @@ type BankTab = "accounts" | "movements" | "transfers" | "adjustment";
 type SummarySourceTarget =
   | { kind: "view"; view: View; bankTab?: BankTab }
   | { kind: "report"; reportType: ReportType; period: CommittedPeriod }
-  | { kind: "party"; partyId: string };
+  | { kind: "party"; partyId: string }
+  | { kind: "document"; documentId: string };
 type BankSourceRequest = { kind: "transfer" | "adjustment"; documentId: string };
 type SettingsTab = "general" | "users" | "data" | "license" | "contact";
 type LicenseInfo = {licenseId:string;storeId:string;customerName:string;storeName:string;deviceId:string;issuedAt?:string;type:"perpetual"|"temporary";durationSeconds:number|null;remainingSeconds:number|null};
@@ -359,6 +360,7 @@ function ContaAppContent() {
     else setPurchaseEditRequest(id);
   };
   const openSummarySource = async (target: SummarySourceTarget) => {
+    if (target.kind === "document") { await openDoc(target.documentId); return; }
     if (target.kind === "report") { if(!await navigate("reports"))return;setReportType(target.reportType);setReportSourceRequest({reportType:target.reportType,period:target.period});return; }
     if (target.kind === "party") {
       const party=data.parties.find(item=>item.id===target.partyId);
@@ -1528,7 +1530,7 @@ function Reports({ data, openDoc, openSource, type, sourceRequest, clearSourceRe
     if(key==="currentAccountsBalance")return setSummaryDetail({title:tr("إجمالي الأرصدة الحالية"),total:reportNumber(result.summary.currentAccountsBalance),rows:(result.bankAccounts??[]).map(account=>({id:`overview-account-${account.id}`,label:account.name,value:reportNumber(account.balance),source:{kind:"view",view:"banks",bankTab:"accounts"}}))});
     if(key==="currentInventoryValue")return setSummaryDetail({title:tr("إجمالي قيمة المخزون"),total:reportNumber(result.summary.currentInventoryValue),rows:(result.warehouseValues??[]).map(warehouse=>({id:`overview-warehouse-${warehouse.id}`,label:warehouse.name,meta:warehouse.archived?tr("مؤرشف"):undefined,value:reportNumber(warehouse.value),source:{kind:"view",view:"warehouses"}}))});
     if(key==="currentReceivable"||key==="currentPayable"){const receivable=key==="currentReceivable";return setSummaryDetail({title:receivable?tr("إجمالي المستحق لنا"):tr("إجمالي المستحق علينا"),total:reportNumber(result.summary[key]),rows:(result.parties??[]).map(party=>({id:`overview-party-${key}-${String(party.id)}`,label:String(party.name??""),meta:party.partyType==="customer"?tr("عميل"):tr("مورد"),value:reportNumber(receivable?party.receivable:party.payable),source:{kind:"party",partyId:String(party.id)}}))})}
-    if(key==="sales"){const sale=detailTotal(details?.sales,"sale"),returns=detailTotal(details?.sales,"return");return setSummaryDetail({title:tr("صافي المبيعات"),total:reportNumber(result.summary.sales),rows:[{id:"overview-sales-total",label:tr("بيع"),value:sale,source:{kind:"report",reportType:"sales",period:committedPeriod}},{id:"overview-returns-total",label:tr("حركة تاريخية"),value:returns,source:{kind:"report",reportType:"sales",period:committedPeriod}}]})}
+    if(key==="sales"){const salesRows=details?.sales??[],sale=detailTotal(salesRows,"sale"),returnRows=salesRows.filter(row=>row.kind==="return");return setSummaryDetail({title:tr("صافي المبيعات"),total:reportNumber(result.summary.sales),rows:[{id:"overview-sales-total",label:tr("بيع"),value:sale,source:{kind:"report",reportType:"sales",period:committedPeriod}},...returnRows.map(row=>({id:`overview-return-${row.id}`,label:`${tr("حركة تاريخية")} · ${String(row.number??"")}`,meta:row.occurredAt?formatDate(String(row.occurredAt)):undefined,value:reportNumber(row.value),source:{kind:"document" as const,documentId:String(row.documentId)}}))]})}
     if(key==="purchases"){const value=reportNumber(result.summary.purchases);return setSummaryDetail({title:tr("إجمالي المشتريات"),total:value,rows:[{id:"overview-purchases-total",label:tr("شراء"),value,source:{kind:"report",reportType:"purchases",period:committedPeriod}}]})}
     if(key==="expenses"){const value=reportNumber(result.summary.expenses);return setSummaryDetail({title:tr("إجمالي المصاريف"),total:value,rows:[{id:"overview-expenses-total",label:tr("مصروف"),value,source:{kind:"report",reportType:"expenses",period:committedPeriod}}]})}
     const sales=reportNumber(result.summary.sales),salesCost=reportNumber(result.summary.salesCost),expenses=reportNumber(result.summary.expenses);

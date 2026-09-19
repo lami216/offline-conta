@@ -115,6 +115,7 @@ function sqlCandidate(query:DbDocument={}):SqlCandidate {
 }
 const setPath = (row: DbDocument, path: string, value: any) => { const keys=path.split("."); let at=row; for(const key of keys.slice(0,-1)) at=at[key]??={}; at[keys.at(-1)!]=value; };
 const unsetPath = (row: DbDocument, path: string) => { const keys=path.split("."); let at:any=row; for(const key of keys.slice(0,-1)){at=at?.[key];if(at==null)return}delete at[keys.at(-1)!]; };
+const awaitProject=(rows:DbDocument[],spec:DbDocument)=>{const included=Object.entries(spec).filter(([,value])=>value);return rows.map(row=>{if(!included.length){const copy=structuredClone(row);for(const[key,value]of Object.entries(spec))if(!value)unsetPath(copy,key);return copy}const out:DbDocument={};for(const[key]of included)setPath(out,key,get(row,key));return out})};
 function applyUpdate(row: DbDocument, update: DbDocument, inserted=false) {
   if (update.$set) for (const [key,value] of Object.entries(update.$set)) setPath(row,key,value);
   if (update.$inc) for (const [key,value] of Object.entries(update.$inc)) setPath(row,key,Number(get(row,key)??0)+Number(value));
@@ -133,13 +134,35 @@ class Cursor {
   toArray(){return Promise.resolve(this.rows.map(row=>structuredClone(row)))}
   async next(){return (await this.toArray())[0]}
 }
+class SqlCursor {
+  private sortSpec:DbDocument|null=null;private skipCount=0;private limitCount:number|null=null;private projection:DbDocument|null=null;
+  constructor(private db:Database.Database,private table:string,private candidate:SqlCandidate){}
+  sort(spec:DbDocument){this.sortSpec=spec;return this}
+  limit(n:number){this.limitCount=n;return this}
+  skip(n:number){this.skipCount=n;return this}
+  project(spec:DbDocument){this.projection=spec;return this}
+  private sqlSortable(){return !this.sortSpec||Object.keys(this.sortSpec).every(key=>sqlFieldName.test(key)&&!key.includes(".")&&["_id","id","occurredAt","createdAt","name"].includes(key))}
+  async toArray(){
+    let rows:DbDocument[];
+    if(!this.sqlSortable()){
+      rows=(this.db.prepare(`SELECT data_json FROM ${this.table}${this.candidate.sql?` WHERE ${this.candidate.sql}`:""} ORDER BY rowid`).all(...this.candidate.params) as {data_json:string}[]).map(item=>decode(item.data_json));
+      const cursor=new Cursor(rows);if(this.sortSpec)cursor.sort(this.sortSpec);if(this.skipCount)cursor.skip(this.skipCount);if(this.limitCount!==null)cursor.limit(this.limitCount);if(this.projection)cursor.project(this.projection);return cursor.toArray();
+    }
+    const where=this.candidate.sql?` WHERE ${this.candidate.sql}`:"",order=this.sortSpec?Object.entries(this.sortSpec).map(([key,direction])=>`${key==="_id"?"record_key":jsonExpr(key)} ${Number(direction)<0?"DESC":"ASC"}`).join(", "):"rowid ASC",params=[...this.candidate.params];
+    let paging="";if(this.limitCount!==null){paging=" LIMIT ?";params.push(this.limitCount);if(this.skipCount){paging+=" OFFSET ?";params.push(this.skipCount)}}else if(this.skipCount){paging=" LIMIT -1 OFFSET ?";params.push(this.skipCount)}
+    rows=(this.db.prepare(`SELECT data_json FROM ${this.table}${where} ORDER BY ${order}${paging}`).all(...params) as {data_json:string}[]).map(item=>decode(item.data_json));
+    if(this.projection)rows=await new Cursor(rows).project(this.projection).toArray();
+    return rows.map(row=>structuredClone(row));
+  }
+  async next(){return (await this.limit(1).toArray())[0]}
+}
 class Collection<T extends DbDocument=DbDocument> {
   constructor(private db: Database.Database, private table:string){}
   private all(query:DbDocument={}){const candidate=sqlCandidate(query),where=candidate.sql?` WHERE ${candidate.sql}`:"";return (this.db.prepare(`SELECT data_json FROM ${this.table}${where} ORDER BY rowid`).all(...candidate.params) as {data_json:string}[]).map(x=>decode(x.data_json))}
   private key(row:DbDocument){return String(row._id??row.id??row.key??crypto.randomUUID())}
   private save(row:DbDocument,key?:string){const id=key??this.key(row);if(row._id===undefined)row._id=id;this.db.prepare(`INSERT INTO ${this.table}(record_key,data_json) VALUES(?,?) ON CONFLICT(record_key) DO UPDATE SET data_json=excluded.data_json`).run(id,encode(row));return id}
-  find(query:DbDocument={},options?:any){let rows=this.all(query).filter(row=>matches(row,query));if(options?.projection)rows=new Cursor(rows).project(options.projection) as any;return rows instanceof Cursor?rows:new Cursor(rows)}
-  async findOne(query:DbDocument={},options?:any){let rows:DbDocument[]=this.all(query).filter(row=>matches(row,query));if(options?.sort)rows=await new Cursor(rows).sort(options.sort).toArray();let row=rows[0];if(row&&options?.projection)row=(await new Cursor([row]).project(options.projection).toArray())[0];return (row??null) as T|undefined}
+  find(query:DbDocument={},options?:any){const candidate=sqlCandidate(query);if(candidate.complete){const cursor=new SqlCursor(this.db,this.table,candidate);if(options?.projection)cursor.project(options.projection);return cursor}let rows=this.all(query).filter(row=>matches(row,query));if(options?.projection)rows=awaitProject(rows,options.projection);return new Cursor(rows)}
+  async findOne(query:DbDocument={},options?:any){const cursor=this.find(query);if(options?.sort)cursor.sort(options.sort);cursor.limit(1);if(options?.projection)cursor.project(options.projection);return ((await cursor.next())??null) as T|undefined}
   async insertOne(document:T,_options?:any){const row=structuredClone(document);const key=this.key(row);try{this.db.prepare(`INSERT INTO ${this.table}(record_key,data_json) VALUES(?,?)`).run(key,encode({...row,_id:row._id??key}));return{insertedId:key}}catch(error){const sqliteCode=String((error as any)?.code??"");if(sqliteCode==="SQLITE_CONSTRAINT_UNIQUE"||sqliteCode==="SQLITE_CONSTRAINT_PRIMARYKEY"){(error as any).sqliteCode=sqliteCode;(error as any).code=11000;(error as any).message=`duplicate key: ${(error as any).message}`}throw error}}
   async insertMany(documents:T[],_options?:any){if(!documents.length)return{insertedCount:0};const statement=this.db.prepare(`INSERT INTO ${this.table}(record_key,data_json) VALUES(?,?)`),standalone=!this.db.inTransaction;let inserted=0;if(standalone)this.db.exec("BEGIN IMMEDIATE");try{for(const document of documents){const row=structuredClone(document),key=this.key(row);try{statement.run(key,encode({...row,_id:row._id??key}));inserted++}catch(error){const sqliteCode=String((error as any)?.code??"");if(sqliteCode==="SQLITE_CONSTRAINT_UNIQUE"||sqliteCode==="SQLITE_CONSTRAINT_PRIMARYKEY"){(error as any).sqliteCode=sqliteCode;(error as any).code=11000;(error as any).message=`duplicate key: ${(error as any).message}`}throw error}}if(standalone)this.db.exec("COMMIT");return{insertedCount:inserted}}catch(error){if(standalone&&this.db.inTransaction)this.db.exec("COMMIT");throw error}}
   async updateOne(filter:DbDocument,update:DbDocument,options?:any){const found=this.all(filter).find(row=>matches(row,filter));if(found){this.save(applyUpdate(found,update),this.key(found));return{matchedCount:1,modifiedCount:1}}if(options?.upsert){const base=Object.fromEntries(Object.entries(filter).filter(([k,v])=>!k.startsWith("$")&&!(v&&typeof v==="object")));const row=applyUpdate(base,update,true);this.save(row);return{matchedCount:0,upsertedCount:1}}return{matchedCount:0,modifiedCount:0}}

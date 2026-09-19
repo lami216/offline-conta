@@ -40,3 +40,13 @@ test("party aggregate dues never net different parties against each other", asyn
   assert.match(ui,/totals\.weOwe\+=Math\.abs\(net\)/);
   assert.match(ui,/PartyAggregateMetrics partyType=\{partyType\} metrics=\{aggregate\} owedToUs=\{aggregateDues\.owedToUs\} weOwe=\{aggregateDues\.weOwe\}/);
 });
+
+
+test("historical sales adjustments drill down to their exact source document", async () => {
+  const ui=await source("app/conta-app.tsx");
+  assert.match(ui,/kind: "document"; documentId: string/);
+  assert.match(ui,/target\.kind === "document"[^\n]+openDoc\(target\.documentId\)/);
+  assert.match(ui,/returnRows=salesRows\.filter\(row=>row\.kind==="return"\)/);
+  assert.match(ui,/source:\{kind:"document" as const,documentId:String\(row\.documentId\)\}/);
+  assert.doesNotMatch(ui,/overview-returns-total[^\n]+source:\{kind:"report",reportType:"sales"/);
+});

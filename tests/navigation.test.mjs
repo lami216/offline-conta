@@ -14,7 +14,7 @@ test("submenu current states require their parent view without resetting remembe
   assert.match(source, /warehouseNav\.map\(n=><PermissionNavItem[^>]+active=\{view===n\.id\}/);
   assert.match(source, /partyNav\.map\(item=><PermissionNavItem[^>]+active=\{view===item\.id\}/);
 
-  const navigateBody = source.match(/const navigate = (?:async )?\(id: View\) => \{([\s\S]*?)\n  \};/)?.[1];
+  const navigateBody = source.match(/const navigate = (?:async )?\(id: View, options: \{ replaceEditor\?: boolean \} = \{\}\) => \{([\s\S]*?)\n  \};/)?.[1];
   assert.ok(navigateBody);
   assert.doesNotMatch(navigateBody, /setBankTab|setReportType/);
 });
@@ -24,7 +24,7 @@ test("permission-aware navigation stays complete and disabled items cannot activ
   for (const collection of ["invoiceNav", "warehouseNav", "partyNav", "bankNav", "reportOrder"])
     assert.match(source, new RegExp(`${collection}\\.map\\(`));
   assert.doesNotMatch(source, /(?:invoiceNav|warehouseNav|partyNav)\.filter\([^\n]*can/);
-  assert.match(source, /if \(!canView\(id\)\) return/);
+  assert.match(source, /if \(!canView\(id\)\) return false/);
   assert.match(source, /disabled=\{!allowed\}/);
   assert.match(source, /aria-disabled=\{!allowed\?"true":undefined\}/);
   assert.match(source, /allowed&&active/);
@@ -106,4 +106,38 @@ test("expense history follows the universal detail-then-source flow",async()=>{
   const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
   assert.match(source,/sortedExpenses\.map\(document=><tr key=\{document\.id\} onClick=\{\(\)=>openDoc\(document\.id\)\}/);
   assert.match(source,/document\.kind==="expense"[\s\S]*?navigate\("expenses"\)[\s\S]*?setExpenseEditRequest\(document\.id\)/);
+});
+
+
+test("source navigation only mutates the destination after permission and dirty-editor guards succeed", async () => {
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.match(source,/const navigate = async \(id: View, options: \{ replaceEditor\?: boolean \} = \{\}\)/);
+  assert.match(source,/if \(!canView\(id\)\) return false/);
+  assert.match(source,/!await confirmAction\([^;]+\)\) return false/);
+  assert.match(source,/return true;/);
+  assert.match(source,/if\(!await navigate\("reports"\)\)return;setReportType/);
+  assert.match(source,/if\(await navigate\(targetView\)\)setPartyDetail\(party\)/);
+  assert.match(source,/navigate\("pos",\{replaceEditor:edit\}\)/);
+  assert.match(source,/navigate\("purchases",\{replaceEditor:edit\}\)/);
+  assert.match(source,/navigate\("expenses",\{replaceEditor:edit\}\)/);
+});
+
+test("new invoice and expense drafts participate in the unsaved-change guard", async () => {
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.ok((source.match(/isEditing: \(\) => Boolean\(editingDocumentId\) \|\| dirty\(\)/g)??[]).length>=2);
+  assert.match(source,/dirty=\(\)=>editingExpenseId\?snapshot\(\)!==baseline\.current:Boolean\(title\.trim\(\)\|\|amount\|\|paymentMethod\)/);
+  assert.match(source,/isEditing:\(\)=>Boolean\(editingExpenseId\)\|\|dirty\(\)/);
+});
+
+test("bank movement detail falls back locally when its source document is outside the user's visible document set", async () => {
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.match(source,/documentVisible=Boolean\(movement\.documentId&&data\.documents\.some\(document=>document\.id===movement\.documentId\)\)/);
+  assert.match(source,/if\(documentBacked&&documentVisible\)\{void openDoc\(movement\.documentId\);return\}setDetail/);
+});
+
+test("print-after-save never mounts a printable document from a missing bootstrap row", async () => {
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.match(source,/const autoPrintDocument=autoPrintId\?data\.documents\.find\(document=>document\.id===autoPrintId\)\?\?null:null/);
+  assert.match(source,/\{autoPrintDocument && <PrintableDocument document=\{autoPrintDocument\} data=\{data\} \/>\}/);
+  assert.doesNotMatch(source,/data\.documents\.find\(document => document\.id === autoPrintId\)!/);
 });

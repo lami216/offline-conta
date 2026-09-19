@@ -268,18 +268,19 @@ function ContaAppContent() {
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, []);
-  const navigate = async (id: View) => {
-    if (!canView(id)) return;
-    if (id !== view) {
+  const navigate = async (id: View, options: { replaceEditor?: boolean } = {}) => {
+    if (!canView(id)) return false;
+    if (id !== view || options.replaceEditor) {
       const guard=activeEditorGuard.current;
       if (guard?.isEditing()) {
-        if (guard.isDirty() && !await confirmAction({message:tr("لديك تعديلات غير محفوظة. هل تريد تجاهلها والانتقال؟")})) return;
+        if (guard.isDirty() && !await confirmAction({message:tr("لديك تعديلات غير محفوظة. هل تريد تجاهلها والانتقال؟")})) return false;
         guard.discard();
       }
     }
     if (id !== "adjustments") setAdjustmentPrefill(null);
     setExpenseEditRequest(null); setPartyPaymentEditRequest(null); setTransferEditRequest(null); setAdjustmentEditRequest(null); setBankSourceRequest(null); setReportSourceRequest(null);
     setView(id); setDoc(null); setPartyDetail(null); setMenu(false); setWarehouseMenu(false); setInvoiceMenu(false); setReportMenu(false); setPartyMenu(false); setBankMenu(false); setSettingsMenu(false);
+    return true;
   };
   const closeNavigationMenus = () => { setWarehouseMenu(false); setInvoiceMenu(false); setReportMenu(false); setPartyMenu(false); setBankMenu(false); setSettingsMenu(false); };
   const navigationKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
@@ -347,36 +348,37 @@ function ContaAppContent() {
   };
   const closeDoc = () => { setDoc(null); window.requestAnimationFrame(() => dialogOpenerRef.current?.focus()); };
   useEffect(() => { if (doc) window.requestAnimationFrame(() => dialogRef.current?.querySelector<HTMLElement>("button, input, select, textarea, [tabindex='0']")?.focus()); }, [doc]);
-  const editInvoice = (id: string) => {
+  const editInvoice = async (id: string) => {
     const document = data.documents.find(item => item.id === id);
-    if (!document || document.status !== "posted" || document.legacyKey || !["sale", "purchase"].includes(document.kind)) { openDoc(id); return; }
-    setDoc(null); setPartyDetail(null);
-    if (document.kind === "sale") { setSaleEditRequest(id); setView("pos"); }
-    else { setPurchaseEditRequest(id); setView("purchases"); }
+    if (!document || document.status !== "posted" || document.legacyKey || !["sale", "purchase"].includes(document.kind)) { await openDoc(id); return; }
+    const target:View=document.kind==="sale"?"pos":"purchases";
+    if(!await navigate(target,{replaceEditor:true}))return;
+    setPartyDetail(null);
+    if (document.kind === "sale") setSaleEditRequest(id);
+    else setPurchaseEditRequest(id);
   };
   const openSummarySource = async (target: SummarySourceTarget) => {
-    setDoc(null);
-    if (target.kind === "report") { setReportType(target.reportType); await navigate("reports"); setReportSourceRequest({reportType:target.reportType,period:target.period}); return; }
+    if (target.kind === "report") { if(!await navigate("reports"))return;setReportType(target.reportType);setReportSourceRequest({reportType:target.reportType,period:target.period});return; }
     if (target.kind === "party") {
       const party=data.parties.find(item=>item.id===target.partyId);
       if(!party)return;
       const targetView:View=resolvePartyType(party)==="customer"?"customers":"suppliers";
-      await navigate(targetView); setPartyDetail(party); return;
+      if(await navigate(targetView))setPartyDetail(party);return;
     }
+    if(target.bankTab&&!can(bankTabCapability[target.bankTab]))return;
+    if(!await navigate(target.view))return;
     if (target.bankTab) setBankTab(target.bankTab);
-    await navigate(target.view);
   };
   const openDocumentSource = async (document: DocumentRecord) => {
-    setDoc(null);
-    if(document.kind==="sale"){await navigate("pos");if(can("pos.edit")&&document.status==="posted"&&!document.legacyKey)setSaleEditRequest(document.id);return}
-    if(document.kind==="purchase"){await navigate("purchases");if(can("purchases.edit")&&document.status==="posted"&&!document.legacyKey)setPurchaseEditRequest(document.id);return}
-    if(document.kind==="expense"){await navigate("expenses");if(can("expenses.edit")&&document.status==="posted"&&!document.legacyKey)setExpenseEditRequest(document.id);return}
-    if(document.kind==="payment"&&document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(!party)return;const customer=resolvePartyType(party)==="customer";await navigate(customer?"customers":"suppliers");setPartyDetail(party);if(document.status==="posted"&&!party.isArchived&&can(customer?"customers.collect.edit":"suppliers.pay.edit"))setPartyPaymentEditRequest(document.id);return}
-    if(document.kind==="transfer"){await navigate("transfers");if(can("warehouses.transfer.edit")&&document.status==="posted")setTransferEditRequest(document.id);return}
-    if(document.kind==="adjustment"){await navigate("adjustments");if(can("warehouses.adjust.edit")&&document.status==="posted")setAdjustmentEditRequest(document.id);return}
-    if(document.kind==="account-transfer"){setBankTab("transfers");await navigate("banks");if(can("banks.transfer.edit")&&document.status==="posted")setBankSourceRequest({kind:"transfer",documentId:document.id});return}
-    if(document.kind==="account-adjustment"){setBankTab("adjustment");await navigate("banks");if(can("banks.deposit_withdraw.edit")&&document.status==="posted")setBankSourceRequest({kind:"adjustment",documentId:document.id});return}
-    if(document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(party){await navigate(resolvePartyType(party)==="customer"?"customers":"suppliers");setPartyDetail(party);return}}
+    if(document.kind==="sale"){const edit=can("pos.edit")&&document.status==="posted"&&!document.legacyKey;if(!await navigate("pos",{replaceEditor:edit}))return;if(edit)setSaleEditRequest(document.id);return}
+    if(document.kind==="purchase"){const edit=can("purchases.edit")&&document.status==="posted"&&!document.legacyKey;if(!await navigate("purchases",{replaceEditor:edit}))return;if(edit)setPurchaseEditRequest(document.id);return}
+    if(document.kind==="expense"){const edit=can("expenses.edit")&&document.status==="posted"&&!document.legacyKey;if(!await navigate("expenses",{replaceEditor:edit}))return;if(edit)setExpenseEditRequest(document.id);return}
+    if(document.kind==="payment"&&document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(!party)return;const customer=resolvePartyType(party)==="customer",edit=document.status==="posted"&&!party.isArchived&&can(customer?"customers.collect.edit":"suppliers.pay.edit");if(!await navigate(customer?"customers":"suppliers",{replaceEditor:edit}))return;setPartyDetail(party);if(edit)setPartyPaymentEditRequest(document.id);return}
+    if(document.kind==="transfer"){const edit=can("warehouses.transfer.edit")&&document.status==="posted";if(!await navigate("transfers",{replaceEditor:edit}))return;if(edit)setTransferEditRequest(document.id);return}
+    if(document.kind==="adjustment"){const edit=can("warehouses.adjust.edit")&&document.status==="posted";if(!await navigate("adjustments",{replaceEditor:edit}))return;if(edit)setAdjustmentEditRequest(document.id);return}
+    if(document.kind==="account-transfer"){if(!can(bankTabCapability.transfers))return;const edit=can("banks.transfer.edit")&&document.status==="posted";if(!await navigate("banks",{replaceEditor:edit}))return;setBankTab("transfers");if(edit)setBankSourceRequest({kind:"transfer",documentId:document.id});return}
+    if(document.kind==="account-adjustment"){if(!can(bankTabCapability.adjustment))return;const edit=can("banks.deposit_withdraw.edit")&&document.status==="posted";if(!await navigate("banks",{replaceEditor:edit}))return;setBankTab("adjustment");if(edit)setBankSourceRequest({kind:"adjustment",documentId:document.id});return}
+    if(document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(party){const target:View=resolvePartyType(party)==="customer"?"customers":"suppliers";if(await navigate(target))setPartyDetail(party);return}}
     await navigate("records");
   };
   useEffect(() => {
@@ -389,6 +391,7 @@ function ContaAppContent() {
     })()},80);
     return()=>{cancelled=true;window.clearTimeout(timer)};
   }, [autoPrintId, data.documents, locale]);
+  const autoPrintDocument=autoPrintId?data.documents.find(document=>document.id===autoPrintId)??null:null;
   if(!loading&&licenseStatus&&!licenseStatus.valid)return <div className="unlicensed-shell" dir={dir}><div className="unlicensed-session"><button className="language-switch soft" type="button" onClick={()=>setLocale(locale==="ar"?"fr":"ar")}><Globe/>{locale==="ar"?"Français":"العربية"}</button><form action="/api/auth/logout" method="post"><button className="soft" type="submit"><LogOut/>  {tr("خروج")}</button></form></div><SupportLicensePage initialStatus={licenseStatus} onActivated={()=>reload({blocking:true})}/></div>;
   return (
     <div className={`app-shell section-${view}`} dir={dir}>
@@ -419,7 +422,7 @@ function ContaAppContent() {
         </div>
       </aside>
       <main>
-        {autoPrintId && <PrintableDocument document={data.documents.find(document => document.id === autoPrintId)!} data={data} />}
+        {autoPrintDocument && <PrintableDocument document={autoPrintDocument} data={data} />}
         <header className="page-bar">
           <button className="icon mobile" onClick={() => setMenu(true)}>
             <Menu />
@@ -475,7 +478,7 @@ function ContaAppContent() {
               {view === "settings" && <SettingsPage data={data} reload={reload} tab={settingsTab} />}{" "}
             </>
           )}
-          {doc && <div className="modal-overlay" ref={dialogRef} role="dialog" aria-modal="true" aria-label={tr("ui.transactionRecord",{number:doc.number})} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); closeDoc(); } else if (event.key === "Tab") { const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')]; if (controls.length && ((event.shiftKey && document.activeElement === controls[0]) || (!event.shiftKey && document.activeElement === controls.at(-1)))) { event.preventDefault(); (event.shiftKey ? controls.at(-1) : controls[0])?.focus(); } } }}><div className="official-document-viewer"><DocumentDetail document={doc} data={data} close={closeDoc} onEdit={doc.status === "posted" && !doc.legacyKey && (doc.kind === "sale" ? can("pos.edit") : doc.kind === "purchase" ? can("purchases.edit") : false) ? () => editInvoice(doc.id) : undefined} onSource={() => void openDocumentSource(doc)} openLinked={openDoc} /></div></div>}
+          {doc && <div className="modal-overlay" ref={dialogRef} role="dialog" aria-modal="true" aria-label={tr("ui.transactionRecord",{number:doc.number})} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); closeDoc(); } else if (event.key === "Tab") { const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')]; if (controls.length && ((event.shiftKey && document.activeElement === controls[0]) || (!event.shiftKey && document.activeElement === controls.at(-1)))) { event.preventDefault(); (event.shiftKey ? controls.at(-1) : controls[0])?.focus(); } } }}><div className="official-document-viewer"><DocumentDetail document={doc} data={data} close={closeDoc} onEdit={doc.status === "posted" && !doc.legacyKey && (doc.kind === "sale" ? can("pos.edit") : doc.kind === "purchase" ? can("purchases.edit") : false) ? () => void editInvoice(doc.id) : undefined} onSource={() => void openDocumentSource(doc)} openLinked={openDoc} /></div></div>}
         </div>
       </main>
     </div>
@@ -844,7 +847,7 @@ function Pos({
   const snapshot = () => JSON.stringify({ lines, payment, partyId, priceMode });
   const dirty = () => editingDocumentId ? snapshot() !== baseline.current : lines.length > 0 || partyId !== "" || payment !== "" || priceMode !== initialSaleUiState.priceMode;
   const resetEditor = () => { clearPersistedSaleDraft(sessionStorage); setEditingDocumentId(null); setLines([]); setPartyId(""); setPayment(""); setPriceMode(initialSaleUiState.priceMode); setSelectedLine(null); setQuery(""); baseline.current = ""; };
-  useEffect(() => { registerEditorGuard({ isEditing: () => Boolean(editingDocumentId), isDirty: dirty, discard: resetEditor }); return () => registerEditorGuard(null); });
+  useEffect(() => { registerEditorGuard({ isEditing: () => Boolean(editingDocumentId) || dirty(), isDirty: dirty, discard: resetEditor }); return () => registerEditorGuard(null); });
   const loadDocument = async (document: DocumentRecord) => {
     if (!canEditSale || document.legacyKey || document.status !== "posted") { openDoc(document.id); return; }
     if (editingDocumentId && document.id !== editingDocumentId && dirty() && !await confirmAction({message:tr("لديك تعديلات غير محفوظة على الفاتورة الحالية. هل تريد تجاهلها وفتح الفاتورة الأخرى؟")})) return;
@@ -974,7 +977,7 @@ function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestP
   const snapshot = () => JSON.stringify({ lines, payment, partyId, warehouseId });
   const dirty = () => editingDocumentId ? snapshot() !== baseline.current : lines.length > 0 || partyId !== "" || warehouseId !== "" || payment !== "";
   const resetEditor = () => { for(const key of ["purchase-lines","purchase-party","purchase-warehouse","purchase-payment"])sessionStorage.removeItem(`conta:${key}`); setEditingDocumentId(null); setLines([]); setPartyId(""); setWarehouseId(""); setPayment(""); setSelectedLine(null); setQuery(""); baseline.current = ""; };
-  useEffect(() => { registerEditorGuard({ isEditing: () => Boolean(editingDocumentId), isDirty: dirty, discard: resetEditor }); return () => registerEditorGuard(null); });
+  useEffect(() => { registerEditorGuard({ isEditing: () => Boolean(editingDocumentId) || dirty(), isDirty: dirty, discard: resetEditor }); return () => registerEditorGuard(null); });
   const loadDocument = async (document: DocumentRecord) => {
     if (!canEditPurchase || document.legacyKey || document.status !== "posted") { openDoc(document.id); return; }
     if (editingDocumentId && document.id !== editingDocumentId && dirty() && !await confirmAction({message:tr("لديك تعديلات غير محفوظة على الفاتورة الحالية. هل تريد تجاهلها وفتح الفاتورة الأخرى؟")})) return;
@@ -1022,9 +1025,9 @@ function Expenses({ data, run, openDoc, editRequest, clearEditRequest, registerE
   const [editingExpenseId,setEditingExpenseId]=useSessionDraft<string|null>("expense-editing-document",null),baseline=useRef("");
   const today=localBusinessDay(),[historyQuery,setHistoryQuery]=useState(""),[historyFrom,setHistoryFrom]=useState(today),[historyTo,setHistoryTo]=useState(today),[historyAllTime,setHistoryAllTime]=useState(false);
   const accounts=data.paymentAccounts,accountName=(id:string|null)=>data.paymentAccounts.find(a=>a.id===id||a.code===id)?.name??"—";
-  const snapshot=()=>JSON.stringify({title,amount,date,paymentMethod}),dirty=()=>Boolean(editingExpenseId)&&snapshot()!==baseline.current;
+  const snapshot=()=>JSON.stringify({title,amount,date,paymentMethod}),dirty=()=>editingExpenseId?snapshot()!==baseline.current:Boolean(title.trim()||amount||paymentMethod);
   const resetEditor=()=>{for(const key of ["expense-title","expense-amount","expense-date","expense-payment"])sessionStorage.removeItem(`conta:${key}`);setTitle("");setAmount("");setDate(localBusinessDay());setPaymentMethod("");setEditingExpenseId(null);baseline.current=""};
-  useEffect(()=>{registerEditorGuard({isEditing:()=>Boolean(editingExpenseId),isDirty:dirty,discard:resetEditor});return()=>registerEditorGuard(null)});
+  useEffect(()=>{registerEditorGuard({isEditing:()=>Boolean(editingExpenseId)||dirty(),isDirty:dirty,discard:resetEditor});return()=>registerEditorGuard(null)});
   const loadExpense=(document:DocumentRecord)=>{if(!canEdit||document.legacyKey||document.status!=="posted"){openDoc(document.id);return}const values={title:document.title??"",amount:String(document.total),date:document.occurredAt.slice(0,10),paymentMethod:document.paymentMethod??""};setTitle(values.title);setAmount(values.amount);setDate(values.date);setPaymentMethod(values.paymentMethod);setEditingExpenseId(document.id);baseline.current=JSON.stringify(values)};
   // Parent source navigation deliberately replaces the editor with the selected expense.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1080,7 +1083,7 @@ function Banks({ data, run, openDoc, openSource, tab, sourceRequest, clearSource
   const movementColumns=useMemo(()=>[{key:"date",type:"date" as const,get:(m:BootstrapData["financialMovements"][number])=>m.occurredAt},{key:"type",type:"text" as const,get:(m:BootstrapData["financialMovements"][number])=>movementLabels[financialMovementKind(m.type)]??m.type},{key:"account",type:"text" as const,get:(m:BootstrapData["financialMovements"][number])=>name(m.paymentMethod)},{key:"amount",type:"money" as const,get:(m:BootstrapData["financialMovements"][number])=>m.direction==="in"?m.amount:-m.amount},{key:"document",type:"text" as const,get:(m:BootstrapData["financialMovements"][number])=>m.documentNumber}],[movementLabels,name]),{sort:movementSort,sortedRows:sortedMovements,toggle:toggleMovementSort}=useSortableRows(movements,movementColumns);
   const transferColumns=useMemo(()=>[{key:"date",type:"date" as const,get:(t:BootstrapData["accountTransfers"][number])=>t.occurredAt},{key:"from",type:"text" as const,get:(t:BootstrapData["accountTransfers"][number])=>name(t.fromAccountId)},{key:"to",type:"text" as const,get:(t:BootstrapData["accountTransfers"][number])=>name(t.toAccountId)},{key:"amount",type:"money" as const,get:(t:BootstrapData["accountTransfers"][number])=>t.amount},{key:"reference",type:"text" as const,get:(t:BootstrapData["accountTransfers"][number])=>t.number}],[name]),{sort:transferSort,sortedRows:sortedTransfers,toggle:toggleTransferSort}=useSortableRows(transfers,transferColumns);
   const {sort:adjustmentSort,sortedRows:sortedAdjustments,toggle:toggleAdjustmentSort}=useSortableRows(adjustments,movementColumns);
-  const inspectMovement=(movement:BootstrapData["financialMovements"][number])=>{const kind=financialMovementKind(movement.type),documentBacked=["sale","purchase","expense","party-receipt","party-payment","manual-deposit","manual-withdrawal","transfer-in","transfer-out"].includes(kind);if(documentBacked&&movement.documentId){openDoc(movement.documentId);return}setDetail({type:movementLabels[kind]??movement.type,occurredAt:movement.occurredAt,amount:movement.amount,reference:movement.documentNumber,note:movement.note??movement.reason,account:name(movement.paymentMethod),balanceBefore:movement.balanceBefore,balanceAfter:movement.balanceAfter})};
+  const inspectMovement=(movement:BootstrapData["financialMovements"][number])=>{const kind=financialMovementKind(movement.type),documentBacked=["sale","purchase","expense","party-receipt","party-payment","manual-deposit","manual-withdrawal","transfer-in","transfer-out"].includes(kind),documentVisible=Boolean(movement.documentId&&data.documents.some(document=>document.id===movement.documentId));if(documentBacked&&documentVisible){void openDoc(movement.documentId);return}setDetail({type:movementLabels[kind]??movement.type,occurredAt:movement.occurredAt,amount:movement.amount,reference:movement.documentNumber,note:movement.note??movement.reason,account:name(movement.paymentMethod),balanceBefore:movement.balanceBefore,balanceAfter:movement.balanceAfter})};
   const noteClauses=[accountFilter&&name(accountFilter),typeFilter&&(movementLabels[typeFilter]??typeFilter),movementScope.period&&`من ${movementScope.period.from||tr("البداية")} إلى ${movementScope.period.to||tr("النهاية")}`].filter(Boolean).join(" · ");
   const splitPanel=tab==="transfers"||tab==="adjustment";
   const canAccountCreate=canUseCapability(data.principal,"banks.create"),canAccountEdit=canUseCapability(data.principal,"banks.edit"),canAccountDelete=canUseCapability(data.principal,"banks.delete"),canTransferCreate=canUseCapability(data.principal,"banks.transfer"),canTransferEdit=canUseCapability(data.principal,"banks.transfer.edit"),canTransferDelete=canUseCapability(data.principal,"banks.transfer.delete"),canAdjustmentCreate=canUseCapability(data.principal,"banks.deposit_withdraw"),canAdjustmentEdit=canUseCapability(data.principal,"banks.deposit_withdraw.edit"),canAdjustmentDelete=canUseCapability(data.principal,"banks.deposit_withdraw.delete"),canBalanceCorrect=canUseCapability(data.principal,"banks.balance_correct"),canBalanceEdit=canUseCapability(data.principal,"banks.balance_correct.edit"),canBalanceDelete=canUseCapability(data.principal,"banks.balance_correct.delete");

@@ -49,7 +49,7 @@ const sqlScalarFields = new Set([
   "documentId","parentDocumentId","warehouseId","recurringId","code","legacyKey","usernameNormalized","sourceType",
   "sourceEntityType","sourceKey","businessDate","isArchived","isReversal","isActive","isSalesDefault","occurrenceKey",
 ]);
-const sqlRangeFields = new Set(["occurredAt","createdAt","updatedAt","expiresAt","archivedAt","businessDate"]);
+const sqlRangeFields = new Set(["occurredAt","createdAt","updatedAt","expiresAt","archivedAt","businessDate","expiryDate","receivable","payable"]);
 const sqlFieldName = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const sqlPrimitive = (value: unknown): value is string | number | boolean | null => value === null || ["string","number","boolean"].includes(typeof value);
 const sqlValue = (value: string | number | boolean | null): string | number | null => typeof value === "boolean" ? (value ? 1 : 0) : value;
@@ -57,6 +57,16 @@ const jsonPath = (field:string) => `$.${field}`;
 const jsonExpr = (field:string) => `json_extract(data_json,'${jsonPath(field)}')`;
 const jsonTypeExpr = (field:string) => `json_type(data_json,'${jsonPath(field)}')`;
 function sqlFieldCandidate(field:string, expected:unknown):SqlCandidate {
+  if(field==="lines.productId"){
+    const lineExpr="json_extract(line.value,'$.productId')",lineType="json_type(line.value,'$.productId')";
+    if(sqlPrimitive(expected)){if(expected===null)return{sql:`EXISTS (SELECT 1 FROM json_each(data_json,'$.lines') line WHERE ${lineType}='null')`,params:[],complete:true};return{sql:`EXISTS (SELECT 1 FROM json_each(data_json,'$.lines') line WHERE ${lineExpr}=?)`,params:[sqlValue(expected)],complete:true}}
+    if(expected&&typeof expected==="object"&&!Array.isArray(expected)&&!(expected instanceof Date)){
+      const entries=Object.entries(expected as DbDocument);
+      if(entries.length===1&&entries[0][0]==="$in"&&Array.isArray(entries[0][1])&&(entries[0][1] as unknown[]).every(sqlPrimitive)){const wanted=entries[0][1] as Array<string|number|boolean|null>;if(!wanted.length)return{sql:"0",params:[],complete:true};const values=wanted.filter(value=>value!==null) as Array<string|number|boolean>,hasNull=wanted.some(value=>value===null),pieces:string[]=[],params:Array<string|number|null>=[];if(values.length){pieces.push(`${lineExpr} IN (${values.map(()=>"?").join(",")})`);params.push(...values.map(sqlValue))}if(hasNull)pieces.push(`${lineType}='null'`);return{sql:`EXISTS (SELECT 1 FROM json_each(data_json,'$.lines') line WHERE ${pieces.join(" OR ")})`,params,complete:true}}
+      if(entries.length===1&&entries[0][0]==="$ne"&&sqlPrimitive(entries[0][1])){const wanted=entries[0][1];return wanted===null?{sql:`NOT EXISTS (SELECT 1 FROM json_each(data_json,'$.lines') line WHERE ${lineType}='null')`,params:[],complete:true}:{sql:`NOT EXISTS (SELECT 1 FROM json_each(data_json,'$.lines') line WHERE ${lineExpr}=?)`,params:[sqlValue(wanted)],complete:true}}
+    }
+    return{sql:"",params:[],complete:false};
+  }
   if (!sqlFieldName.test(field) || field.includes(".") || !sqlScalarFields.has(field)) return {sql:"",params:[],complete:false};
   const keyField=field==="_id",expr=keyField?"record_key":jsonExpr(field),typeExpr=keyField?"":jsonTypeExpr(field);
   if (sqlPrimitive(expected)) {
@@ -87,6 +97,7 @@ function sqlFieldCandidate(field:string, expected:unknown):SqlCandidate {
       continue;
     }
     if (op === "$exists" && typeof wanted === "boolean" && !keyField) { clauses.push(`${typeExpr} IS ${wanted?"NOT ":""}NULL`); continue; }
+    if(op==="$type"&&!keyField&&(wanted==="string"||wanted==="number")){clauses.push(wanted==="string"?`${typeExpr}='text'`:`${typeExpr} IN ('integer','real')`);continue}
     if (["$gt","$gte","$lt","$lte"].includes(op) && sqlRangeFields.has(field) && (typeof wanted==="string"||typeof wanted==="number")) {
       const operator=op==="$gt"?">":op==="$gte"?">=":op==="$lt"?"<":"<=";clauses.push(`${expr}${operator}?`);params.push(wanted);continue;
     }
@@ -217,6 +228,10 @@ export function ensureDatabaseSchema(input:Database.Database|SqliteDatabase){con
 ["account_transfers_time_idx","account_transfers","json_extract(data_json,'$.occurredAt')"],
 ["products_category_idx","products","json_extract(data_json,'$.categoryId')"],
 ["parties_type_archived_idx","parties","json_extract(data_json,'$.partyType'),json_extract(data_json,'$.isArchived')"],
-] as const;db.transaction(()=>{for(const[name,table,expression]of indexes)db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${table}(${expression})`);db.prepare("INSERT INTO schema_migrations VALUES(6,?)").run(new Date().toISOString())})();version=6}cleanupExpiredRecords(db);const check=db.pragma("quick_check") as any[];if(check[0]?.quick_check!=="ok")throw new Error("SQLite quick_check failed")}
+] as const;db.transaction(()=>{for(const[name,table,expression]of indexes)db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${table}(${expression})`);db.prepare("INSERT INTO schema_migrations VALUES(6,?)").run(new Date().toISOString())})();version=6}if(version<7){const indexes=[
+["documents_status_time_idx","documents","json_extract(data_json,'$.status'),json_extract(data_json,'$.occurredAt')"],
+["stock_time_idx","stock_movements","json_extract(data_json,'$.occurredAt')"],
+["products_expiry_idx","products","json_extract(data_json,'$.expiryDate')"],
+] as const;db.transaction(()=>{for(const[name,table,expression]of indexes)db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${table}(${expression})`);db.prepare("INSERT INTO schema_migrations VALUES(7,?)").run(new Date().toISOString())})();version=7}cleanupExpiredRecords(db);const check=db.pragma("quick_check") as any[];if(check[0]?.quick_check!=="ok")throw new Error("SQLite quick_check failed")}
 export function cleanupExpiredRecords(db:Database.Database){for(const table of ["command_receipts","legacy_import_runs","import_runs","import_safety_backups","restore_snapshots"])db.prepare(`DELETE FROM ${table} WHERE json_extract(data_json,'$.expiresAt') IS NOT NULL AND datetime(json_extract(data_json,'$.expiresAt')) <= datetime('now')`).run();db.prepare("DELETE FROM command_receipts WHERE json_extract(data_json,'$.status')='committed' AND datetime(json_extract(data_json,'$.createdAt')) < datetime('now','-7 days')").run()}
 function seed(db:Database.Database){const now=new Date().toISOString(),put=(table:string,key:string,data:any)=>db.prepare(`INSERT OR IGNORE INTO ${table}(record_key,data_json) VALUES(?,?)`).run(key,encode({...data,_id:key}));put("warehouses","wh-main",{name:"المخزن الرئيسي",isSalesDefault:false,createdAt:now});put("warehouses","wh-boutique",{name:"البوتيك",isSalesDefault:true,createdAt:now});for(const[code,name,color,icon]of [["cash","نقدي","#16835f","banknote"],["bankily","بنكيلي","#1677c8","wallet"],["masrvi","مصرفي","#6d55c7","building"],["sedad","السداد","#d07a20","landmark"],["bimbank","بيم","#c14666","card"]])put("payment_accounts",`account-${code}`,{id:`account-${code}`,code,name,color,icon,isActive:true,balance:0,balanceInitialized:true,createdAt:now})}

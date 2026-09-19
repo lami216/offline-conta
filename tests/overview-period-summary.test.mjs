@@ -14,3 +14,12 @@ test("overview separates current position from period performance", async () => 
 });
 
 test("overview KPI details keep only calculation contributors in one signed money column",async()=>{const ui=await source("app/conta-app.tsx");for(const key of ["currentAccountsBalance","currentInventoryValue","currentReceivable","currentPayable","sales","purchases","expenses","netOperatingResult"])assert.match(ui,new RegExp(`openOverviewSummary\\("${key}"\\)`));assert.match(ui,/label:tr\("صافي المبيعات"\),value:sales/);assert.match(ui,/label:tr\("تكلفة المبيعات"\),value:-salesCost/);assert.match(ui,/label:tr\("إجمالي المصاريف"\),value:-expenses/);assert.doesNotMatch(ui,/excludedProfitMeta/);assert.doesNotMatch(ui,/impact:/);assert.doesNotMatch(ui,/الأثر في المجموع/);assert.match(ui,/overview-sales-total/);assert.match(ui,/overview-returns-total/);});
+
+test("overview aggregate details link each contributing category to a traceable source",async()=>{
+  const ui=await source("app/conta-app.tsx");
+  assert.match(ui,/overview-sales-total[^\n]+source:\{kind:"report",reportType:"sales"\}/);
+  assert.match(ui,/overview-purchases-total[^\n]+source:\{kind:"report",reportType:"purchases"\}/);
+  assert.match(ui,/overview-expenses-total[^\n]+source:\{kind:"report",reportType:"expenses"\}/);
+  assert.match(ui,/profit-sales-cost[^\n]+source:\{kind:"report",reportType:"sales"\}/);
+  assert.match(ui,/overview-party-[^\n]+source:\{kind:"party",partyId:String\(party\.id\)\}/);
+});

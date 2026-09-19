@@ -46,3 +46,14 @@ test("bank summary breakdown reconciles every card and keeps zero-value source k
 });
 
 test("bank summary cards are clickable and use the shared reconciliation dialog",()=>{const source=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),banks=source.slice(source.indexOf("function Banks"),source.indexOf("function PaymentAccountDialog"));assert.match(banks,/accountBreakdown=bankScopeBreakdown/);assert.match(banks,/setSummaryDetail\(accountBalanceDetail\)/);assert.match(banks,/movementSummaryDetail\("in"\)/);assert.match(banks,/debtDetail\("owedToUs"\)/);assert.match(source,/function SummaryBreakdownDialog/);});
+
+test("bank summary details link category totals to their source areas",()=>{
+  const source=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),banks=source.slice(source.indexOf("function Banks"),source.indexOf("function PaymentAccountDialog"));
+  assert.match(banks,/kind==="sale"\)return\{kind:"report",reportType:"sales"\}/);
+  assert.match(banks,/kind==="purchase"\)return\{kind:"report",reportType:"purchases"\}/);
+  assert.match(banks,/kind==="expense"\)return\{kind:"report",reportType:"expenses"\}/);
+  assert.match(banks,/party-receipt:customer/);
+  assert.match(banks,/party-payment:supplier/);
+  assert.match(banks,/openSource=\{openSource\}/);
+  assert.match(banks,/sourceRequest\.kind==="transfer"/);
+});

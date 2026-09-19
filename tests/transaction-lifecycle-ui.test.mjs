@@ -66,3 +66,16 @@ test("edit forms expose save and cancel using existing primary and soft styles",
   assert.match(source, /editingAdjustmentId\?tr\("حفظ التعديل"\)/);
   assert.match(source, /className="soft"[^>]*>\{tr\("إلغاء التعديل"\)\}/);
 });
+
+
+test("bank edit actions release the old fixed 124px action column and allow translated buttons to wrap safely", async () => {
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  assert.match(css,/\.transfer-detail-row,\.adjustment-detail-row\{grid-template-columns:110px minmax\(0,1fr\)\}/);
+  assert.match(css,/\.transfer-detail-row>\.party-row-actions,\.adjustment-detail-row>\.party-row-actions\{grid-column:1\/-1;justify-content:flex-end;flex-wrap:wrap;white-space:normal\}/);
+  assert.doesNotMatch(css,/transfer-detail-row,\.adjustment-detail-row\{grid-template-columns:110px minmax\(0,1fr\) 124px\}/);
+});
+
+test("party payment buttons use complete translated labels instead of concatenating fragments", () => {
+  assert.match(source,/customer\?tr\("دفع للعميل"\):tr\("دفع للمورد"\)/);
+  assert.doesNotMatch(source,/tr\("دفع لل"\)\}\{customer\?tr\("عميل"\):tr\("مورد"\)/);
+});

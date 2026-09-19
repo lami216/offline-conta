@@ -100,3 +100,10 @@ test("traceable records open details first and expose a source-navigation action
   assert.match(source,/financialRows\.map\(row=><tr key=\{row\.id\} onClick=\{\(\)=>row\.documentId&&openDoc\(row\.documentId\)\}/);
   assert.match(source,/fallbackMovements\.map\(movement=><tr[^>]+onClick=\{\(\)=>movement\.documentId&&openDoc\(movement\.documentId\)\}/);
 });
+
+
+test("expense history follows the universal detail-then-source flow",async()=>{
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.match(source,/sortedExpenses\.map\(document=><tr key=\{document\.id\} onClick=\{\(\)=>openDoc\(document\.id\)\}/);
+  assert.match(source,/document\.kind==="expense"[\s\S]*?navigate\("expenses"\)[\s\S]*?setExpenseEditRequest\(document\.id\)/);
+});

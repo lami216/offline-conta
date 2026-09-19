@@ -214,3 +214,70 @@ test("repeating an already completed void never applies its reversal twice",asyn
   assert.deepEqual([await stock(productId),await balance("cash")],[5,1000]);
   assert.equal((await activeFinancial({documentId:saleId})).length,0);
 });
+
+test("party balances cross zero cleanly when prepayments are later matched by credit invoices",async()=>{
+  const productId=await product(5);
+  const customerAdvance=await command({type:"party-cash.post",partyId:"customer",direction:"receive",amount:100,paymentMethod:"cash"});
+  assert.deepEqual([(await party("customer")).receivable,(await party("customer")).payable,(await party("customer")).net],[0,100,-100]);
+  const saleId=await sale(productId,1,{partyId:"customer",paymentMethod:"note",piecePrice:150});
+  assert.deepEqual([(await party("customer")).receivable,(await party("customer")).payable,(await party("customer")).net],[50,0,50]);
+  await command({type:"sale.void",documentId:saleId});
+  assert.deepEqual([(await party("customer")).receivable,(await party("customer")).payable,(await party("customer")).net],[0,100,-100]);
+  await command({type:"party-cash.void",documentId:customerAdvance});
+  assert.deepEqual([(await party("customer")).receivable,(await party("customer")).payable,(await party("customer")).net],[0,0,0]);
+
+  const supplierAdvance=await command({type:"party-cash.post",partyId:"supplier",direction:"pay",amount:100,paymentMethod:"cash"});
+  assert.deepEqual([(await party("supplier")).receivable,(await party("supplier")).payable,(await party("supplier")).net],[100,0,100]);
+  const purchaseId=await purchase(productId,1,{partyId:"supplier",paymentMethod:"note",unitPrice:150});
+  assert.deepEqual([(await party("supplier")).receivable,(await party("supplier")).payable,(await party("supplier")).net],[0,50,-50]);
+  await command({type:"purchase.void",documentId:purchaseId});
+  assert.deepEqual([(await party("supplier")).receivable,(await party("supplier")).payable,(await party("supplier")).net],[100,0,100]);
+  await command({type:"party-cash.void",documentId:supplierAdvance});
+  assert.deepEqual([(await party("supplier")).receivable,(await party("supplier")).payable,(await party("supplier")).net],[0,0,0]);
+});
+
+test("a mixed business day can be unwound in dependency order back to the exact opening state",async()=>{
+  const productId=await product(10,50);
+  const purchaseId=await purchase(productId,5,{paymentMethod:"cash",unitPrice:80});
+  const transferId=await command({type:"transfer.post",fromWarehouseId:"a",toWarehouseId:"b",lines:[{productId,quantity:4}]});
+  const cashSaleId=await sale(productId,3,{warehouseId:"b",paymentMethod:"cash"});
+  const creditSaleId=await sale(productId,4,{warehouseId:"a",partyId:"customer",paymentMethod:"note"});
+  const receiptId=await command({type:"party-cash.post",partyId:"customer",direction:"receive",amount:150,paymentMethod:"cash"});
+  const expenseId=await command({type:"expense.post",title:"Delivery",amount:100,occurredAt:"2026-09-19",paymentMethod:"cash"});
+  const bankTransferId=await command({type:"account-transfer.post",fromAccountId:"cash",toAccountId:"bank",amount:200,note:"deposit"});
+  const adjustmentId=await command({type:"adjustment.post",warehouseId:"a",reason:"count",lines:[{productId,actualQuantity:8}]});
+  assert.deepEqual([await stock(productId,"a"),await stock(productId,"b"),await balance("cash"),await balance("bank"),(await party("customer")).net],[8,1,750,200,250]);
+
+  await assert.rejects(command({type:"transfer.void",documentId:transferId}),/تم التصرف فيه/);
+  assert.deepEqual([await stock(productId,"a"),await stock(productId,"b")],[8,1]);
+
+  await command({type:"sale.void",documentId:creditSaleId});
+  assert.deepEqual([(await party("customer")).receivable,(await party("customer")).payable],[0,150]);
+  await command({type:"party-cash.void",documentId:receiptId});
+  await command({type:"sale.void",documentId:cashSaleId});
+  await command({type:"transfer.void",documentId:transferId});
+  await command({type:"adjustment.void",documentId:adjustmentId});
+  await command({type:"expense.void",documentId:expenseId});
+  await command({type:"account-transfer.void",transferId:bankTransferId});
+  await command({type:"purchase.void",documentId:purchaseId});
+
+  assert.deepEqual([await stock(productId,"a"),await stock(productId,"b"),await balance("cash"),await balance("bank")],[10,0,1000,0]);
+  assert.deepEqual([(await party("customer")).receivable,(await party("customer")).payable,(await party("customer")).net],[0,0,0]);
+  assert.equal((await activeFinancial({})).length,0);
+  for(const id of [purchaseId,transferId,cashSaleId,creditSaleId,receiptId,expenseId])assert.equal((await db.collection("documents").findOne({id})).status,"voided");
+  assert.equal((await db.collection("accountTransfers").findOne({id:bankTransferId})).status,"voided");
+});
+
+test("latest opening-balance correction can be reversed after later bank activity without undoing that activity",async()=>{
+  const accountId=await command({type:"payment-account.create",name:"Savings",openingBalance:100});
+  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:accountId})).openingBalance,await balance(accountId)],[100,100]);
+  const correctionId=await command({type:"account-opening-balance-correction.post",accountId,newOpeningBalance:120,reason:"opening fix"});
+  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:accountId})).openingBalance,await balance(accountId)],[120,120]);
+  const transferId=await command({type:"account-transfer.post",fromAccountId:accountId,toAccountId:"bank",amount:70,note:"later activity"});
+  assert.deepEqual([await balance(accountId),await balance("bank")],[50,70]);
+  await command({type:"account-opening-balance-correction.void",movementId:correctionId});
+  const account=await db.collection("paymentAccounts").findOne({id:accountId});
+  assert.deepEqual([account.openingBalance,account.balance,await balance("bank")],[100,30,70]);
+  await command({type:"account-transfer.void",transferId});
+  assert.deepEqual([await balance(accountId),await balance("bank")],[100,0]);
+});

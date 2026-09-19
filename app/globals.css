@@ -2408,11 +2408,11 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 .summary-breakdown-modal{width:min(820px,calc(100vw - 28px));display:grid;gap:10px}
 .summary-breakdown-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
 .summary-breakdown-head h2{margin:2px 0 0;font-size:18px}.summary-breakdown-head small{color:var(--text-muted);font-weight:900}
-.summary-breakdown-formula{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px}
-.summary-breakdown-formula>span{display:grid;gap:3px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#f8fafc}
-.summary-breakdown-formula small{font-weight:900}.summary-breakdown-table{max-height:min(58vh,520px);overflow:auto}
+.summary-breakdown-table{max-height:min(58vh,520px);overflow:auto}
 .summary-breakdown-table tfoot th{position:sticky;bottom:0;z-index:1;background:#fff;border-top:2px solid var(--grid-line)}
 @media(max-width:700px){.summary-breakdown-modal{width:100%}}
 
 .bank-debt-values .summary-drilldown-sub{text-align:center}
 .bank-debt-values .summary-drilldown-sub+.summary-drilldown-sub{border-inline-start:1px solid var(--grid-line)}
+
+.summary-breakdown-note{display:block;margin-top:2px;color:var(--text-muted);font-weight:600}

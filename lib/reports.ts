@@ -204,12 +204,13 @@ if (f.type === "financial") {
   const commercial=await db.collection("documents").find({kind:{$in:["sale","return","purchase","expense"]},status:"posted",...matchDate(f)}).toArray();
   // These collections are intentionally unfiltered by the report period: the lower
   // overview is a current position snapshot, while `commercial` remains period-bound.
-  const [parties,accounts,products,warehouses]=await Promise.all([
+  const [parties,accounts,products,warehouses,overviewFinancialMovements]=await Promise.all([
     db.collection("parties").find({isArchived:{$ne:true}}).sort({name:1}).toArray(),
     db.collection("paymentAccounts").find({isArchived:{$ne:true}}).sort({createdAt:1,name:1}).toArray(),
     // Archived products remain here because their on-hand stock still has value.
     db.collection("products").find().toArray().then(rows => productsWithCurrentCosts(db, rows)),
     db.collection("warehouses").find().sort({createdAt:1,name:1}).toArray(),
+    db.collection("financialMovements").find({...matchDate(f),status:{$ne:"reversed"},isReversal:{$ne:true}}).project({type:1,direction:1,amount:1}).toArray(),
   ]);
   const factsByDocument=new Map<string,{cost:number;profit:number}>();for(const fact of facts){const key=String(fact.documentId),current=factsByDocument.get(key)??{cost:0,profit:0};current.cost+=n(fact.cost);current.profit+=n(fact.profit);factsByDocument.set(key,current)}
   const kindRank:Record<string,number>={sale:0,purchase:1,expense:2};
@@ -227,11 +228,13 @@ if (f.type === "financial") {
   const currentReceivable=typedParties.reduce((v,p)=>v+Math.max(n(p.receivable)-n(p.payable),0),0);
   const currentPayable=typedParties.reduce((v,p)=>v+Math.max(n(p.payable)-n(p.receivable),0),0);
   const p=profitSummary(facts),sales=commercial.filter(d=>d.kind==="sale").reduce((v,d)=>v+n(d.total),0)-commercial.filter(d=>d.kind==="return").reduce((v,d)=>v+n(d.total),0),expenses=commercial.filter(d=>d.kind==="expense").reduce((v,d)=>v+n(d.total),0);
+  const financialTotal=(kind:string,direction:"in"|"out")=>overviewFinancialMovements.filter(movement=>financialMovementKind(movement.type)===kind&&movement.direction===direction).reduce((sum,movement)=>sum+n(movement.amount),0);
+  const purchaseCashPaid=financialTotal("purchase","out"),manualWithdrawals=financialTotal("manual-withdrawal","out"),manualDeposits=financialTotal("manual-deposit","in"),partyReceipts=financialTotal("party-receipt","in"),partyPayments=financialTotal("party-payment","out");
   const detailRow=(d:Document,value:number)=>({id:String(d.id),documentId:String(d.id),number:displayDocumentNumber(d),occurredAt:String(d.occurredAt),kind:String(d.kind) as "sale"|"return"|"purchase"|"expense",value});
   const salesDetails=commercial.filter(d=>d.kind==="sale"||d.kind==="return").map(d=>detailRow(d,d.kind==="return"?-n(d.total):n(d.total)));
   const purchaseDetails=commercial.filter(d=>d.kind==="purchase").map(d=>detailRow(d,n(d.total)));
   const expenseDetails=commercial.filter(d=>d.kind==="expense").map(d=>detailRow(d,n(d.total)));
   const salesProfitDetails=commercial.filter(d=>d.kind==="sale"||d.kind==="return").map(d=>{const fact=factsByDocument.get(String(d.id))??{cost:0,profit:0};return{...detailRow(d,n(fact.profit)),revenue:d.kind==="return"?-n(d.total):n(d.total),cost:n(fact.cost),profit:n(fact.profit)}});
-  return{report:"overview",from:f.from!,to:f.to!,summary:{sales,salesCost:p.cost,salesProfit:p.profit,purchases:commercial.filter(d=>d.kind==="purchase").reduce((v,d)=>v+n(d.total),0),expenses,netOperatingResult:p.profit-expenses,profit:p.profit,currentReceivable,currentPayable,currentInventoryValue,currentAccountsBalance,customerReceivables:currentReceivable,supplierPayables:currentPayable,bankBalance:currentAccountsBalance,inventoryValue:currentInventoryValue,customerCount:typedParties.filter(p=>p.partyType==="customer").length,supplierCount:typedParties.filter(p=>p.partyType==="supplier").length},rows:[],invoices,parties:partyRows,bankAccounts,warehouseValues,overviewDetails:{sales:salesDetails,purchases:purchaseDetails,expenses:expenseDetails,salesProfit:salesProfitDetails},meta:pagination(invoices.length,f)};
+  return{report:"overview",from:f.from!,to:f.to!,summary:{sales,salesCost:p.cost,salesProfit:p.profit,purchases:commercial.filter(d=>d.kind==="purchase").reduce((v,d)=>v+n(d.total),0),purchaseCashPaid,expenses,manualWithdrawals,manualDeposits,partyReceipts,partyPayments,netOperatingResult:p.profit-expenses,profit:p.profit,currentReceivable,currentPayable,currentInventoryValue,currentAccountsBalance,customerReceivables:currentReceivable,supplierPayables:currentPayable,bankBalance:currentAccountsBalance,inventoryValue:currentInventoryValue,customerCount:typedParties.filter(p=>p.partyType==="customer").length,supplierCount:typedParties.filter(p=>p.partyType==="supplier").length},rows:[],invoices,parties:partyRows,bankAccounts,warehouseValues,overviewDetails:{sales:salesDetails,purchases:purchaseDetails,expenses:expenseDetails,salesProfit:salesProfitDetails},meta:pagination(invoices.length,f)};
 
 }

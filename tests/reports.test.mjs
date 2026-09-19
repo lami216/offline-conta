@@ -153,4 +153,26 @@ test("overview breakdown rows reconcile every period KPI and net profit exactly"
   assert.equal(report.overviewDetails.salesProfit.reduce((total,row)=>total+row.profit,0),report.summary.salesProfit);
   assert.equal(report.overviewDetails.salesProfit.reduce((total,row)=>total+row.profit,0)-sum(report.overviewDetails.expenses),report.summary.netOperatingResult);
   assert.ok(report.overviewDetails.sales.some(row=>row.kind==="return"&&row.value<0));
+  assert.equal(report.summary.purchaseCashPaid,0);
+  assert.equal(report.summary.manualWithdrawals,0);
+});
+
+
+test("overview exposes related cash totals without changing the current profit formula",async()=>{
+  await db.collection("documents").insertMany([
+    doc("sale","sale","2026-08-10",[line("sl","a",2,100,60)]),
+    doc("purchase","purchase","2026-08-11",[line("pl","a",3,50)],{paidTotal:100}),
+    doc("expense","expense","2026-08-12",[],{total:25,title:"Rent"}),
+  ]);
+  await db.collection("financialMovements").insertMany([
+    {id:"purchase-cash",type:"purchase",direction:"out",amount:100,occurredAt:"2026-08-11T12:00:00.000Z",status:"posted"},
+    {id:"withdraw",type:"manual-withdrawal",direction:"out",amount:70,occurredAt:"2026-08-13T12:00:00.000Z",status:"posted"},
+    {id:"deposit",type:"manual-deposit",direction:"in",amount:90,occurredAt:"2026-08-14T12:00:00.000Z",status:"posted"},
+    {id:"supplier",type:"party-payment",direction:"out",amount:30,occurredAt:"2026-08-15T12:00:00.000Z",status:"posted"},
+    {id:"customer",type:"party-receipt",direction:"in",amount:40,occurredAt:"2026-08-16T12:00:00.000Z",status:"posted"},
+  ]);
+  const report=await buildReport(db,filters("overview"));
+  assert.deepEqual([report.summary.purchaseCashPaid,report.summary.manualWithdrawals,report.summary.manualDeposits,report.summary.partyPayments,report.summary.partyReceipts],[100,70,90,30,40]);
+  assert.equal(report.summary.netOperatingResult,55);
+  assert.equal(report.summary.netOperatingResult,report.summary.sales-report.summary.salesCost-report.summary.expenses);
 });

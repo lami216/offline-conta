@@ -2416,3 +2416,7 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 .bank-debt-values .summary-drilldown-sub+.summary-drilldown-sub{border-inline-start:1px solid var(--grid-line)}
 
 .summary-breakdown-note{display:block;margin-top:2px;color:var(--text-muted);font-weight:600}
+
+.summary-source-link{display:inline-flex;align-items:center;margin-inline-start:8px;padding:2px 7px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--brand);font:inherit;font-size:10px;font-weight:900;cursor:pointer}
+.summary-source-link:hover,.summary-source-link:focus-visible{background:#eef5ff}
+.archived-parties-dialog{width:min(760px,calc(100vw - 28px));display:grid;gap:10px}

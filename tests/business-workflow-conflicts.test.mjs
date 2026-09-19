@@ -292,3 +292,44 @@ test("latest opening-balance correction can be reversed after later bank activit
   await command({type:"account-transfer.void",transferId});
   assert.deepEqual([await balance(accountId),await balance("bank")],[100,0]);
 });
+
+test("failed adjustment rewrite after downstream consumption rolls back, then succeeds once the dependent sale is removed",async()=>{
+  const productId=await product(10),adjustmentId=await command({type:"adjustment.post",warehouseId:"a",reason:"count up",lines:[{productId,actualQuantity:15}]}),saleId=await sale(productId,3,{paymentMethod:"cash"});
+  assert.equal(await stock(productId),12);
+  await assert.rejects(command({type:"adjustment.update",documentId:adjustmentId,reason:"wrong low count",lines:[{productId,actualQuantity:2}]}),/مخزون/);
+  let adjustment=await db.collection("documents").findOne({id:adjustmentId});
+  assert.deepEqual([await stock(productId),adjustment.revision,adjustment.lines[0].quantity,adjustment.lines[0].balanceAfter],[12,0,5,15]);
+  await command({type:"sale.void",documentId:saleId});
+  await command({type:"adjustment.update",documentId:adjustmentId,reason:"verified low count",lines:[{productId,actualQuantity:2}]});
+  adjustment=await db.collection("documents").findOne({id:adjustmentId});
+  assert.deepEqual([await stock(productId),adjustment.revision,adjustment.lines[0].quantity,adjustment.lines[0].balanceAfter],[2,1,-8,2]);
+  await command({type:"adjustment.void",documentId:adjustmentId});
+  assert.equal(await stock(productId),10);
+});
+
+test("purchase quantity cannot be reduced below inventory already consumed, and a later safe edit reconciles stock and cash",async()=>{
+  const productId=await product(5),purchaseId=await purchase(productId,5,{paymentMethod:"cash",unitPrice:80}),saleId=await sale(productId,8,{paymentMethod:"cash"});
+  assert.deepEqual([await stock(productId),await balance("cash")],[2,1400]);
+  await assert.rejects(command({type:"purchase.update",documentId:purchaseId,warehouseId:"a",paymentMethod:"cash",lines:[{productId,quantity:2,unitPrice:80}]}),/تم التصرف فيه/);
+  let invoice=await db.collection("documents").findOne({id:purchaseId});
+  assert.deepEqual([invoice.revision,invoice.lines[0].quantity,invoice.total,await stock(productId),await balance("cash")],[0,5,400,2,1400]);
+  await command({type:"sale.void",documentId:saleId});
+  await command({type:"purchase.update",documentId:purchaseId,warehouseId:"a",paymentMethod:"cash",lines:[{productId,quantity:2,unitPrice:80}]});
+  invoice=await db.collection("documents").findOne({id:purchaseId});
+  assert.deepEqual([invoice.revision,invoice.lines[0].quantity,invoice.total,await stock(productId),await balance("cash")],[1,2,160,7,840]);
+  await command({type:"purchase.void",documentId:purchaseId});
+  assert.deepEqual([await stock(productId),await balance("cash")],[5,1000]);
+});
+
+test("opening-balance corrections form a strict reversible stack",async()=>{
+  const accountId=await command({type:"payment-account.create",name:"Stacked opening",openingBalance:100});
+  const first=await command({type:"account-opening-balance-correction.post",accountId,newOpeningBalance:120,reason:"first"});
+  const second=await command({type:"account-opening-balance-correction.post",accountId,newOpeningBalance:140,reason:"second"});
+  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:accountId})).openingBalance,await balance(accountId)],[140,140]);
+  await assert.rejects(command({type:"account-opening-balance-correction.void",movementId:first}),/آخر تصحيح/);
+  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:accountId})).openingBalance,await balance(accountId)],[140,140]);
+  await command({type:"account-opening-balance-correction.void",movementId:second});
+  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:accountId})).openingBalance,await balance(accountId)],[120,120]);
+  await command({type:"account-opening-balance-correction.void",movementId:first});
+  assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:accountId})).openingBalance,await balance(accountId)],[100,100]);
+});

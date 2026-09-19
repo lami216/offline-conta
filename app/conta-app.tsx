@@ -101,6 +101,11 @@ type AdjustmentPrefill = { productId: string; warehouseId: string };
 type ActiveEditorGuard = { isEditing: () => boolean; isDirty: () => boolean; discard: () => void };
 type RegisterEditorGuard = (guard: ActiveEditorGuard | null) => void;
 type BankTab = "accounts" | "movements" | "transfers" | "adjustment";
+type SummarySourceTarget =
+  | { kind: "view"; view: View; bankTab?: BankTab }
+  | { kind: "report"; reportType: ReportType }
+  | { kind: "party"; partyId: string };
+type BankSourceRequest = { kind: "transfer" | "adjustment"; documentId: string };
 type SettingsTab = "general" | "users" | "data" | "license" | "contact";
 type LicenseInfo = {licenseId:string;storeId:string;customerName:string;storeName:string;deviceId:string;issuedAt?:string;type:"perpetual"|"temporary";durationSeconds:number|null;remainingSeconds:number|null};
 type LicenseStatus = {valid:boolean;license?:LicenseInfo;reason?:string;code?:string};
@@ -221,6 +226,11 @@ function ContaAppContent() {
     [doc, setDoc] = useState<DocumentRecord | null>(null),
     [saleEditRequest, setSaleEditRequest] = useState<string | null>(null),
     [purchaseEditRequest, setPurchaseEditRequest] = useState<string | null>(null),
+    [expenseEditRequest, setExpenseEditRequest] = useState<string | null>(null),
+    [partyPaymentEditRequest, setPartyPaymentEditRequest] = useState<string | null>(null),
+    [transferEditRequest, setTransferEditRequest] = useState<string | null>(null),
+    [adjustmentEditRequest, setAdjustmentEditRequest] = useState<string | null>(null),
+    [bankSourceRequest, setBankSourceRequest] = useState<BankSourceRequest | null>(null),
     [autoPrintId, setAutoPrintId] = useState<string | null>(null),
     [partyDetail, setPartyDetail] = useState<Party | null>(null),
     [adjustmentPrefill, setAdjustmentPrefill] = useState<AdjustmentPrefill | null>(null);
@@ -267,6 +277,7 @@ function ContaAppContent() {
       }
     }
     if (id !== "adjustments") setAdjustmentPrefill(null);
+    setExpenseEditRequest(null); setPartyPaymentEditRequest(null); setTransferEditRequest(null); setAdjustmentEditRequest(null); setBankSourceRequest(null);
     setView(id); setDoc(null); setPartyDetail(null); setMenu(false); setWarehouseMenu(false); setInvoiceMenu(false); setReportMenu(false); setPartyMenu(false); setBankMenu(false); setSettingsMenu(false);
   };
   const closeNavigationMenus = () => { setWarehouseMenu(false); setInvoiceMenu(false); setReportMenu(false); setPartyMenu(false); setBankMenu(false); setSettingsMenu(false); };
@@ -341,6 +352,31 @@ function ContaAppContent() {
     setDoc(null); setPartyDetail(null);
     if (document.kind === "sale") { setSaleEditRequest(id); setView("pos"); }
     else { setPurchaseEditRequest(id); setView("purchases"); }
+  };
+  const openSummarySource = async (target: SummarySourceTarget) => {
+    setDoc(null);
+    if (target.kind === "report") { setReportType(target.reportType); await navigate("reports"); return; }
+    if (target.kind === "party") {
+      const party=data.parties.find(item=>item.id===target.partyId);
+      if(!party)return;
+      const targetView:View=resolvePartyType(party)==="customer"?"customers":"suppliers";
+      await navigate(targetView); setPartyDetail(party); return;
+    }
+    if (target.bankTab) setBankTab(target.bankTab);
+    await navigate(target.view);
+  };
+  const openDocumentSource = async (document: DocumentRecord) => {
+    setDoc(null);
+    if(document.kind==="sale"){await navigate("pos");if(can("pos.edit")&&document.status==="posted"&&!document.legacyKey)setSaleEditRequest(document.id);return}
+    if(document.kind==="purchase"){await navigate("purchases");if(can("purchases.edit")&&document.status==="posted"&&!document.legacyKey)setPurchaseEditRequest(document.id);return}
+    if(document.kind==="expense"){await navigate("expenses");if(can("expenses.edit")&&document.status==="posted"&&!document.legacyKey)setExpenseEditRequest(document.id);return}
+    if(document.kind==="payment"&&document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(!party)return;await navigate(resolvePartyType(party)==="customer"?"customers":"suppliers");setPartyDetail(party);if(document.status==="posted"&&!party.isArchived)setPartyPaymentEditRequest(document.id);return}
+    if(document.kind==="transfer"){await navigate("transfers");if(can("warehouses.transfer.edit")&&document.status==="posted")setTransferEditRequest(document.id);return}
+    if(document.kind==="adjustment"){await navigate("adjustments");if(can("warehouses.adjust.edit")&&document.status==="posted")setAdjustmentEditRequest(document.id);return}
+    if(document.kind==="account-transfer"){setBankTab("transfers");await navigate("banks");if(can("banks.transfer.edit")&&document.status==="posted")setBankSourceRequest({kind:"transfer",documentId:document.id});return}
+    if(document.kind==="account-adjustment"){setBankTab("adjustment");await navigate("banks");if(can("banks.deposit_withdraw.edit")&&document.status==="posted")setBankSourceRequest({kind:"adjustment",documentId:document.id});return}
+    if(document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(party){await navigate(resolvePartyType(party)==="customer"?"customers":"suppliers");setPartyDetail(party);return}}
+    await navigate("records");
   };
   useEffect(() => {
     if (!autoPrintId || !data.documents.some(document => document.id === autoPrintId)) return;

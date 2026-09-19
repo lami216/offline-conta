@@ -333,3 +333,18 @@ test("opening-balance corrections form a strict reversible stack",async()=>{
   await command({type:"account-opening-balance-correction.void",movementId:first});
   assert.deepEqual([(await db.collection("paymentAccounts").findOne({id:accountId})).openingBalance,await balance(accountId)],[100,100]);
 });
+
+test("editing a settled historical movement must not make an archived zero-balance party selectable again",async()=>{
+  const productId=await product(5),saleId=await sale(productId,1,{partyId:"customer",paymentMethod:"note"}),receiptId=await command({type:"party-cash.post",partyId:"customer",direction:"receive",amount:100,paymentMethod:"cash"});
+  await command({type:"party.delete",id:"customer"});
+  assert.equal((await party("customer")).isArchived,true);
+  await command({type:"party-cash.update",documentId:receiptId,direction:"receive",amount:100,paymentMethod:"cash",note:"same settled receipt"});
+  let customer=await party("customer");
+  assert.deepEqual([customer.isArchived,customer.receivable,customer.payable,customer.net],[true,0,0,0]);
+
+  await command({type:"party.restore",id:"customer"});
+  await command({type:"party.delete",id:"customer"});
+  await command({type:"sale.update",documentId:saleId,warehouseId:"a",partyId:"customer",paymentMethod:"note",lines:[{productId,quantity:1,piecePrice:100}]});
+  customer=await party("customer");
+  assert.deepEqual([customer.isArchived,customer.receivable,customer.payable,customer.net],[true,0,0,0]);
+});

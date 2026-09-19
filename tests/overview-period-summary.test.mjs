@@ -23,3 +23,20 @@ test("overview aggregate details link each contributing category to a traceable 
   assert.match(ui,/profit-sales-cost[^\n]+source:\{kind:"report",reportType:"sales",period:committedPeriod\}/);
   assert.match(ui,/overview-party-[^\n]+source:\{kind:"party",partyId:String\(party\.id\)\}/);
 });
+
+
+test("overview party rows expose debt direction independently of customer or supplier role", async () => {
+  const ui=await source("app/conta-app.tsx");
+  assert.match(ui,/reportNumber\(p\.payable\)>0\?<MoneyValue value=\{reportNumber\(p\.payable\)\} tone="negative"\/>:"—"/);
+  assert.match(ui,/reportNumber\(p\.receivable\)>0\?<MoneyValue value=\{reportNumber\(p\.receivable\)\} tone="positive"\/>:"—"/);
+  assert.doesNotMatch(ui,/p\.partyType==="supplier"\?<MoneyValue value=\{reportNumber\(p\.payable\)/);
+  assert.doesNotMatch(ui,/p\.partyType==="customer"\?<MoneyValue value=\{reportNumber\(p\.receivable\)/);
+});
+
+test("party aggregate dues never net different parties against each other", async () => {
+  const ui=await source("app/conta-app.tsx");
+  assert.match(ui,/aggregateDues=allParties\.reduce/);
+  assert.match(ui,/totals\.owedToUs\+=net/);
+  assert.match(ui,/totals\.weOwe\+=Math\.abs\(net\)/);
+  assert.match(ui,/PartyAggregateMetrics partyType=\{partyType\} metrics=\{aggregate\} owedToUs=\{aggregateDues\.owedToUs\} weOwe=\{aggregateDues\.weOwe\}/);
+});

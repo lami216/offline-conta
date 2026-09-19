@@ -370,7 +370,7 @@ function ContaAppContent() {
     if(document.kind==="sale"){await navigate("pos");if(can("pos.edit")&&document.status==="posted"&&!document.legacyKey)setSaleEditRequest(document.id);return}
     if(document.kind==="purchase"){await navigate("purchases");if(can("purchases.edit")&&document.status==="posted"&&!document.legacyKey)setPurchaseEditRequest(document.id);return}
     if(document.kind==="expense"){await navigate("expenses");if(can("expenses.edit")&&document.status==="posted"&&!document.legacyKey)setExpenseEditRequest(document.id);return}
-    if(document.kind==="payment"&&document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(!party)return;await navigate(resolvePartyType(party)==="customer"?"customers":"suppliers");setPartyDetail(party);if(document.status==="posted"&&!party.isArchived)setPartyPaymentEditRequest(document.id);return}
+    if(document.kind==="payment"&&document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(!party)return;const customer=resolvePartyType(party)==="customer";await navigate(customer?"customers":"suppliers");setPartyDetail(party);if(document.status==="posted"&&!party.isArchived&&can(customer?"customers.collect.edit":"suppliers.pay.edit"))setPartyPaymentEditRequest(document.id);return}
     if(document.kind==="transfer"){await navigate("transfers");if(can("warehouses.transfer.edit")&&document.status==="posted")setTransferEditRequest(document.id);return}
     if(document.kind==="adjustment"){await navigate("adjustments");if(can("warehouses.adjust.edit")&&document.status==="posted")setAdjustmentEditRequest(document.id);return}
     if(document.kind==="account-transfer"){setBankTab("transfers");await navigate("banks");if(can("banks.transfer.edit")&&document.status==="posted")setBankSourceRequest({kind:"transfer",documentId:document.id});return}
@@ -1155,8 +1155,9 @@ function PartyEditDialog({party,run,canEdit,canDelete,close}:{party:Party;run:Ru
 }
 function PartyPage({party,data,openDoc,run,editRequest,clearEditRequest}:{party:Party;data:BootstrapData;openDoc:(id:string)=>void;run:RunCommand;editRequest:string|null;clearEditRequest:()=>void}) {
   const confirmAction=useAppConfirm();
-  const today=localBusinessDay(),[from,setFrom]=useState(today),[to,setTo]=useState(today),[amount,setAmount]=useState(""),[paymentMethod,setPaymentMethod]=useState(""),[direction,setDirection]=useState<"receive"|"pay">("receive"),[note,setNote]=useState(""),[editingPaymentId,setEditingPaymentId]=useState<string|null>(null);
+  const today=localBusinessDay(),[from,setFrom]=useState(party.isArchived?"":today),[to,setTo]=useState(party.isArchived?"":today),[amount,setAmount]=useState(""),[paymentMethod,setPaymentMethod]=useState(""),[direction,setDirection]=useState<"receive"|"pay">("receive"),[note,setNote]=useState(""),[editingPaymentId,setEditingPaymentId]=useState<string|null>(null);
   const customer=resolvePartyType(party)==="customer", archived=party.isArchived===true, balance=party.receivable-party.payable,summary=data.partyFinancialSummaries.find(item=>item.partyId===party.id),metrics=partyTradeMetrics(summary,customer?"customer":"supplier");
+  useEffect(()=>{if(archived){setFrom("");setTo("")}},[party.id,archived]);
   const canCreatePayment=!archived&&canUseCapability(data.principal,customer?"customers.collect":"suppliers.pay"),canEditPayment=!archived&&canUseCapability(data.principal,customer?"customers.collect.edit":"suppliers.pay.edit"),canDeletePayment=!archived&&canUseCapability(data.principal,customer?"customers.collect.delete":"suppliers.pay.delete");
   // Legacy records remain traceable inside an existing party audit view only.
   const kinds=customer?["sale","return","payment","settlement"]:["purchase","payment","settlement"];

@@ -32,7 +32,7 @@ test("PermissionNavItem preserves the original navigation button structure",()=>
 });
 
 
-test("workspace mutation controls follow API capabilities instead of view permission",()=>{for(const pattern of [/canCreateSale=canUseCapability\(data\.principal,"pos\.create"\)/,/canCreatePurchase=canUseCapability\(data\.principal,"purchases\.create"\)/,/canCreate=canUseCapability\(data\.principal,"expenses\.create"\)/,/canCreate=canUseCapability\(data\.principal,customer\?"customers\.create":"suppliers\.create"\)/,/canCreate=canUseCapability\(data\.principal,"products\.create"\)/,/canCreate=canUseCapability\(data\.principal,"warehouses\.create"\)/,/canCreatePayment=canUseCapability\(data\.principal,customer\?"customers\.collect":"suppliers\.pay"\)/,/canCreateWarehouse=canUseCapability\(data\.principal,"warehouses\.create"\)/])assert.match(app,pattern);assert.match(app,/canDelete=\{!editingDocument\|\|canDeleteSale\}/);assert.match(app,/canDelete=\{!editingDocument\|\|canDeletePurchase\}/);});
+test("workspace mutation controls follow API capabilities instead of view permission",()=>{for(const pattern of [/canCreateSale=canUseCapability\(data\.principal,"pos\.create"\)/,/canCreatePurchase=canUseCapability\(data\.principal,"purchases\.create"\)/,/canCreate=canUseCapability\(data\.principal,"expenses\.create"\)/,/canCreate=canUseCapability\(data\.principal,customer\?"customers\.create":"suppliers\.create"\)/,/canCreate=canUseCapability\(data\.principal,"products\.create"\)/,/canCreate=canUseCapability\(data\.principal,"warehouses\.create"\)/,/canCreatePayment=!archived&&canUseCapability\(data\.principal,customer\?"customers\.collect":"suppliers\.pay"\)/,/canCreateWarehouse=canUseCapability\(data\.principal,"warehouses\.create"\)/])assert.match(app,pattern);assert.match(app,/canDelete=\{!editingDocument\|\|canDeleteSale\}/);assert.match(app,/canDelete=\{!editingDocument\|\|canDeletePurchase\}/);});
 
 
 test("inventory purchased and sold quantities derive from stock movements without commercial document access",()=>{const movements=[{id:"1",documentId:"s",documentNumber:"1",warehouseId:"w",warehouseName:"W",productId:"p",productName:"P",type:"sale",quantityDelta:-2,balanceBefore:5,balanceAfter:3,occurredAt:"2026-09-01T10:00:00.000Z"},{id:"2",documentId:"s",documentNumber:"1",warehouseId:"w",warehouseName:"W",productId:"p",productName:"P",type:"sale-edit",quantityDelta:1,balanceBefore:3,balanceAfter:4,occurredAt:"2026-09-01T11:00:00.000Z"},{id:"3",documentId:"p",documentNumber:"2",warehouseId:"w",warehouseName:"W",productId:"p",productName:"P",type:"purchase",quantityDelta:4,balanceBefore:4,balanceAfter:8,occurredAt:"2026-09-02T10:00:00.000Z"}];assert.equal(periodStockMovementQuantity(movements,"p","w","sale","",""),1);assert.equal(periodStockMovementQuantity(movements,"p","w","purchase","",""),4);});
@@ -72,4 +72,16 @@ test("product details open as a dedicated read-only product page and edit routes
   assert.match(details,/product\.piecePrice!=null&&field/);
   assert.match(details,/product\.wholesalePrice!=null&&field/);
   assert.match(details,/canEdit&&<button type="button" className="primary" onClick=\{edit\}>تعديل المنتج<\/button>/);
+});
+
+test("archived parties are discoverable, read-only and restorable while nonzero balances block deletion",()=>{
+  const parties=app.slice(app.indexOf("function Parties"),app.indexOf("function PartyEditDialog"));
+  const edit=app.slice(app.indexOf("function PartyEditDialog"),app.indexOf("function PartyPage"));
+  const page=app.slice(app.indexOf("function PartyPage"),app.indexOf("export const ALL_WAREHOUSES"));
+  assert.match(parties,/isArchived===true/);
+  assert.match(parties,/party\.restore/);
+  assert.match(parties,/كشف الحساب/);
+  assert.match(edit,/disabled=\{hasBalance\}/);
+  assert.doesNotMatch(edit,/writeOffBalance/);
+  assert.match(page,/canCreatePayment=!archived&&canUseCapability/);
 });

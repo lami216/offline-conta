@@ -42,6 +42,77 @@ function matchesValue(value: any, expected: any): boolean {
 function matches(row: DbDocument, query: DbDocument = {}): boolean {
   return Object.entries(query).every(([key, expected]) => key === "$or" ? (expected as DbDocument[]).some(q => matches(row, q)) : key === "$and" ? (expected as DbDocument[]).every(q => matches(row, q)) : matchesValue(get(row, key), expected));
 }
+
+type SqlCandidate = { sql: string; params: Array<string | number | null>; complete: boolean };
+const sqlScalarFields = new Set([
+  "_id","id","key","kind","status","partyId","partyType","paymentMethod","type","direction","productId","categoryId",
+  "documentId","parentDocumentId","warehouseId","recurringId","code","legacyKey","usernameNormalized","sourceType",
+  "sourceEntityType","sourceKey","businessDate","isArchived","isReversal","isActive","isSalesDefault","occurrenceKey",
+]);
+const sqlRangeFields = new Set(["occurredAt","createdAt","updatedAt","expiresAt","archivedAt","businessDate"]);
+const sqlFieldName = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const sqlPrimitive = (value: unknown): value is string | number | boolean | null => value === null || ["string","number","boolean"].includes(typeof value);
+const sqlValue = (value: string | number | boolean | null): string | number | null => typeof value === "boolean" ? (value ? 1 : 0) : value;
+const jsonPath = (field:string) => `$.${field}`;
+const jsonExpr = (field:string) => `json_extract(data_json,'${jsonPath(field)}')`;
+const jsonTypeExpr = (field:string) => `json_type(data_json,'${jsonPath(field)}')`;
+function sqlFieldCandidate(field:string, expected:unknown):SqlCandidate {
+  if (!sqlFieldName.test(field) || field.includes(".") || !sqlScalarFields.has(field)) return {sql:"",params:[],complete:false};
+  const keyField=["_id","id","key"].includes(field),expr=keyField?"record_key":jsonExpr(field),typeExpr=keyField?"":jsonTypeExpr(field);
+  if (sqlPrimitive(expected)) {
+    if (expected === null) return keyField ? {sql:"0",params:[],complete:true} : {sql:`${typeExpr}='null'`,params:[],complete:true};
+    return {sql:`${expr}=?`,params:[String(expected)],complete:true};
+  }
+  if (!expected || typeof expected !== "object" || Array.isArray(expected) || expected instanceof Date) return {sql:"",params:[],complete:false};
+  const clauses:string[]=[],params:Array<string|number|null>=[];let complete=true;
+  for (const [op,wanted] of Object.entries(expected as DbDocument)) {
+    if (op === "$options") { if (!("$regex" in (expected as DbDocument))) continue; complete=false; continue; }
+    if (op === "$in" && Array.isArray(wanted) && wanted.every(sqlPrimitive)) {
+      if (!wanted.length) { clauses.push("0"); continue; }
+      const nonNull=wanted.filter(value=>value!==null) as Array<string|number|boolean>,includesNull=wanted.some(value=>value===null);
+      const pieces:string[]=[];
+      if(nonNull.length){pieces.push(`${expr} IN (${nonNull.map(()=>"?").join(",")})`);params.push(...nonNull.map(value=>keyField?String(value):sqlValue(value)))}
+      if(includesNull&&!keyField)pieces.push(`${typeExpr}='null'`);
+      clauses.push(`(${pieces.join(" OR ")||"0"})`);
+      continue;
+    }
+    if (op === "$ne" && sqlPrimitive(wanted)) {
+      if (wanted === null) {
+        clauses.push(keyField ? "1" : `(${typeExpr} IS NULL OR ${typeExpr}<>'null')`);
+      } else if (keyField) {
+        clauses.push(`${expr}<>?`);params.push(String(wanted));
+      } else {
+        clauses.push(`(${typeExpr} IS NULL OR ${typeExpr}='null' OR ${expr}<>?)`);params.push(sqlValue(wanted));
+      }
+      continue;
+    }
+    if (op === "$exists" && typeof wanted === "boolean" && !keyField) { clauses.push(`${typeExpr} IS ${wanted?"NOT ":""}NULL`); continue; }
+    if (["$gt","$gte","$lt","$lte"].includes(op) && sqlRangeFields.has(field) && (typeof wanted==="string"||typeof wanted==="number")) {
+      const operator=op==="$gt"?">":op==="$gte"?">=":op==="$lt"?"<":"<=";clauses.push(`${expr}${operator}?`);params.push(wanted);continue;
+    }
+    complete=false;
+  }
+  return {sql:clauses.join(" AND "),params,complete};
+}
+function sqlCandidate(query:DbDocument={}):SqlCandidate {
+  const clauses:string[]=[],params:Array<string|number|null>=[];let complete=true;
+  for(const [field,expected] of Object.entries(query)){
+    if(field==="$and"){
+      if(!Array.isArray(expected)){complete=false;continue}
+      for(const part of expected as DbDocument[]){const child=sqlCandidate(part);if(child.sql){clauses.push(`(${child.sql})`);params.push(...child.params)}if(!child.complete)complete=false}
+      continue;
+    }
+    if(field==="$or"){
+      if(!Array.isArray(expected)||!(expected as DbDocument[]).length){clauses.push("0");continue}
+      const children=(expected as DbDocument[]).map(sqlCandidate);
+      if(children.every(child=>child.complete&&child.sql)){clauses.push(`(${children.map(child=>`(${child.sql})`).join(" OR ")})`);for(const child of children)params.push(...child.params)}
+      else complete=false;
+      continue;
+    }
+    const candidate=sqlFieldCandidate(field,expected);if(candidate.sql){clauses.push(candidate.sql);params.push(...candidate.params)}if(!candidate.complete)complete=false;
+  }
+  return {sql:clauses.join(" AND "),params,complete};
+}
 const setPath = (row: DbDocument, path: string, value: any) => { const keys=path.split("."); let at=row; for(const key of keys.slice(0,-1)) at=at[key]??={}; at[keys.at(-1)!]=value; };
 const unsetPath = (row: DbDocument, path: string) => { const keys=path.split("."); let at:any=row; for(const key of keys.slice(0,-1)){at=at?.[key];if(at==null)return}delete at[keys.at(-1)!]; };
 function applyUpdate(row: DbDocument, update: DbDocument, inserted=false) {
@@ -64,19 +135,19 @@ class Cursor {
 }
 class Collection<T extends DbDocument=DbDocument> {
   constructor(private db: Database.Database, private table:string){}
-  private all(query?:DbDocument){const exact=query&&Object.entries(query).find(([key,value])=>["_id","id","key"].includes(key)&&(typeof value==="string"||typeof value==="number"));if(exact){const row=this.db.prepare(`SELECT data_json FROM ${this.table} WHERE record_key=?`).get(String(exact[1])) as {data_json:string}|undefined;return row?[decode(row.data_json)]:[]}return (this.db.prepare(`SELECT data_json FROM ${this.table} ORDER BY rowid`).all() as {data_json:string}[]).map(x=>decode(x.data_json))}
+  private all(query:DbDocument={}){const candidate=sqlCandidate(query),where=candidate.sql?` WHERE ${candidate.sql}`:"";return (this.db.prepare(`SELECT data_json FROM ${this.table}${where} ORDER BY rowid`).all(...candidate.params) as {data_json:string}[]).map(x=>decode(x.data_json))}
   private key(row:DbDocument){return String(row._id??row.id??row.key??crypto.randomUUID())}
   private save(row:DbDocument,key?:string){const id=key??this.key(row);if(row._id===undefined)row._id=id;this.db.prepare(`INSERT INTO ${this.table}(record_key,data_json) VALUES(?,?) ON CONFLICT(record_key) DO UPDATE SET data_json=excluded.data_json`).run(id,encode(row));return id}
   find(query:DbDocument={},options?:any){let rows=this.all(query).filter(row=>matches(row,query));if(options?.projection)rows=new Cursor(rows).project(options.projection) as any;return rows instanceof Cursor?rows:new Cursor(rows)}
   async findOne(query:DbDocument={},options?:any){let rows:DbDocument[]=this.all(query).filter(row=>matches(row,query));if(options?.sort)rows=await new Cursor(rows).sort(options.sort).toArray();let row=rows[0];if(row&&options?.projection)row=(await new Cursor([row]).project(options.projection).toArray())[0];return (row??null) as T|undefined}
   async insertOne(document:T,_options?:any){const row=structuredClone(document);const key=this.key(row);try{this.db.prepare(`INSERT INTO ${this.table}(record_key,data_json) VALUES(?,?)`).run(key,encode({...row,_id:row._id??key}));return{insertedId:key}}catch(error){const sqliteCode=String((error as any)?.code??"");if(sqliteCode==="SQLITE_CONSTRAINT_UNIQUE"||sqliteCode==="SQLITE_CONSTRAINT_PRIMARYKEY"){(error as any).sqliteCode=sqliteCode;(error as any).code=11000;(error as any).message=`duplicate key: ${(error as any).message}`}throw error}}
   async insertMany(documents:T[],_options?:any){for(const document of documents)await this.insertOne(document);return{insertedCount:documents.length}}
-  async updateOne(filter:DbDocument,update:DbDocument,options?:any){const found=this.all().find(row=>matches(row,filter));if(found){this.save(applyUpdate(found,update),this.key(found));return{matchedCount:1,modifiedCount:1}}if(options?.upsert){const base=Object.fromEntries(Object.entries(filter).filter(([k,v])=>!k.startsWith("$")&&!(v&&typeof v==="object")));const row=applyUpdate(base,update,true);this.save(row);return{matchedCount:0,upsertedCount:1}}return{matchedCount:0,modifiedCount:0}}
-  async updateMany(filter:DbDocument,update:DbDocument,_options?:any){let n=0;for(const row of this.all().filter(x=>matches(x,filter))){this.save(applyUpdate(row,update),this.key(row));n++}return{matchedCount:n,modifiedCount:n}}
+  async updateOne(filter:DbDocument,update:DbDocument,options?:any){const found=this.all(filter).find(row=>matches(row,filter));if(found){this.save(applyUpdate(found,update),this.key(found));return{matchedCount:1,modifiedCount:1}}if(options?.upsert){const base=Object.fromEntries(Object.entries(filter).filter(([k,v])=>!k.startsWith("$")&&!(v&&typeof v==="object")));const row=applyUpdate(base,update,true);this.save(row);return{matchedCount:0,upsertedCount:1}}return{matchedCount:0,modifiedCount:0}}
+  async updateMany(filter:DbDocument,update:DbDocument,_options?:any){let n=0;for(const row of this.all(filter).filter(x=>matches(x,filter))){this.save(applyUpdate(row,update),this.key(row));n++}return{matchedCount:n,modifiedCount:n}}
   async findOneAndUpdate(filter:DbDocument,update:DbDocument,options?:any){await this.updateOne(filter,update,options);return this.findOne(filter)}
-  async deleteOne(filter:DbDocument,_options?:any){const row=this.all().find(x=>matches(x,filter));if(!row)return{deletedCount:0};this.db.prepare(`DELETE FROM ${this.table} WHERE record_key=?`).run(this.key(row));return{deletedCount:1}}
-  async deleteMany(filter:DbDocument,_options?:any){let n=0;for(const row of this.all().filter(x=>matches(x,filter))){this.db.prepare(`DELETE FROM ${this.table} WHERE record_key=?`).run(this.key(row));n++}return{deletedCount:n}}
-  countDocuments(query:DbDocument={}){return Promise.resolve(this.all().filter(x=>matches(x,query)).length)}
+  async deleteOne(filter:DbDocument,_options?:any){const row=this.all(filter).find(x=>matches(x,filter));if(!row)return{deletedCount:0};this.db.prepare(`DELETE FROM ${this.table} WHERE record_key=?`).run(this.key(row));return{deletedCount:1}}
+  async deleteMany(filter:DbDocument,_options?:any){let n=0;for(const row of this.all(filter).filter(x=>matches(x,filter))){this.db.prepare(`DELETE FROM ${this.table} WHERE record_key=?`).run(this.key(row));n++}return{deletedCount:n}}
+  countDocuments(query:DbDocument={}){const candidate=sqlCandidate(query);if(candidate.complete){const where=candidate.sql?` WHERE ${candidate.sql}`:"",row=this.db.prepare(`SELECT COUNT(*) count FROM ${this.table}${where}`).get(...candidate.params) as {count:number};return Promise.resolve(Number(row.count))}return Promise.resolve(this.all(query).filter(x=>matches(x,query)).length)}
   createIndex(..._args:any[]){throw new Error("Runtime createIndex is unsupported: define SQLite indexes in a schema migration")}
   async bulkWrite(ops:any[],_options?:any){for(const op of ops)if(op.updateOne)await this.updateOne(op.updateOne.filter,op.updateOne.update,op.updateOne)}
   aggregate(pipeline:DbDocument[]){let rows=this.all();for(const stage of pipeline){if(stage.$match)rows=rows.filter(r=>matches(r,stage.$match));else if(stage.$sort)rows=(new Cursor(rows).sort(stage.$sort) as any).rows;else if(stage.$unwind){const path=String(stage.$unwind).replace(/^\$/,'');rows=rows.flatMap(r=>(get(r,path)??[]).map((v:any)=>{const c=structuredClone(r);setPath(c,path,v);return c}))}else if(stage.$group){const groups=new Map<string,DbDocument>();for(const row of rows){const id=stage.$group._id===null?null:get(row,String(stage.$group._id).replace(/^\$/,''));const key=encode(id),out=groups.get(key)??{_id:id};for(const[field,expr]of Object.entries(stage.$group).slice(1)){const e=expr as any;if(e.$sum!==undefined){let value=e.$sum;if(typeof value==='string'&&value.startsWith('$'))value=get(row,value.slice(1));else if(value?.$cond){const[c,t,f]=value.$cond;value=matchesValue(get(row,String(c.$eq?.[0]??'').replace(/^\$/,'')),c.$eq?.[1])?(typeof t==='string'?get(row,t.slice(1)):t):(typeof f==='string'?get(row,f.slice(1)):f)}out[field]=Number(out[field]??0)+Number(value??0)}else if(e.$first!==undefined&&out[field]===undefined)out[field]=get(row,String(e.$first).replace(/^\$/,''));}groups.set(key,out)}rows=[...groups.values()]}}return new Cursor(rows)}
@@ -109,6 +180,17 @@ export function ensureDatabaseSchema(input:Database.Database|SqliteDatabase){con
  ["financial_document_type_unique","financial_movements","json_extract(data_json,'$.documentId'),json_extract(data_json,'$.type')","json_extract(data_json,'$.documentId') IS NOT NULL AND json_extract(data_json,'$.type') IS NOT NULL"],
  ["users_username_normalized_unique","users","json_extract(data_json,'$.usernameNormalized')","json_extract(data_json,'$.usernameNormalized') IS NOT NULL AND json_extract(data_json,'$.usernameNormalized')<>''"],
  ["import_mapping_source_unique","import_mappings","json_extract(data_json,'$.sourceType'),json_extract(data_json,'$.sourceEntityType'),json_extract(data_json,'$.sourceKey')","json_extract(data_json,'$.sourceType') IS NOT NULL AND json_extract(data_json,'$.sourceEntityType') IS NOT NULL AND json_extract(data_json,'$.sourceKey') IS NOT NULL"],
- ] as const;db.transaction(()=>{for(const[name,table,expression,predicate]of indexes){try{db.exec(`CREATE UNIQUE INDEX ${name} ON ${table}(${expression}) WHERE ${predicate}`)}catch(error){throw new Error(`SQLite migration v2 cannot create ${name}; existing duplicate data must be corrected without deleting records: ${String((error as Error).message)}`)}}db.prepare("INSERT INTO schema_migrations VALUES(2,?)").run(new Date().toISOString())})();version=2}if(version<3){const indexes=[["warehouses_legacy_key_unique","warehouses"],["parties_legacy_key_unique","parties"]] as const;db.transaction(()=>{for(const[name,table]of indexes){try{db.exec(`CREATE UNIQUE INDEX ${name} ON ${table}(json_extract(data_json,'$.legacyKey')) WHERE json_extract(data_json,'$.legacyKey') IS NOT NULL AND json_extract(data_json,'$.legacyKey')<>''`)}catch(error){throw new Error(`SQLite migration v3 cannot create ${name}; existing duplicate data must be corrected without deleting records: ${String((error as Error).message)}`)}}db.prepare("INSERT INTO schema_migrations VALUES(3,?)").run(new Date().toISOString())})();version=3}if(version<4){db.transaction(()=>{db.exec(`CREATE TABLE IF NOT EXISTS product_categories(record_key TEXT PRIMARY KEY,data_json TEXT NOT NULL)`);db.prepare("INSERT INTO schema_migrations VALUES(4,?)").run(new Date().toISOString())})();version=4}if(version<5){db.transaction(()=>{db.exec(`DROP INDEX IF EXISTS financial_document_type_unique;CREATE UNIQUE INDEX financial_document_type_active_unique ON financial_movements(json_extract(data_json,'$.documentId'),json_extract(data_json,'$.type')) WHERE json_extract(data_json,'$.documentId') IS NOT NULL AND json_extract(data_json,'$.type') IS NOT NULL AND COALESCE(json_extract(data_json,'$.status'),'posted')<>'reversed' AND COALESCE(json_extract(data_json,'$.isReversal'),0)<>1;`);db.prepare("INSERT INTO schema_migrations VALUES(5,?)").run(new Date().toISOString())})();version=5}cleanupExpiredRecords(db);const check=db.pragma("quick_check") as any[];if(check[0]?.quick_check!=="ok")throw new Error("SQLite quick_check failed")}
+ ] as const;db.transaction(()=>{for(const[name,table,expression,predicate]of indexes){try{db.exec(`CREATE UNIQUE INDEX ${name} ON ${table}(${expression}) WHERE ${predicate}`)}catch(error){throw new Error(`SQLite migration v2 cannot create ${name}; existing duplicate data must be corrected without deleting records: ${String((error as Error).message)}`)}}db.prepare("INSERT INTO schema_migrations VALUES(2,?)").run(new Date().toISOString())})();version=2}if(version<3){const indexes=[["warehouses_legacy_key_unique","warehouses"],["parties_legacy_key_unique","parties"]] as const;db.transaction(()=>{for(const[name,table]of indexes){try{db.exec(`CREATE UNIQUE INDEX ${name} ON ${table}(json_extract(data_json,'$.legacyKey')) WHERE json_extract(data_json,'$.legacyKey') IS NOT NULL AND json_extract(data_json,'$.legacyKey')<>''`)}catch(error){throw new Error(`SQLite migration v3 cannot create ${name}; existing duplicate data must be corrected without deleting records: ${String((error as Error).message)}`)}}db.prepare("INSERT INTO schema_migrations VALUES(3,?)").run(new Date().toISOString())})();version=3}if(version<4){db.transaction(()=>{db.exec(`CREATE TABLE IF NOT EXISTS product_categories(record_key TEXT PRIMARY KEY,data_json TEXT NOT NULL)`);db.prepare("INSERT INTO schema_migrations VALUES(4,?)").run(new Date().toISOString())})();version=4}if(version<5){db.transaction(()=>{db.exec(`DROP INDEX IF EXISTS financial_document_type_unique;CREATE UNIQUE INDEX financial_document_type_active_unique ON financial_movements(json_extract(data_json,'$.documentId'),json_extract(data_json,'$.type')) WHERE json_extract(data_json,'$.documentId') IS NOT NULL AND json_extract(data_json,'$.type') IS NOT NULL AND COALESCE(json_extract(data_json,'$.status'),'posted')<>'reversed' AND COALESCE(json_extract(data_json,'$.isReversal'),0)<>1;`);db.prepare("INSERT INTO schema_migrations VALUES(5,?)").run(new Date().toISOString())})();version=5}if(version<6){const indexes=[
+["documents_kind_status_time_idx","documents","json_extract(data_json,'$.kind'),json_extract(data_json,'$.status'),json_extract(data_json,'$.occurredAt')"],
+["documents_party_status_time_idx","documents","json_extract(data_json,'$.partyId'),json_extract(data_json,'$.status'),json_extract(data_json,'$.occurredAt')"],
+["documents_payment_time_idx","documents","json_extract(data_json,'$.paymentMethod'),json_extract(data_json,'$.occurredAt')"],
+["financial_time_idx","financial_movements","json_extract(data_json,'$.occurredAt')"],
+["financial_account_time_idx","financial_movements","json_extract(data_json,'$.paymentMethod'),json_extract(data_json,'$.occurredAt')"],
+["financial_party_time_idx","financial_movements","json_extract(data_json,'$.partyId'),json_extract(data_json,'$.occurredAt')"],
+["stock_product_time_idx","stock_movements","json_extract(data_json,'$.productId'),json_extract(data_json,'$.occurredAt')"],
+["account_transfers_time_idx","account_transfers","json_extract(data_json,'$.occurredAt')"],
+["products_category_idx","products","json_extract(data_json,'$.categoryId')"],
+["parties_type_archived_idx","parties","json_extract(data_json,'$.partyType'),json_extract(data_json,'$.isArchived')"],
+] as const;db.transaction(()=>{for(const[name,table,expression]of indexes)db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON ${table}(${expression})`);db.prepare("INSERT INTO schema_migrations VALUES(6,?)").run(new Date().toISOString())})();version=6}cleanupExpiredRecords(db);const check=db.pragma("quick_check") as any[];if(check[0]?.quick_check!=="ok")throw new Error("SQLite quick_check failed")}
 export function cleanupExpiredRecords(db:Database.Database){for(const table of ["command_receipts","legacy_import_runs","import_runs","import_safety_backups","restore_snapshots"])db.prepare(`DELETE FROM ${table} WHERE json_extract(data_json,'$.expiresAt') IS NOT NULL AND datetime(json_extract(data_json,'$.expiresAt')) <= datetime('now')`).run();db.prepare("DELETE FROM command_receipts WHERE json_extract(data_json,'$.status')='committed' AND datetime(json_extract(data_json,'$.createdAt')) < datetime('now','-7 days')").run()}
 function seed(db:Database.Database){const now=new Date().toISOString(),put=(table:string,key:string,data:any)=>db.prepare(`INSERT OR IGNORE INTO ${table}(record_key,data_json) VALUES(?,?)`).run(key,encode({...data,_id:key}));put("warehouses","wh-main",{name:"المخزن الرئيسي",isSalesDefault:false,createdAt:now});put("warehouses","wh-boutique",{name:"البوتيك",isSalesDefault:true,createdAt:now});for(const[code,name,color,icon]of [["cash","نقدي","#16835f","banknote"],["bankily","بنكيلي","#1677c8","wallet"],["masrvi","مصرفي","#6d55c7","building"],["sedad","السداد","#d07a20","landmark"],["bimbank","بيم","#c14666","card"]])put("payment_accounts",`account-${code}`,{id:`account-${code}`,code,name,color,icon,isActive:true,balance:0,balanceInitialized:true,createdAt:now})}

@@ -371,3 +371,18 @@ test("net-neutral adjustment edit does not resurrect an archived empty warehouse
   await command({type:"adjustment.void",documentId:adjustmentId});
   assert.deepEqual([(await db.collection("warehouses").findOne({_id:"a"})).isArchived,await stock(productId,"a")],[false,10]);
 });
+
+test("cash invoices reject stale or archived party selections instead of storing broken party references",async()=>{
+  const productId=await product(5);
+  await command({type:"party.delete",id:"customer"});
+  assert.equal(await db.collection("parties").findOne({id:"customer"}),null,"unused customer is hard deleted");
+  const beforeStock=await stock(productId),beforeCash=await balance("cash");
+  await assert.rejects(sale(productId,1,{partyId:"customer",paymentMethod:"cash"}),/عميل|طرف/);
+  await assert.rejects(purchase(productId,1,{partyId:"missing-supplier",paymentMethod:"cash",unitPrice:80}),/مورد|طرف/);
+  assert.deepEqual([await stock(productId),await balance("cash")],[beforeStock,beforeCash]);
+  assert.equal(await db.collection("documents").countDocuments({kind:{$in:["sale","purchase"]},status:"posted"}),0);
+
+  await db.collection("parties").updateOne({id:"supplier"},{$set:{isArchived:true,archivedAt:new Date()}});
+  await assert.rejects(purchase(productId,1,{partyId:"supplier",paymentMethod:"cash",unitPrice:80}),/مورد|طرف/);
+  assert.deepEqual([await stock(productId),await balance("cash")],[beforeStock,beforeCash]);
+});

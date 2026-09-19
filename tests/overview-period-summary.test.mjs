@@ -17,9 +17,9 @@ test("overview KPI details keep only calculation contributors in one signed mone
 
 test("overview aggregate details link each contributing category to a traceable source",async()=>{
   const ui=await source("app/conta-app.tsx");
-  assert.match(ui,/overview-sales-total[^\n]+source:\{kind:"report",reportType:"sales"\}/);
-  assert.match(ui,/overview-purchases-total[^\n]+source:\{kind:"report",reportType:"purchases"\}/);
-  assert.match(ui,/overview-expenses-total[^\n]+source:\{kind:"report",reportType:"expenses"\}/);
-  assert.match(ui,/profit-sales-cost[^\n]+source:\{kind:"report",reportType:"sales"\}/);
+  assert.match(ui,/overview-sales-total[^\n]+source:\{kind:"report",reportType:"sales",period:committedPeriod\}/);
+  assert.match(ui,/overview-purchases-total[^\n]+source:\{kind:"report",reportType:"purchases",period:committedPeriod\}/);
+  assert.match(ui,/overview-expenses-total[^\n]+source:\{kind:"report",reportType:"expenses",period:committedPeriod\}/);
+  assert.match(ui,/profit-sales-cost[^\n]+source:\{kind:"report",reportType:"sales",period:committedPeriod\}/);
   assert.match(ui,/overview-party-[^\n]+source:\{kind:"party",partyId:String\(party\.id\)\}/);
 });

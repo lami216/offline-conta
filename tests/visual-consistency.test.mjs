@@ -234,7 +234,6 @@ test("account overview is accounts-only, global, and uses a two-region semantic 
 
 
 test("new audit dialogs share escape and focus containment behavior", () => {
-  const app=normalizePresentationSource(source);
   assert.match(app,/function handleModalKeyboard/);
   assert.match(app,/event\.key==="Escape"/);
   assert.match(app,/event\.key!=="Tab"/);

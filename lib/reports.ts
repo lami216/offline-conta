@@ -101,9 +101,9 @@ async function directDocuments(db: Db, f: ReportFilters, kind: string, categoryS
   const constraint = productConstraint(f, categoryScope);
   if (constraint) query["lines.productId"] = constraint;
   if (kind === "expense" && f.expenseType) query.recurringId = f.expenseType === "recurring" ? { $exists: true } : { $exists: false };
-  const totalRows = await db.collection("documents").countDocuments(query);
-  const rows = await pageCursor(db.collection("documents").find(query).sort({ occurredAt: -1 }), f).toArray();
-  const all = f.unpaged ? rows : await db.collection("documents").find(query).toArray();
+  const all = await db.collection("documents").find(query).toArray();
+  const ordered = [...all].sort((a,b)=>String(b.occurredAt).localeCompare(String(a.occurredAt)));
+  const totalRows = all.length, rows = f.unpaged ? ordered : ordered.slice((f.page - 1) * f.pageSize, f.page * f.pageSize);
   return { rows, all, totalRows };
 }
 
@@ -149,22 +149,20 @@ if (f.type === "financial") {
   if (f.movementType) query.type = ["sale", "purchase"].includes(f.movementType) ? { $regex: `^${f.movementType}(?::|$)` } : f.movementType;
   if (f.paymentAccountId) query.paymentMethod = f.paymentAccountId;
   if (f.direction) query.direction = f.direction;
-  const totalRows = await db.collection("financialMovements").countDocuments(query), all = await db.collection("financialMovements").find(query).toArray(), raw = f.unpaged ? [...all].sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt))) : await pageCursor(db.collection("financialMovements").find(query).sort({ occurredAt: -1 }), f).toArray();
+  const all = await db.collection("financialMovements").find(query).toArray(), totalRows = all.length, ordered = [...all].sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt))), raw = f.unpaged ? ordered : ordered.slice((f.page - 1) * f.pageSize, f.page * f.pageSize);
   const rows = raw.map(row => ({ id: String(row.id), documentId: String(row.documentId), occurredAt: String(row.occurredAt), paymentMethod: String(row.paymentMethod), movementType: financialMovementKind(row.type), incoming: row.direction === "in" ? n(row.amount) : 0, outgoing: row.direction === "out" ? n(row.amount) : 0, party: String(row.partyName ?? ""), documentNumber: String(row.documentNumber ?? "") }));
   const operating = all.filter(row => isOperatingFinancialMovement(row.type)), businessIncoming = operating.filter(row => row.direction === "in").reduce((sum, row) => sum + n(row.amount), 0), businessOutgoing = operating.filter(row => row.direction === "out").reduce((sum, row) => sum + n(row.amount), 0), balanceNet = all.reduce((sum, row) => sum + (row.direction === "in" ? n(row.amount) : -n(row.amount)), 0);
   return { report: f.type, from: f.from!, to: f.to!, summary: { incoming: all.filter(row => row.direction === "in").reduce((sum, row) => sum + n(row.amount), 0), outgoing: all.filter(row => row.direction === "out").reduce((sum, row) => sum + n(row.amount), 0), net: balanceNet, businessIncoming, businessOutgoing, businessNet: businessIncoming - businessOutgoing, balanceNet, operatingIncoming: businessIncoming, operatingOutgoing: businessOutgoing, operatingNet: businessIncoming - businessOutgoing }, rows, meta: pagination(totalRows, f) };
 }
-  if (f.type === "debts") { const query:Document={isArchived:{$ne:true}};if(f.search){const literal=escapeRegex(f.search);query.$or=[{name:{$regex:literal,$options:"i"}},{phone:{$regex:literal}}]};if(f.debtSide==="receivable")query.receivable={$gt:0};if(f.debtSide==="payable")query.payable={$gt:0};if(f.debtSide==="clear")query.$and=[{receivable:{$lte:0}},{payable:{$lte:0}}];const total=await db.collection("parties").countDocuments(query),all=await db.collection("parties").find(query).toArray(),raw=await pageCursor(db.collection("parties").find(query).sort({name:1}),f).toArray(),rows=raw.map(p=>({id:String(p.id),partyId:String(p.id),name:String(p.name),phone:String(p.phone??""),partyType:String(p.partyType),accountType:p.partyType==="customer"?"عميل":"مورد",balance:Math.abs(n(p.receivable)-n(p.payable)),receivable:Math.max(n(p.receivable)-n(p.payable),0),payable:Math.max(n(p.payable)-n(p.receivable),0),lastMovement:String(p.lastMovementAt??"")}));return{report:f.type,from:null,to:null,summary:{receivable:all.reduce((s,p)=>s+Math.max(n(p.receivable)-n(p.payable),0),0),payable:all.reduce((s,p)=>s+Math.max(n(p.payable)-n(p.receivable),0),0),net:all.reduce((s,p)=>s+n(p.receivable)-n(p.payable),0),count:total},rows,meta:pagination(total,f)}; }
+  if (f.type === "debts") { const query:Document={isArchived:{$ne:true}};if(f.search){const literal=escapeRegex(f.search);query.$or=[{name:{$regex:literal,$options:"i"}},{phone:{$regex:literal}}]};if(f.debtSide==="receivable")query.receivable={$gt:0};if(f.debtSide==="payable")query.payable={$gt:0};if(f.debtSide==="clear")query.$and=[{receivable:{$lte:0}},{payable:{$lte:0}}];const all=await db.collection("parties").find(query).toArray(),total=all.length,ordered=[...all].sort((a,b)=>{const x=String(a.name??""),y=String(b.name??"");return x===y?0:x<y?-1:1}),raw=f.unpaged?ordered:ordered.slice((f.page-1)*f.pageSize,f.page*f.pageSize),rows=raw.map(p=>({id:String(p.id),partyId:String(p.id),name:String(p.name),phone:String(p.phone??""),partyType:String(p.partyType),accountType:p.partyType==="customer"?"عميل":"مورد",balance:Math.abs(n(p.receivable)-n(p.payable)),receivable:Math.max(n(p.receivable)-n(p.payable),0),payable:Math.max(n(p.payable)-n(p.receivable),0),lastMovement:String(p.lastMovementAt??"")}));return{report:f.type,from:null,to:null,summary:{receivable:all.reduce((s,p)=>s+Math.max(n(p.receivable)-n(p.payable),0),0),payable:all.reduce((s,p)=>s+Math.max(n(p.payable)-n(p.receivable),0),0),net:all.reduce((s,p)=>s+n(p.receivable)-n(p.payable),0),count:total},rows,meta:pagination(total,f)}; }
   if (f.type === "party-ledger") {
     if (!f.partyId) throw new Error("يجب اختيار الطرف");
     const party = await db.collection("parties").findOne({ id: f.partyId });
     if (!party) throw new Error("الطرف غير موجود");
     const partyType = resolvePartyType(party), query = { partyId: f.partyId, status: "posted", kind: { $in: ["sale", "purchase", "return", "payment", "offset", "settlement"] }, ...matchDate(f) };
-    const [total, all, raw] = await Promise.all([
-      db.collection("documents").countDocuments(query),
-      db.collection("documents").find(query).toArray(),
-      pageCursor(db.collection("documents").find(query).sort({ occurredAt: -1 }), f).toArray(),
-    ]);
+    const all = await db.collection("documents").find(query).toArray(), total = all.length;
+    const ordered = [...all].sort((a,b)=>String(b.occurredAt).localeCompare(String(a.occurredAt)));
+    const raw = f.unpaged ? ordered : ordered.slice((f.page - 1) * f.pageSize, f.page * f.pageSize);
     const parentIds = all.filter(d => d.kind === "return" && d.parentDocumentId).map(d => d.parentDocumentId);
     const parentKinds = new Map((await db.collection("documents").find({ id: { $in: parentIds } }).project({ id: 1, kind: 1 }).toArray()).map(d => [String(d.id), String(d.kind)]));
     const effect = (d: Document) => {
@@ -188,7 +186,8 @@ if (f.type === "financial") {
     return { report: f.type, from: f.from ?? null, to: f.to ?? null, summary: { name: String(party.name), partyType, tradeTotal, debitTotal, creditTotal, receivable: Math.max(net, 0), payable: Math.max(-net, 0), net, transactionCount: total }, rows, meta: pagination(total, f) };
   }
   // Read-only compatibility: legacy adjustments remain negative sale facts.
-  const documents=await db.collection("documents").find({kind:{$in:["sale","return"]},status:"posted",...matchDate(f),...(constraint?{"lines.productId":constraint}:{})}).toArray(),facts=await saleFacts(db,documents,f,categoryScope);
+  const overviewCommercial=f.type==="overview"?await db.collection("documents").find({kind:{$in:["sale","return","purchase","expense"]},status:"posted",...matchDate(f)}).toArray():null;
+  const documents=overviewCommercial?overviewCommercial.filter(document=>(document.kind==="sale"||document.kind==="return")&&(!constraint||(document.lines??[]).some((line:Document)=>lineMatches(line,f,categoryScope)))):await db.collection("documents").find({kind:{$in:["sale","return"]},status:"posted",...matchDate(f),...(constraint?{"lines.productId":constraint}:{})}).toArray(),facts=await saleFacts(db,documents,f,categoryScope);
   if(f.type==="product-sales"){
     const purchases=await db.collection("documents").find({kind:"purchase",status:"posted",...matchDate(f),...(constraint?{"lines.productId":constraint}:{})}).project({lines:1}).toArray();
     const activeWarehouses=new Set((await db.collection("warehouses").find({isArchived:{$ne:true}}).project({_id:1}).toArray()).map(warehouse=>String(warehouse._id)));
@@ -201,7 +200,7 @@ if (f.type === "financial") {
   }
   const grouped=new Map<string,ReportRow>();for(const fact of facts){const key=f.groupBy==="product"?String(fact.productId):String(fact.documentId),g=grouped.get(key)??{id:key,documentId:fact.documentId,number:fact.number,occurredAt:fact.occurredAt,productId:fact.productId,product:fact.product,sku:fact.sku,quantity:0,revenue:0,cost:0,profit:0,unknownRevenue:0,costKnown:true,invoiceIdList:""};g.quantity=n(g.quantity)+n(fact.quantity);g.revenue=n(g.revenue)+n(fact.revenue);g.cost=n(g.cost)+n(fact.cost);g.profit=n(g.profit)+n(fact.profit);g.unknownRevenue=n(g.unknownRevenue)+n(fact.unknownRevenue);g.costKnown=Boolean(g.costKnown)&&Boolean(fact.costKnown);const ids=new Set(String(g.invoiceIdList).split(",").filter(Boolean));ids.add(String(fact.documentId));g.invoiceIdList=[...ids].join(",");g.invoiceCount=ids.size;g.margin=n(g.revenue)?n(g.profit)/n(g.revenue)*100:0;grouped.set(key,g)}const prows=[...grouped.values()].map(row=>{const copy={...row};delete copy.invoiceIdList;return copy}).sort((a,b)=>n(b.profit)-n(a.profit));if(f.type==="profit")return{report:f.type,from:f.from!,to:f.to!,summary:{...profitSummary(facts),expiredInventoryLoss:expiryLoss},rows:slice(prows,f),meta:pagination(prows.length,f)};
   // Overview totals include legacy effects, while the invoice list below hides that retired kind.
-  const commercial=await db.collection("documents").find({kind:{$in:["sale","return","purchase","expense"]},status:"posted",...matchDate(f)}).toArray();
+  const commercial=overviewCommercial??await db.collection("documents").find({kind:{$in:["sale","return","purchase","expense"]},status:"posted",...matchDate(f)}).toArray();
   // These collections are intentionally unfiltered by the report period: the lower
   // overview is a current position snapshot, while `commercial` remains period-bound.
   const [parties,accounts,products,warehouses]=await Promise.all([

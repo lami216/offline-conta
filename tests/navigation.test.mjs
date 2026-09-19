@@ -141,3 +141,15 @@ test("print-after-save never mounts a printable document from a missing bootstra
   assert.match(source,/\{autoPrintDocument && <PrintableDocument document=\{autoPrintDocument\} data=\{data\} \/>\}/);
   assert.doesNotMatch(source,/data\.documents\.find\(document => document\.id === autoPrintId\)!/);
 });
+
+
+test("party, stock, and bank transaction drafts register with the shared unsaved-change guard", async () => {
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  assert.match(source,/function PartyPage\([^)]*registerEditorGuard/);
+  assert.match(source,/isEditing:\(\)=>Boolean\(editingPaymentId\)\|\|paymentDirty\(\)/);
+  assert.match(source,/function MultiStockForm[\s\S]*registerEditorGuard: RegisterEditorGuard/);
+  assert.match(source,/isEditing:\(\)=>Boolean\(editingDocument\)\|\|draftDirty\(\)/);
+  assert.match(source,/function Banks\([^)]*registerEditorGuard/);
+  assert.match(source,/tab==="transfers"\)registerEditorGuard/);
+  assert.match(source,/tab==="adjustment"\)registerEditorGuard/);
+});

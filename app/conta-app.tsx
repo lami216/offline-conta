@@ -445,6 +445,7 @@ function ContaAppContent() {
               run={run}
               editRequest={partyPaymentEditRequest}
               clearEditRequest={() => setPartyPaymentEditRequest(null)}
+              registerEditorGuard={registerEditorGuard}
             />
           ) : (
             <>
@@ -465,16 +466,16 @@ function ContaAppContent() {
                 <Warehouses data={data} run={run} openDoc={openDoc} />
               )}{" "}
               {view === "transfers" && (
-                <Transfer data={data} run={run} openDoc={openDoc} editRequest={transferEditRequest} clearEditRequest={() => setTransferEditRequest(null)} />
+                <Transfer data={data} run={run} openDoc={openDoc} editRequest={transferEditRequest} clearEditRequest={() => setTransferEditRequest(null)} registerEditorGuard={registerEditorGuard} />
               )}{" "}
               {view === "adjustments" && (
-                <Adjustment data={data} run={run} openDoc={openDoc} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} editRequest={adjustmentEditRequest} clearEditRequest={() => setAdjustmentEditRequest(null)} />
+                <Adjustment data={data} run={run} openDoc={openDoc} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} editRequest={adjustmentEditRequest} clearEditRequest={() => setAdjustmentEditRequest(null)} registerEditorGuard={registerEditorGuard} />
               )}{" "}
               {view === "records" && <Records data={data} openDoc={openDoc} />}{" "}
               {view === "reports" && (
                 <Reports key={reportType} data={data} openDoc={openDoc} openSource={openSummarySource} type={reportType} sourceRequest={reportSourceRequest} clearSourceRequest={()=>setReportSourceRequest(null)} />
               )}{" "}
-              {view === "banks" && <Banks data={data} run={run} openDoc={openDoc} openSource={openSummarySource} tab={effectiveBankTab} sourceRequest={bankSourceRequest} clearSourceRequest={() => setBankSourceRequest(null)} />}{" "}
+              {view === "banks" && <Banks data={data} run={run} openDoc={openDoc} openSource={openSummarySource} tab={effectiveBankTab} sourceRequest={bankSourceRequest} clearSourceRequest={() => setBankSourceRequest(null)} registerEditorGuard={registerEditorGuard} />}{" "}
               {view === "settings" && <SettingsPage data={data} reload={reload} tab={settingsTab} />}{" "}
             </>
           )}
@@ -1054,7 +1055,7 @@ type FinancialDetail = {type:string;occurredAt:string;amount:number;reference:st
 function useBankScope(){const today=localBusinessDay(),[draftFrom,setDraftFrom]=useState(today),[draftTo,setDraftTo]=useState(today),[period,setPeriod]=useState<CommittedPeriod>(()=>({from:today,to:today}));const resetAllFilters=()=>{setDraftFrom("");setDraftTo("");setPeriod(null)};const commit=()=>{const issue=validateRequiredDateRange(draftFrom,draftTo);if(issue){showTransientNotice(dateRangeIssueMessage(issue));return}setPeriod({from:draftFrom,to:draftTo})};return {draftFrom,draftTo,setDraftFrom,setDraftTo,period,commit,all:resetAllFilters}}
 function buildFinancialPresentation(detail:FinancialDetail):OfficialPresentation{const transfer=!!detail.from&&!!detail.to,correction=detail.balanceBefore!=null||detail.balanceAfter!=null,title=transfer?tr("سند تحويل بين الحسابات"):correction?tr("سند تصحيح رصيد"):/إيداع/.test(detail.type)?tr("سند إيداع"):/سحب/.test(detail.type)?tr("سند سحب"):tr("سند عملية مالية");return{title,meta:[[tr("المرجع"),detail.reference],[tr("التاريخ"),formatDateTime(detail.occurredAt)],...(detail.account?[[tr("الحساب"),detail.account]] as Array<[string,string]>:[]),...(detail.from?[[tr("من الحساب"),detail.from]] as Array<[string,string]>:[]),...(detail.to?[[tr("إلى الحساب"),detail.to]] as Array<[string,string]>:[]),...(detail.balanceBefore!=null?[[tr("الرصيد قبل"),money(detail.balanceBefore)]] as Array<[string,string]>:[]),...(detail.balanceAfter!=null?[[tr("الرصيد بعد"),money(detail.balanceAfter)]] as Array<[string,string]>:[]),...(detail.note?[[correction?tr("السبب"):tr("ملاحظة"),detail.note]] as Array<[string,string]>:[])],totals:[[correction?tr("مقدار التغيير"):tr("المبلغ"),money(detail.amount)]],tone:transfer||correction?"neutral":/إيداع/.test(detail.type)?"positive":/سحب/.test(detail.type)?"negative":"neutral"}}
 function FinancialOperationDetail({detail,close,branding}:{detail:FinancialDetail;close:()=>void;branding:InvoiceBrandingSettings}){const presentation=buildFinancialPresentation(detail),tone:MoneyTone=/إيداع/.test(detail.type)?"positive":/سحب/.test(detail.type)?"negative":"neutral";const {locale}=useI18n();const print=async()=>{try{await printPreparedDocument(await loadPrintSettings(),false)}catch{showTransientNotice(locale==="ar"?"تعذرت الطباعة.":"Échec de l’impression.")}};return createPortal(<div className="modal-overlay" role="dialog" aria-modal="true"><div className="official-document-viewer"><section className="official-document-layout"><div className="official-document-toolbar"><button className="back" onClick={close}>{tr("← العودة")}</button><button className="soft" onClick={print}><Printer/>  {tr("طباعة")}</button></div><div className="official-document-scroll financial-operation-detail no-print"><dl><dt>{tr("المرجع")}</dt><dd>{detail.reference}</dd><dt>{tr("التاريخ")}</dt><dd>{formatDateTime(detail.occurredAt)}</dd>{detail.account&&<><dt>{tr("الحساب")}</dt><dd>{detail.account}</dd></>}{detail.from&&<><dt>{tr("من الحساب")}</dt><dd>{detail.from}</dd></>}{detail.to&&<><dt>{tr("إلى الحساب")}</dt><dd>{detail.to}</dd></>}<dt>{tr("المبلغ")}</dt><dd><MoneyValue value={detail.amount} tone={tone}/></dd>{detail.balanceBefore!=null&&<><dt>{tr("الرصيد قبل")}</dt><dd><MoneyValue value={detail.balanceBefore}/></dd></>}{detail.balanceAfter!=null&&<><dt>{tr("الرصيد بعد")}</dt><dd><MoneyValue value={detail.balanceAfter}/></dd></>}{detail.balanceBefore!=null&&detail.balanceAfter!=null&&<><dt>{tr("مقدار التصحيح")}</dt><dd><MoneyValue value={detail.balanceAfter-detail.balanceBefore} tone={(detail.balanceAfter-detail.balanceBefore)>0?"positive":(detail.balanceAfter-detail.balanceBefore)<0?"negative":"neutral"}/></dd></>}{detail.note&&<><dt>{tr("ملاحظة")}</dt><dd>{detail.note}</dd></>}</dl></div>{createPortal(<div className="document-print-portal"><OfficialRecordSheet presentation={presentation} branding={branding}/></div>,document.body)}</section></div></div>,document.body)}
-function Banks({ data, run, openDoc, openSource, tab, sourceRequest, clearSourceRequest }: { data: BootstrapData; run: RunCommand; openDoc:(id:string)=>void; openSource:(target:SummarySourceTarget)=>void; tab:BankTab; sourceRequest:BankSourceRequest|null; clearSourceRequest:()=>void }) {
+function Banks({ data, run, openDoc, openSource, tab, sourceRequest, clearSourceRequest, registerEditorGuard }: { data: BootstrapData; run: RunCommand; openDoc:(id:string)=>void; openSource:(target:SummarySourceTarget)=>void; tab:BankTab; sourceRequest:BankSourceRequest|null; clearSourceRequest:()=>void; registerEditorGuard:RegisterEditorGuard }) {
   const {locale}=useI18n(),confirmAction=useAppConfirm();
   const [editing,setEditing]=useState<PaymentAccount|null>(null),[detail,setDetail]=useState<FinancialDetail|null>(null),[summaryDetail,setSummaryDetail]=useState<SummaryBreakdown|null>(null),[showArchived,setShowArchived]=useState(false),[editingTransferId,setEditingTransferId]=useState<string|null>(null),[editingAdjustmentId,setEditingAdjustmentId]=useState<string|null>(null);
   const [transferFrom,setTransferFrom]=useState(""),[transferTo,setTransferTo]=useState(""),[amount,setAmount]=useState(""),[note,setNote]=useState("");
@@ -1090,14 +1091,17 @@ function Banks({ data, run, openDoc, openSource, tab, sourceRequest, clearSource
   const latestOpeningCorrection=(account:PaymentAccount)=>[...data.financialMovements].filter(m=>financialMovementKind(m.type)==="opening-balance-correction"&&(m.paymentMethod===account.id||m.paymentMethod===account.code)).sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)||b.id.localeCompare(a.id))[0]??null;
   const accountId=(value:string)=>data.paymentAccounts.find(account=>account.id===value||account.code===value)?.id??"";
   const historicalAccounts=(ids:string[])=>{const map=new Map(active.map(account=>[account.id,account]));for(const value of ids){const account=data.paymentAccounts.find(item=>item.id===value||item.code===value);if(account)map.set(account.id,account)}return [...map.values()]};
-  const resetTransferEditor=()=>{setEditingTransferId(null);setTransferFrom("");setTransferTo("");setAmount("");setNote("")};
-  const loadTransfer=(transfer:BootstrapData["accountTransfers"][number])=>{setEditingTransferId(transfer.documentId??transfer.id);setTransferFrom(accountId(transfer.fromAccountId));setTransferTo(accountId(transfer.toAccountId));setAmount(String(transfer.amount));setNote(transfer.note??"")};
+  const transferBaseline=useRef(""),transferSnapshot=()=>JSON.stringify({transferFrom,transferTo,amount,note}),transferDirty=()=>editingTransferId?transferSnapshot()!==transferBaseline.current:Boolean(transferFrom||transferTo||amount||note);
+  const resetTransferEditor=()=>{setEditingTransferId(null);setTransferFrom("");setTransferTo("");setAmount("");setNote("");transferBaseline.current=""};
+  const loadTransfer=(transfer:BootstrapData["accountTransfers"][number])=>{const values={transferFrom:accountId(transfer.fromAccountId),transferTo:accountId(transfer.toAccountId),amount:String(transfer.amount),note:transfer.note??""};setEditingTransferId(transfer.documentId??transfer.id);setTransferFrom(values.transferFrom);setTransferTo(values.transferTo);setAmount(values.amount);setNote(values.note);transferBaseline.current=JSON.stringify(values)};
   const saveTransfer=async()=>{if(editingTransferId?!canTransferEdit:!canTransferCreate)return;await run({type:editingTransferId?"account-transfer.update":"account-transfer.post",...(editingTransferId?{documentId:editingTransferId}:{}),fromAccountId:transferFrom,toAccountId:transferTo,amount:val(amount),note},tr("تم التحويل بين الحسابات"),resetTransferEditor)};
   const removeTransfer=async(transfer:BootstrapData["accountTransfers"][number])=>{const id=transfer.documentId??transfer.id;if(!await confirmAction({message:`هل تريد حذف التحويل رقم ${transfer.number}؟\nسيتم عكس طرفي التحويل مع الاحتفاظ بسجل التدقيق.`,confirmLabel:tr("حذف"),tone:"danger"}))return;await run({type:"account-transfer.void",documentId:id},"تم إلغاء التحويل البنكي",()=>{if(editingTransferId===id)resetTransferEditor()})};
-  const resetAdjustmentEditor=()=>{setEditingAdjustmentId(null);setAdjustmentAccount("");setAdjustmentDirection("deposit");setAdjustmentAmount("");setAdjustmentNote("")};
-  const loadAdjustment=(movement:BootstrapData["financialMovements"][number])=>{setEditingAdjustmentId(movement.documentId);setAdjustmentAccount(accountId(movement.paymentMethod));setAdjustmentDirection(movement.type==="manual-withdrawal"?"withdrawal":"deposit");setAdjustmentAmount(String(movement.amount));setAdjustmentNote(movement.note??"")};
+  const adjustmentBaseline=useRef(""),adjustmentSnapshot=()=>JSON.stringify({adjustmentAccount,adjustmentDirection,adjustmentAmount,adjustmentNote}),adjustmentDirty=()=>editingAdjustmentId?adjustmentSnapshot()!==adjustmentBaseline.current:Boolean(adjustmentAccount||adjustmentAmount||adjustmentNote||adjustmentDirection!=="deposit");
+  const resetAdjustmentEditor=()=>{setEditingAdjustmentId(null);setAdjustmentAccount("");setAdjustmentDirection("deposit");setAdjustmentAmount("");setAdjustmentNote("");adjustmentBaseline.current=""};
+  const loadAdjustment=(movement:BootstrapData["financialMovements"][number])=>{const values={adjustmentAccount:accountId(movement.paymentMethod),adjustmentDirection:movement.type==="manual-withdrawal"?"withdrawal" as const:"deposit" as const,adjustmentAmount:String(movement.amount),adjustmentNote:movement.note??""};setEditingAdjustmentId(movement.documentId);setAdjustmentAccount(values.adjustmentAccount);setAdjustmentDirection(values.adjustmentDirection);setAdjustmentAmount(values.adjustmentAmount);setAdjustmentNote(values.adjustmentNote);adjustmentBaseline.current=JSON.stringify(values)};
   const saveAdjustment=async()=>{if(editingAdjustmentId?!canAdjustmentEdit:!canAdjustmentCreate)return;await run({type:editingAdjustmentId?"account-adjustment.update":"account-adjustment.post",...(editingAdjustmentId?{documentId:editingAdjustmentId}:{}),accountId:adjustmentAccount,direction:adjustmentDirection,amount:val(adjustmentAmount),note:adjustmentNote},adjustmentDirection==="deposit"?tr("تم الإيداع"):tr("تم السحب"),resetAdjustmentEditor)};
   const removeAdjustment=async(movement:BootstrapData["financialMovements"][number])=>{if(!await confirmAction({message:`هل تريد حذف عملية ${movementLabels[movement.type]??movement.type} رقم ${movement.documentNumber}؟\nسيتم عكس أثرها على الحساب مع الاحتفاظ بسجل التدقيق.`,confirmLabel:tr("حذف"),tone:"danger"}))return;await run({type:"account-adjustment.void",documentId:movement.documentId},"تم إلغاء العملية المالية",()=>{if(editingAdjustmentId===movement.documentId)resetAdjustmentEditor()})};
+  useEffect(()=>{if(tab==="transfers")registerEditorGuard({isEditing:()=>Boolean(editingTransferId)||transferDirty(),isDirty:transferDirty,discard:resetTransferEditor});else if(tab==="adjustment")registerEditorGuard({isEditing:()=>Boolean(editingAdjustmentId)||adjustmentDirty(),isDirty:adjustmentDirty,discard:resetAdjustmentEditor});else registerEditorGuard(null);return()=>registerEditorGuard(null)});
   // Source navigation selects the exact native bank editor after this section mounts.
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(()=>{if(!sourceRequest)return;if(sourceRequest.kind==="transfer"){const transfer=data.accountTransfers.find(item=>(item.documentId??item.id)===sourceRequest.documentId);if(transfer&&canTransferEdit)loadTransfer(transfer)}else{const movement=data.financialMovements.find(item=>item.documentId===sourceRequest.documentId&&["manual-deposit","manual-withdrawal"].includes(financialMovementKind(item.type)));if(movement&&canAdjustmentEdit)loadAdjustment(movement)}clearSourceRequest()},[sourceRequest]);
@@ -1160,7 +1164,7 @@ function PartyEditDialog({party,run,canEdit,canDelete,close}:{party:Party;run:Ru
   const remove=async()=>{if(hasBalance){showTransientNotice(tr("لا يمكن حذف أو أرشفة الحساب ما دام لديه رصيد قائم"));return}if(!await confirmAction({message:tr("party.deleteBalancedConfirm",{party:noun,name:party.name}),confirmLabel:tr("حذف"),tone:"danger"}))return;await run({type:"party.delete",id:party.id},partyType==="customer"?tr("party.deletedCustomer"):tr("party.deletedSupplier"));close()};
   return createPortal(<div className="modal-overlay section-parties" role="dialog" aria-modal="true" aria-label={`${tr("تعديل")} ${noun}`} onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();close()}}}><form className="modal-card party-edit-dialog" onSubmit={async event=>{event.preventDefault();if(!canEdit)return;await run({type:"party.update",id:party.id,name,phone},partyType==="customer"?tr("party.savedCustomer"):tr("party.savedSupplier"));close()}}><div className="modal-heading"><h3>{tr("تعديل")} {noun}</h3><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}><X/></button></div><label>{tr("الاسم")}<input autoFocus required disabled={!canEdit} value={name} onChange={event=>setName(event.target.value)}/></label><label>{tr("رقم الهاتف")}<input dir="ltr" disabled={!canEdit} value={phone} onChange={event=>setPhone(event.target.value)}/></label>{hasBalance&&<div className="party-delete-warning"><strong>{tr("تنبيه")}</strong><span>{tr("لا يمكن حذف أو أرشفة الحساب ما دام لديه رصيد قائم")} · {tr("إجمالي المستحق لنا")}: {money(receivable)} · {tr("إجمالي المستحق علينا")}: {money(payable)}</span></div>}<div className="dialog-actions party-edit-actions">{canEdit&&<button className="primary" disabled={!name.trim()}>{tr("حفظ التعديل")}</button>}{canDelete&&<button type="button" className="danger" disabled={hasBalance} onClick={()=>void remove()}>{tr("حذف")} {noun}</button>}</div></form></div>,document.body)
 }
-function PartyPage({party,data,openDoc,run,editRequest,clearEditRequest}:{party:Party;data:BootstrapData;openDoc:(id:string)=>void;run:RunCommand;editRequest:string|null;clearEditRequest:()=>void}) {
+function PartyPage({party,data,openDoc,run,editRequest,clearEditRequest,registerEditorGuard}:{party:Party;data:BootstrapData;openDoc:(id:string)=>void;run:RunCommand;editRequest:string|null;clearEditRequest:()=>void;registerEditorGuard:RegisterEditorGuard}) {
   const confirmAction=useAppConfirm();
   const today=localBusinessDay(),[from,setFrom]=useState(today),[to,setTo]=useState(today),[amount,setAmount]=useState(""),[paymentMethod,setPaymentMethod]=useState(""),[direction,setDirection]=useState<"receive"|"pay">("receive"),[note,setNote]=useState(""),[editingPaymentId,setEditingPaymentId]=useState<string|null>(null);
   const customer=resolvePartyType(party)==="customer", archived=party.isArchived===true, balance=party.receivable-party.payable,summary=data.partyFinancialSummaries.find(item=>item.partyId===party.id),metrics=partyTradeMetrics(summary,customer?"customer":"supplier");
@@ -1171,8 +1175,10 @@ function PartyPage({party,data,openDoc,run,editRequest,clearEditRequest}:{party:
   // Legacy records remain traceable inside an existing party audit view only.
   const kinds=customer?["sale","return","payment","settlement"]:["purchase","payment","settlement"];
   const docs=data.documents.filter(d=>d.partyId===party.id&&kinds.includes(d.kind)&&(!from||d.occurredAt.slice(0,10)>=from)&&(!to||d.occurredAt.slice(0,10)<=to));
-  const resetPaymentEditor=()=>{setEditingPaymentId(null);setAmount("");setNote("");setPaymentMethod("");setDirection("receive")};
-  const editPayment=(document:DocumentRecord)=>{if(!canEditPayment||document.kind!=="payment"||!document.partyCashDirection){openDoc(document.id);return}const historicalAccount=data.paymentAccounts.find(account=>account.id===document.paymentMethod||account.code===document.paymentMethod);setEditingPaymentId(document.id);setAmount(String(document.cashAmount??document.total));setPaymentMethod(historicalAccount?.id??"");setDirection(document.partyCashDirection);setNote(String((document as DocumentRecord&{note?:string|null}).note??""))};
+  const paymentBaseline=useRef(""),paymentSnapshot=()=>JSON.stringify({amount,paymentMethod,direction,note}),paymentDirty=()=>editingPaymentId?paymentSnapshot()!==paymentBaseline.current:Boolean(amount||paymentMethod||note);
+  const resetPaymentEditor=()=>{setEditingPaymentId(null);setAmount("");setNote("");setPaymentMethod("");setDirection("receive");paymentBaseline.current=""};
+  const editPayment=(document:DocumentRecord)=>{if(!canEditPayment||document.kind!=="payment"||!document.partyCashDirection){openDoc(document.id);return}const historicalAccount=data.paymentAccounts.find(account=>account.id===document.paymentMethod||account.code===document.paymentMethod),values={amount:String(document.cashAmount??document.total),paymentMethod:historicalAccount?.id??"",direction:document.partyCashDirection,note:String((document as DocumentRecord&{note?:string|null}).note??"")};setEditingPaymentId(document.id);setAmount(values.amount);setPaymentMethod(values.paymentMethod);setDirection(values.direction);setNote(values.note);paymentBaseline.current=JSON.stringify(values)};
+  useEffect(()=>{registerEditorGuard({isEditing:()=>Boolean(editingPaymentId)||paymentDirty(),isDirty:paymentDirty,discard:resetPaymentEditor});return()=>registerEditorGuard(null)});
   // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/set-state-in-effect
   useEffect(()=>{const document=editRequest?data.documents.find(item=>item.id===editRequest&&item.partyId===party.id&&item.kind==="payment"):null;if(document){setFrom("");setTo("");editPayment(document);clearEditRequest()}},[editRequest]);
   const submit=async()=>{if(editingPaymentId?!canEditPayment:!canCreatePayment)return;await run({type:editingPaymentId?"party-cash.update":"party-cash.post",...(editingPaymentId?{documentId:editingPaymentId}:{partyId:party.id,partyType:resolvePartyType(party)}),direction,amount:val(amount),paymentMethod,note},tr("تم تسجيل الحركة"),resetPaymentEditor)};
@@ -1367,6 +1373,7 @@ function MultiStockForm({
   clearPrefill,
   editingDocument,
   onCancelEdit,
+  registerEditorGuard,
 }: {
   data: BootstrapData;
   mode: "transfer" | "adjust";
@@ -1376,6 +1383,7 @@ function MultiStockForm({
   clearPrefill?: () => void;
   editingDocument?: DocumentRecord | null;
   onCancelEdit?: () => void;
+  registerEditorGuard: RegisterEditorGuard;
 }) {
   const [from, setFrom] = useSessionDraft(`${mode}-from`, prefill?.warehouseId ?? ""),
     [to, setTo] = useSessionDraft(`${mode}-to`, ""),
@@ -1392,14 +1400,19 @@ function MultiStockForm({
     setLines(product ? [{ ...lineFor(product), actualQuantity: "", unitPrice: "" }] : []);
     setReason("");
   }, [data.products, editingDocument, mode, prefill, setFrom, setLines, setReason]);
+  const editorBaseline=useRef(""),editorSnapshot=()=>JSON.stringify({from,to,reason,lines}),draftDirty=()=>editingDocument?editorSnapshot()!==editorBaseline.current:Boolean(lines.length||reason.trim());
   useEffect(()=>{
     if(!editingDocument)return;
-    setFrom(editingDocument.warehouseId??"");
-    setTo(editingDocument.destinationWarehouseId??"");
-    setReason(editingDocument.title??"");
-    setLines(editingDocument.lines.filter(line=>line.productId).map(line=>({productId:String(line.productId),quantity:String(line.quantity),piecePrice:"",unitPrice:"",actualQuantity:mode==="adjust"?adjustmentActualQuantity(editingDocument,String(line.productId)):""})));
+    const values={from:editingDocument.warehouseId??"",to:editingDocument.destinationWarehouseId??"",reason:editingDocument.title??"",lines:editingDocument.lines.filter(line=>line.productId).map(line=>({productId:String(line.productId),quantity:String(line.quantity),piecePrice:"",unitPrice:"",actualQuantity:mode==="adjust"?adjustmentActualQuantity(editingDocument,String(line.productId)):""}))};
+    setFrom(values.from);
+    setTo(values.to);
+    setReason(values.reason);
+    setLines(values.lines);
+    editorBaseline.current=JSON.stringify(values);
   },[editingDocument,mode,setFrom,setLines,setReason,setTo]);
-  const resetEditor=()=>{setLines([]);setReason("");setQ("");onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
+  const resetEditor=()=>{setLines([]);setReason("");setQ("");editorBaseline.current="";onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
+  const discardEditor=()=>{setLines([]);setReason("");setQ("");if(mode==="transfer")setTo("");editorBaseline.current="";onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
+  useEffect(()=>{registerEditorGuard({isEditing:()=>Boolean(editingDocument)||draftDirty(),isDirty:draftDirty,discard:discardEditor});return()=>registerEditorGuard(null)});
   async function submit() {
     const body = mode === "transfer"
       ? {type:editingDocument?"transfer.update":"transfer.post",...(editingDocument?{documentId:editingDocument.id}:{}),fromWarehouseId:from,toWarehouseId:to,lines:lines.map(l=>({productId:l.productId,quantity:val(l.quantity)}))}
@@ -1421,7 +1434,7 @@ function MultiStockForm({
       <div className="dialog-actions stock-operation-actions"><button className="primary stock-primary-action" disabled={!from || (mode === "transfer" && !to) || !lines.length || (mode === "adjust" && (!reason.trim() || invalidAdjustment))} onClick={() => void submit()}>{editingDocument?tr("حفظ التعديل"):mode === "transfer" ? tr("اعتماد التحويل") : tr("اعتماد التصحيح")}</button>{editingDocument&&<button type="button" className="soft" onClick={resetEditor}>{tr("إلغاء التعديل")}</button>}</div>
     </div>;
 }
-function Transfer(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) => void;editRequest?:string|null;clearEditRequest?:()=>void;}) {
+function Transfer(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) => void;editRequest?:string|null;clearEditRequest?:()=>void;registerEditorGuard:RegisterEditorGuard;}) {
   const confirmAction=useAppConfirm(),[editing,setEditing]=useState<DocumentRecord|null>(null);
   const canEdit=canUseCapability(p.data.principal,"warehouses.transfer.edit"),canDelete=canUseCapability(p.data.principal,"warehouses.transfer.delete");
   const transfers = p.data.documents.filter(document => document.kind === "transfer");
@@ -1434,7 +1447,7 @@ function Transfer(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) 
       <FramedSection title={tr("سجل التحويلات")} className="records transfer-history"><div className="erp-table-wrap transfer-list"><table className="erp-table" aria-label={tr("سجل التحويلات")}><colgroup><col style={{width:"16%"}}/><col style={{width:"18%"}}/><col style={{width:"17%"}}/><col style={{width:"17%"}}/><col style={{width:"12%"}}/><col style={{width:"20%"}}/></colgroup><thead><tr><SortableTableHeader column="date" label={tr("التاريخ")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="number" label={tr("المستند")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="from" label={tr("من")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="to" label={tr("إلى")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="quantity" label={tr("الكمية")} sort={transferSort} toggle={toggleTransferSort}/><th>{tr("إجراءات")}</th></tr></thead><tbody>{sortedTransfers.map(document => <tr key={document.id} onClick={() => p.openDoc(document.id)}><td>{formatDate(document.occurredAt)}</td><td dir="ltr">{displayDocumentNumber(document)}</td><td>{document.warehouseName ?? "—"}</td><td>{document.destinationWarehouseName ?? "—"}</td><td className="num-cell">{number(document.lines.reduce((sum, line) => sum + Number(line.quantity), 0))}</td><td className="action-cell"><LifecycleActions onEdit={canEdit?()=>setEditing(document):undefined} onVoid={canDelete?()=>void remove(document):undefined}/></td></tr>)}{!transfers.length && <tr><td colSpan={6}>{tr("لا توجد تحويلات مسجلة")}</td></tr>}</tbody></table></div></FramedSection>
     </section>;
 }
-function Adjustment(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) => void;prefill?: AdjustmentPrefill | null;clearPrefill?: () => void;editRequest?:string|null;clearEditRequest?:()=>void;}) {
+function Adjustment(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) => void;prefill?: AdjustmentPrefill | null;clearPrefill?: () => void;editRequest?:string|null;clearEditRequest?:()=>void;registerEditorGuard:RegisterEditorGuard;}) {
   const confirmAction=useAppConfirm(),[editing,setEditing]=useState<DocumentRecord|null>(null);
   const canEdit=canUseCapability(p.data.principal,"warehouses.adjust.edit"),canDelete=canUseCapability(p.data.principal,"warehouses.adjust.delete");
   const openingDocs = p.data.documents.filter(document => isOpeningStockDocument(document));

@@ -439,6 +439,8 @@ function ContaAppContent() {
               data={data}
               openDoc={openDoc}
               run={run}
+              editRequest={partyPaymentEditRequest}
+              clearEditRequest={() => setPartyPaymentEditRequest(null)}
             />
           ) : (
             <>
@@ -449,7 +451,7 @@ function ContaAppContent() {
                 <Purchases data={data} run={run} openDoc={openDoc} editRequest={purchaseEditRequest} clearEditRequest={() => setPurchaseEditRequest(null)} requestPrint={setAutoPrintId} registerEditorGuard={registerEditorGuard} />
               )}{" "}
               {view === "expenses" && (
-                <Expenses data={data} run={run} openDoc={openDoc} registerEditorGuard={registerEditorGuard} canEdit={can("expenses.edit")} canDelete={can("expenses.delete")} />
+                <Expenses data={data} run={run} openDoc={openDoc} editRequest={expenseEditRequest} clearEditRequest={() => setExpenseEditRequest(null)} registerEditorGuard={registerEditorGuard} canEdit={can("expenses.edit")} canDelete={can("expenses.delete")} />
               )}{" "}
               {(view === "customers" || view === "suppliers") && (
                 <Parties key={view} partyType={view === "customers" ? "customer" : "supplier"} data={data} run={run} openParty={setPartyDetail} canEdit={can(view === "customers" ? "customers.edit" : "suppliers.edit")} canDelete={can(view === "customers" ? "customers.delete" : "suppliers.delete")} />
@@ -459,20 +461,20 @@ function ContaAppContent() {
                 <Warehouses data={data} run={run} openDoc={openDoc} />
               )}{" "}
               {view === "transfers" && (
-                <Transfer data={data} run={run} openDoc={openDoc} />
+                <Transfer data={data} run={run} openDoc={openDoc} editRequest={transferEditRequest} clearEditRequest={() => setTransferEditRequest(null)} />
               )}{" "}
               {view === "adjustments" && (
-                <Adjustment data={data} run={run} openDoc={openDoc} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} />
+                <Adjustment data={data} run={run} openDoc={openDoc} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} editRequest={adjustmentEditRequest} clearEditRequest={() => setAdjustmentEditRequest(null)} />
               )}{" "}
               {view === "records" && <Records data={data} openDoc={openDoc} />}{" "}
               {view === "reports" && (
-                <Reports key={reportType} data={data} openDoc={openDoc} type={reportType} />
+                <Reports key={reportType} data={data} openDoc={openDoc} openSource={openSummarySource} type={reportType} />
               )}{" "}
-              {view === "banks" && <Banks data={data} run={run} openDoc={openDoc} tab={effectiveBankTab} />}{" "}
+              {view === "banks" && <Banks data={data} run={run} openDoc={openDoc} openSource={openSummarySource} tab={effectiveBankTab} sourceRequest={bankSourceRequest} clearSourceRequest={() => setBankSourceRequest(null)} />}{" "}
               {view === "settings" && <SettingsPage data={data} reload={reload} tab={settingsTab} />}{" "}
             </>
           )}
-          {doc && <div className="modal-overlay" ref={dialogRef} role="dialog" aria-modal="true" aria-label={tr("ui.transactionRecord",{number:doc.number})} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); closeDoc(); } else if (event.key === "Tab") { const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')]; if (controls.length && ((event.shiftKey && document.activeElement === controls[0]) || (!event.shiftKey && document.activeElement === controls.at(-1)))) { event.preventDefault(); (event.shiftKey ? controls.at(-1) : controls[0])?.focus(); } } }}><div className="official-document-viewer"><DocumentDetail document={doc} data={data} close={closeDoc} onEdit={doc.status === "posted" && !doc.legacyKey && (doc.kind === "sale" ? can("pos.edit") : doc.kind === "purchase" ? can("purchases.edit") : false) ? () => editInvoice(doc.id) : undefined} /></div></div>}
+          {doc && <div className="modal-overlay" ref={dialogRef} role="dialog" aria-modal="true" aria-label={tr("ui.transactionRecord",{number:doc.number})} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); closeDoc(); } else if (event.key === "Tab") { const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')]; if (controls.length && ((event.shiftKey && document.activeElement === controls[0]) || (!event.shiftKey && document.activeElement === controls.at(-1)))) { event.preventDefault(); (event.shiftKey ? controls.at(-1) : controls[0])?.focus(); } } }}><div className="official-document-viewer"><DocumentDetail document={doc} data={data} close={closeDoc} onEdit={doc.status === "posted" && !doc.legacyKey && (doc.kind === "sale" ? can("pos.edit") : doc.kind === "purchase" ? can("purchases.edit") : false) ? () => editInvoice(doc.id) : undefined} onSource={() => void openDocumentSource(doc)} /></div></div>}
         </div>
       </main>
     </div>

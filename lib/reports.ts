@@ -8,6 +8,18 @@ import { displayDocumentNumber } from "./document-sequences.ts";
 import { classifyStockMovementType, stockMovementMatchesFilter } from "../app/stock-movement.ts";
 
 const TYPES: ReportType[] = ["overview", "sales", "purchases", "product-sales", "stock", "profit", "debts", "party-ledger", "financial", "expenses"];
+const REPORT_SORT_KEYS: Record<ReportType, Set<string>> = {
+  overview:new Set(),
+  sales:new Set(["number","occurredAt","party","paymentMethod","total","cost","profit","product","quantity","revenue"]),
+  purchases:new Set(["number","occurredAt","party","paymentMethod","total","paid","due","product","quantity","unitPrice"]),
+  "product-sales":new Set(["product","soldQuantity","currentQuantity","netSales","purchasedQuantity","purchases","netPurchases","averagePrice","averagePurchasePrice","profit"]),
+  stock:new Set(["occurredAt","product","warehouse","movementType","before","change","after","documentNumber"]),
+  profit:new Set(["number","occurredAt","product","quantity","revenue","cost","profit","margin","invoiceCount"]),
+  debts:new Set(["name","accountType","phone","balance","lastMovement"]),
+  "party-ledger":new Set(["occurredAt","movementType","documentNumber","description","debit","credit","paymentMethod"]),
+  financial:new Set(["occurredAt","paymentMethod","movementType","incoming","outgoing","party","documentNumber"]),
+  expenses:new Set(["occurredAt","title","recurring","paymentMethod","total","number"]),
+};
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const text = (value: string | null) => (value ?? "").trim();
 const escapeRegex = (value:string) => value.replace(/[.*+?^$\{\}()|[\]\\]/g, "\\$&");
@@ -25,7 +37,9 @@ export function parseReportFilters(url: URL): ReportFilters {
   const page = Number(url.searchParams.get("page") ?? 1), pageSize = Number(url.searchParams.get("pageSize") ?? 100);
   if (!Number.isInteger(page) || page < 1 || !Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) throw new Error("إعدادات الصفحة غير صالحة");
   const pick = <T extends string>(key: string, allowed: T[], fallback?: T) => { const value = text(url.searchParams.get(key)); if (!value) return fallback; if (!allowed.includes(value as T)) throw new Error(`الفلتر ${key} غير صالح`); return value as T; };
-  return { type, from: from || undefined, to: to || undefined, allTime, unpaged, partyId: text(url.searchParams.get("partyId")) || undefined, productId: text(url.searchParams.get("productId")) || undefined, categoryId: text(url.searchParams.get("categoryId")) || undefined, paymentAccountId: text(url.searchParams.get("paymentAccountId")) || undefined, movementType: text(url.searchParams.get("movementType")) || undefined, direction: pick("direction", ["in", "out"]), groupBy: pick("groupBy", ["invoice", "product"], "invoice"), sortBy: pick("sortBy", ["quantity", "sales", "name", "profit"], "quantity"), debtSide: pick("debtSide", ["receivable", "payable", "clear"]), expenseType: pick("expenseType", ["once", "recurring"]), search: text(url.searchParams.get("search")) || undefined, page, pageSize };
+  const sortKey=text(url.searchParams.get("sortKey"))||undefined;
+  if(sortKey&&!REPORT_SORT_KEYS[type].has(sortKey))throw new Error("حقل ترتيب التقرير غير صالح");
+  return { type, from: from || undefined, to: to || undefined, allTime, unpaged, partyId: text(url.searchParams.get("partyId")) || undefined, productId: text(url.searchParams.get("productId")) || undefined, categoryId: text(url.searchParams.get("categoryId")) || undefined, paymentAccountId: text(url.searchParams.get("paymentAccountId")) || undefined, movementType: text(url.searchParams.get("movementType")) || undefined, direction: pick("direction", ["in", "out"]), groupBy: pick("groupBy", ["invoice", "product"], "invoice"), sortBy: pick("sortBy", ["quantity", "sales", "name", "profit"], "quantity"), sortKey, sortDirection:sortKey?pick("sortDirection",["asc","desc"],"asc"):undefined, debtSide: pick("debtSide", ["receivable", "payable", "clear"]), expenseType: pick("expenseType", ["once", "recurring"]), search: text(url.searchParams.get("search")) || undefined, page, pageSize };
 }
 
 /** Stored timestamps are canonical ISO strings, so lexical boundaries are exact and
@@ -37,6 +51,9 @@ const matchDate = (f: ReportFilters): Document => f.allTime ? {} : ({ occurredAt
 const pagination = (totalRows: number, f: ReportFilters) => ({ page: f.unpaged ? 1 : f.page, pageSize: f.unpaged ? totalRows : f.pageSize, totalRows, totalPages: f.unpaged ? 1 : Math.max(1, Math.ceil(totalRows / f.pageSize)) });
 const slice = <T>(rows: T[], f: ReportFilters) => f.unpaged ? rows : rows.slice((f.page - 1) * f.pageSize, f.page * f.pageSize);
 const pageCursor = (cursor: FindCursor<Document>, f: ReportFilters) => f.unpaged ? cursor : cursor.skip((f.page - 1) * f.pageSize).limit(f.pageSize);
+const compareReportValue=(a:unknown,b:unknown)=>{if(a==null&&b==null)return 0;if(a==null)return 1;if(b==null)return-1;if(typeof a==="number"&&typeof b==="number")return a-b;const x=String(a),y=String(b);return x.localeCompare(y,undefined,{numeric:true,sensitivity:"base"})};
+const sortReportRows=<T extends ReportRow>(rows:T[],f:ReportFilters)=>{if(!f.sortKey)return rows;const direction=f.sortDirection==="desc"?-1:1,key=f.sortKey;return [...rows].sort((a,b)=>compareReportValue(a[key],b[key])*direction)};
+const pageReportRows=<T>(rows:T[],f:ReportFilters)=>f.unpaged?rows:rows.slice((f.page-1)*f.pageSize,f.page*f.pageSize);
 type ProductScope = Set<string> | null;
 const lineMatches = (line: Document, f: ReportFilters, categoryScope: ProductScope = null) => (!f.productId || String(line.productId) === f.productId) && (!categoryScope || categoryScope.has(String(line.productId)));
 const productConstraint = (f: ReportFilters, categoryScope: ProductScope) => f.productId || (categoryScope ? { $in: [...categoryScope] } : undefined);
@@ -104,7 +121,7 @@ async function directDocuments(db: Db, f: ReportFilters, kind: string, categoryS
   const all = await db.collection("documents").find(query).toArray();
   const ordered = [...all].sort((a,b)=>String(b.occurredAt).localeCompare(String(a.occurredAt)));
   const totalRows = all.length, rows = f.unpaged ? ordered : ordered.slice((f.page - 1) * f.pageSize, f.page * f.pageSize);
-  return { rows, all, totalRows };
+  return { rows, all, ordered, totalRows };
 }
 
 export async function buildReport(db: Db, f: ReportFilters): Promise<ReportResponse> {

@@ -113,6 +113,12 @@ async function applyPartyNetDelta(db: Db, session: ClientSession, partyId: unkno
   await db.collection("parties").updateOne({ _id: party._id }, { $set: { ...normalizePartyNet(after), lastMovementAt: new Date(), ...(party.isArchived===true&&after!==0?{isArchived:false,archivedAt:null}: {}) } }, { session });
   return { before, delta, after };
 }
+async function preserveHistoricalPartyArchiveIfBalanced(db:Db,session:ClientSession,partyId:string,wasArchived:boolean,archivedAt:unknown){
+  if(!wasArchived)return;
+  const party=await db.collection("parties").findOne({id:partyId},{session});
+  if(!party||partyNet(party as {receivable?:unknown;payable?:unknown})!==0)return;
+  await db.collection("parties").updateOne({id:partyId},{$set:{isArchived:true,archivedAt:archivedAt??new Date(),updatedAt:new Date()}},{session});
+}
 async function reverseInvoicePayment(db: Db, session: ClientSession, document: Record<string, unknown>, kind: "sale" | "purchase") {
   const amount = Number(document.cashAmount ?? document.paidTotal ?? 0);
   if (!amount) return;
@@ -386,6 +392,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const input = lines(body), paymentMethod = text(body.paymentMethod);
     const updateBody={...body,warehouseId:isSale?original.warehouseId:body.warehouseId};
     const { warehouse, party, warehouseId, partyId } = await invoiceUpdateRefs(db, session, updateBody, original, paymentMethod === "note");
+    const preserveOriginalPartyArchive=Boolean(party&&partyId===String(original.partyId??"")&&party.isArchived===true),originalPartyArchivedAt=party?.archivedAt;
     if (party && party.partyType !== (isSale ? "customer" : "supplier")) throw new CommandError(isSale ? "يجب اختيار عميل صالح" : "يجب اختيار مورد صالح");
     const historicalPayment = paymentMethod !== "note" ? await paymentAccountForHistoricalEdit(db, session, paymentMethod, original.paymentMethod) : null;
     const oldLines = original.lines as Line[],oldProductIds=new Set(oldLines.map(line=>String(line.productId))),newProducts=await productsForUpdate(db,session,input,oldProductIds), oldByProduct = new Map(oldLines.map(line => [line.productId, line]));
@@ -425,6 +432,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const revised = { partyId: partyId || null, partyName: party?.name ?? (isSale ? "بيع مباشر" : "شراء مباشر"), warehouseId, warehouseName: warehouse.name, paymentMethod, total, paidTotal, cashAmount: paidTotal, dueTotal, lines: calculated, ...(snapshot ? { partyBalanceBefore: snapshot.before, partyBalanceDelta: snapshot.delta, partyBalanceAfter: snapshot.after } : {}), ...(isSale ? { pricingMode: body.pricingMode === "wholesale" ? "wholesale" : "retail" } : {}), updatedAt: new Date(), revision: Number(original.revision ?? 0) + 1 };
     await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: revised, ...(!snapshot ? { $unset: { partyBalanceBefore: "", partyBalanceDelta: "", partyBalanceAfter: "" } } : {}) }, { session });
     if (paidTotal) await financialMovement(db, session, { ...original, ...revised }, isSale ? "in" : "out", paidTotal, kind);
+    if(partyId===String(original.partyId??""))await preserveHistoricalPartyArchiveIfBalanced(db,session,partyId,preserveOriginalPartyArchive,originalPartyArchivedAt);
     if (!isSale) await recomputePurchaseCosts(db, session, allIds);
     return documentId;
   }

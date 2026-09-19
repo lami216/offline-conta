@@ -15,26 +15,25 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
   try {
     const db = await getDatabase();
 
-    const [parties, warehouses, products, categories, documents, movements, financialMovements, partyMetricDocuments, partyMetricMovements, paymentAccounts, accountTransfers, productCounter, nextSale, nextPurchase, nextExpense, branding] = await Promise.all([
+    const [parties, warehouses, products, categories, documents, movements, financialMovements, paymentAccounts, accountTransfers, productCounter, nextSale, nextPurchase, nextExpense, branding] = await Promise.all([
       db.collection("parties").find().sort({ name: 1 }).toArray(), db.collection("warehouses").find().sort({ isSalesDefault: -1, name: 1 }).toArray(),
       db.collection("products").find().sort({ name: 1 }).toArray(), db.collection("productCategories").find().sort({ name: 1 }).toArray(), db.collection("documents").find().sort({ occurredAt: -1 }).toArray(),
       db.collection("stockMovements").find().sort({ occurredAt: -1 }).toArray(),
       db.collection("financialMovements").find().sort({ occurredAt: -1 }).toArray(),
-      // Legacy read-only adjustments remain in aggregate inputs; no creation surface exists.
-      db.collection("documents").find({ kind: { $in: ["sale", "return", "purchase"] } }, { projection: { _id: 0, kind: 1, status: 1, partyId: 1, total: 1, lines: 1 } }).toArray(),
-      db.collection("financialMovements").find({ partyId: { $type: "string" } }, { projection: { _id: 0, partyId: 1, direction: 1, amount: 1, status: 1, isReversal: 1 } }).toArray(),
       db.collection("paymentAccounts").find().sort({ createdAt: 1 }).toArray(),
       db.collection("accountTransfers").find().sort({ occurredAt: -1 }).toArray(),
       db.collection<{ _id: string; value: number }>("counters").findOne({ _id: "productSequence" }),
       peekNextDocumentSequence(db, "sale"), peekNextDocumentSequence(db, "purchase"), peekNextDocumentSequence(db, "expense"), getInvoiceBranding(db),
     ]);
     const clean = (rows: Array<Record<string, unknown>>) => rows.map(({ _id, ...row }) => ({ id: row.id ?? String(_id), ...row }));
-    const cleanProducts = clean(await productsWithCurrentCosts(db, products)).map(product => ({ ...product, wholesalePrice: (product as Record<string, unknown>).wholesalePrice ?? null, expiryDate: (product as Record<string, unknown>).expiryDate ?? null, note: (product as Record<string, unknown>).note ?? null, categoryId: (product as Record<string, unknown>).categoryId ?? null }));
+    const postedCostDocuments=documents.filter(document=>document.status==="posted"&&["purchase","adjustment"].includes(String(document.kind)));
+    const cleanProducts = clean(await productsWithCurrentCosts(db, products, postedCostDocuments)).map(product => ({ ...product, wholesalePrice: (product as Record<string, unknown>).wholesalePrice ?? null, expiryDate: (product as Record<string, unknown>).expiryDate ?? null, note: (product as Record<string, unknown>).note ?? null, categoryId: (product as Record<string, unknown>).categoryId ?? null }));
     const cleanCategories = clean(categories).map(category => { const item = category as Record<string, unknown>; return { id: String(item.id ?? ""), name: String(item.name ?? "") }; }).filter(category => category.id && category.name);
     const documentHints = new Map(documents.map(document => [String(document.id ?? document._id ?? ""), document]));
     const cleanMovements = clean(movements as Array<Record<string, unknown>>).map((movement: Record<string, unknown>) => ({ ...movement, type: classifyStockMovementType(movement.type, documentHints.get(String(movement.documentId ?? ""))) }));
     const effectiveFinancialMovements=(financialMovements as Array<Record<string,unknown>>).filter(isEffectiveFinancialMovement);
-    const effectivePartyMetricMovements=(partyMetricMovements as Array<Record<string,unknown>>).filter(isEffectiveFinancialMovement);
+    const partyMetricDocuments=(documents as Array<Record<string,unknown>>).filter(document=>["sale","return","purchase"].includes(String(document.kind)));
+    const effectivePartyMetricMovements=effectiveFinancialMovements.filter(movement=>typeof movement.partyId==="string");
     const nonOperatingTypes=new Set(["opening-balance","opening-balance-correction"]);
     const totalByAccount=new Map<string,{_id:string;income:number;expenses:number;purchaseTotal:number;derivedOpening:number}>();
     for(const movement of effectiveFinancialMovements){const key=String(movement.paymentMethod),row=totalByAccount.get(key)??{_id:key,income:0,expenses:0,purchaseTotal:0,derivedOpening:0},amount=Number(movement.amount??0),signed=Number.isFinite(Number(movement.delta))?Number(movement.delta):(movement.direction==="out"?-amount:amount);if(movement.type==="opening-balance"||movement.type==="opening-balance-correction")row.derivedOpening+=signed;if(movement.direction==="in"&&!nonOperatingTypes.has(String(movement.type)))row.income+=amount;if(movement.direction==="out"&&!nonOperatingTypes.has(String(movement.type)))row.expenses+=amount;if(movement.type==="purchase")row.purchaseTotal+=amount;totalByAccount.set(key,row)}

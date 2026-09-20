@@ -1886,6 +1886,7 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 .product-management { display: block; height: 100%; overflow: auto; }
 .parties-workspace { display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px;height:100%;min-height:0;overflow:hidden }
 .parties-controls{display:grid;grid-template-columns:minmax(260px,1.5fr) minmax(0,1fr);align-items:end;gap:6px}.parties-search,.parties-create{min-height:0;margin:0}.parties-search .search{height:36px}
+.parties-search-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}.parties-search-row>.compact-search{flex:0 1 270px}.party-archived-button{flex:0 0 auto;min-height:30px;height:30px;padding:2px 9px;font-size:10px;white-space:nowrap}
 .parties-create { display:grid;grid-template-columns:minmax(150px,1fr) minmax(140px,.8fr) auto;gap:6px;padding:0 }
 .parties-create input, .parties-create button { min-height: 36px; height: 36px; }
 .parties-list{display:grid;grid-template-rows:minmax(0,1fr);min-height:0}.party-grid{height:100%;border:0;border-radius:0}.party-detail{display:grid;grid-template-rows:auto auto auto minmax(0,1fr);gap:7px;height:100%;min-height:0;overflow:hidden}.party-operation .form-row{margin:0}.party-history{display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:5px;min-height:0}.party-history>.erp-table-wrap{height:100%}

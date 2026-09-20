@@ -57,3 +57,26 @@ test("bank summary details link category totals to their source areas",()=>{
   assert.match(banks,/openSource=\{openSource\}/);
   assert.match(banks,/sourceRequest\.kind==="transfer"/);
 });
+
+
+test("payment-account landing view defers unrelated bank histories and breakdown expansion work",()=>{
+  const source=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),banks=source.slice(source.indexOf("function Banks"),source.indexOf("function PaymentAccountDialog"));
+  assert.match(banks,/operationalMovements=useMemo\(\(\)=>tab==="movements"\|\|tab==="adjustment"\?/);
+  assert.match(banks,/movements=useMemo\(\(\)=>tab==="movements"\?/);
+  assert.match(banks,/transfers=useMemo\(\(\)=>tab==="transfers"\?/);
+  assert.match(banks,/adjustments=useMemo\(\(\)=>tab==="adjustment"\?/);
+  assert.match(banks,/accountSummary=useMemo\(\(\)=>bankScopeMetrics/);
+  assert.match(banks,/buildAccountBreakdown=\(\)=>bankScopeBreakdown/);
+  assert.doesNotMatch(banks,/accountBreakdown=bankScopeBreakdown/);
+});
+
+test("expense and payable breakdowns use negative money tone while debt lists stay compact",()=>{
+  const source=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),css=readFileSync(new URL("../app/globals.css",import.meta.url),"utf8"),banks=source.slice(source.indexOf("function Banks"),source.indexOf("function PaymentAccountDialog"));
+  assert.match(banks,/tone:MoneyTone=direction==="in"\?"positive":"negative"/);
+  assert.match(banks,/tone:MoneyTone=side==="owedToUs"\?"positive":"negative"/);
+  assert.match(banks,/compact:true/);
+  assert.match(source,/row\.tone/);
+  assert.match(source,/detail\.tone/);
+  assert.match(css,/\.summary-breakdown-modal\.summary-breakdown-compact\{width:min\(640px,calc\(100vw - 28px\)\)/);
+  assert.match(css,/\.summary-breakdown-compact \.summary-breakdown-label\{display:flex/);
+});

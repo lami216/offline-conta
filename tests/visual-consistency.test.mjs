@@ -241,3 +241,12 @@ test("new audit dialogs share escape and focus containment behavior", () => {
   assert.match(app,/archived-parties-dialog[\s\S]*?autoFocus[^>]+aria-label="إغلاق"/);
   assert.match(app,/وسائل الدفع المؤرشفة[\s\S]*?handleModalKeyboard/);
 });
+
+
+test("customer and supplier archived shortcut stays compact inside the existing search-create gap", () => {
+  const parties = between("function Parties", "function PartyEditDialog");
+  assert.match(parties, /className="parties-search-row"[\s\S]*?<CompactSearch[\s\S]*?party-archived-button[\s\S]*?className="parties-create"/);
+  assert.match(css, /\.parties-search-row\{[^}]*display:flex[^}]*justify-content:space-between/);
+  assert.match(css, /\.party-archived-button\{[^}]*height:30px[^}]*font-size:10px[^}]*white-space:nowrap/);
+  assert.match(css, /\.parties-controls\{[^}]*grid-template-columns:minmax\(260px,1\.5fr\) minmax\(0,1fr\)/);
+});

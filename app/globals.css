@@ -2420,3 +2420,12 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 .summary-source-link{display:inline-flex;align-items:center;justify-content:center;min-height:26px;margin:3px 8px 0 0;padding:3px 8px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--brand);font:inherit;font-size:10px;font-weight:900;line-height:1.2;white-space:normal;cursor:pointer}
 .summary-source-link:hover,.summary-source-link:focus-visible{background:#eef5ff}
 .archived-parties-dialog{width:min(760px,calc(100vw - 28px));display:grid;gap:10px}
+
+/* Keep debt drill-downs as compact ERP lists instead of tall stacked cards. */
+.summary-breakdown-modal.summary-breakdown-compact{width:min(640px,calc(100vw - 28px))}
+.summary-breakdown-compact .summary-breakdown-table th,.summary-breakdown-compact .summary-breakdown-table td{height:34px;padding:4px 6px;line-height:1.2}
+.summary-breakdown-compact .summary-breakdown-label{display:flex;align-items:center;gap:8px;min-width:0}
+.summary-breakdown-compact .summary-breakdown-label>strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.summary-breakdown-compact .summary-breakdown-note{display:inline;margin:0;white-space:nowrap}
+.summary-breakdown-compact .summary-source-link{flex:0 0 auto;min-height:24px;margin:0;margin-inline-start:auto;padding:2px 7px;white-space:nowrap}
+@media(max-width:700px){.summary-breakdown-modal.summary-breakdown-compact{width:100%}.summary-breakdown-compact .summary-breakdown-label{gap:5px}.summary-breakdown-compact .summary-breakdown-note{white-space:normal}.summary-breakdown-compact .summary-source-link{white-space:normal}}

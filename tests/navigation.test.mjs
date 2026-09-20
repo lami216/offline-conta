@@ -162,7 +162,7 @@ test("local edit actions and same-view bank tab changes cannot replace a dirty e
   assert.match(source,/const startEdit=async\(document:DocumentRecord\)=>\{if\(await p\.prepareEditorReplacement\(\)\)setEditing\(document\)\}/);
   assert.match(source,/const startTransferEdit=async\([^\n]+prepareEditorReplacement\(\)\)loadTransfer/);
   assert.match(source,/const startAdjustmentEdit=async\([^\n]+prepareEditorReplacement\(\)\)loadAdjustment/);
-  assert.match(source,/item\.id===effectiveBankTab\|\|await navigate\("banks",\{replaceEditor:true\}\)/);
+  assert.match(source,/\(view==="banks"&&item\.id===effectiveBankTab\)\|\|await navigate\("banks",\{replaceEditor:true\}\)/);
 });
 
 test("menu destination state changes only after guarded navigation succeeds", async () => {
@@ -170,4 +170,12 @@ test("menu destination state changes only after guarded navigation succeeds", as
   assert.match(source,/if\(await navigate\("reports"\)\)setReportType\(id\)/);
   assert.match(source,/if\(await navigate\("settings"\)\)setSettingsTab\(item\.id\)/);
   assert.match(source,/if\(!await prepareEditorReplacement\(\)\)return;setSettingsTab\(item\.id\);setView\("settings"\)/);
+});
+
+
+test("payment accounts never short-circuit bank navigation when selected from another workspace", async () => {
+  const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
+  const bankMenu=source.match(/bankNav\.map\(item=><PermissionNavItem[\s\S]*?<span>\{tr\(item\.label\)\}<\/span><\/PermissionNavItem>\)/)?.[0]??"";
+  assert.match(bankMenu,/\(view==="banks"&&item\.id===effectiveBankTab\)\|\|await navigate\("banks",\{replaceEditor:true\}\)/);
+  assert.doesNotMatch(bankMenu,/if\(item\.id===effectiveBankTab\|\|await navigate\("banks"/);
 });

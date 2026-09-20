@@ -84,7 +84,7 @@ test("POS checkout, records, scoped stock, and document print retain explicit st
   const pos = between("function Pos", "function Purchase");
   assert.match(pos, /checkout-layout.*checkout-body.*checkout-footer/s);
   assert.doesNotMatch(pos, /product-count/);
-  assert.match(pos, /floating allowEmpty=\{payment !== "note"\} variant="pos-customer".*resolvePartyType\(p\) === "customer"/s);
+  assert.match(pos, /customerOptions=.*p\.isArchived!==true&&resolvePartyType\(p\)==="customer"/s);assert.match(pos,/floating allowEmpty=\{payment !== "note"\} variant="pos-customer"[\s\S]*options=\{customerOptions\}/);
   const records = between("function Records", "const reportNames");
   assert.match(records, /records-workspace/);
   assert.match(records, /FramedSection title="بحث السجلات"/);
@@ -131,8 +131,9 @@ test("invoice editors expose explicit new, edit, void, history routing and autho
   assert.match(pos, /type: "sale\.void"/);
   assert.match(purchase, /type: wasEditing \? "purchase\.update" : "purchase\.post"/);
   assert.match(purchase, /type: "purchase\.void"/);
-  assert.match(app, /setSaleEditRequest\(id\); setView\("pos"\)/);
-  assert.match(app, /setPurchaseEditRequest\(id\); setView\("purchases"\)/);
+  assert.match(app, /navigate\(target,\{replaceEditor:true\}\)/);
+  assert.match(app, /document\.kind === "sale"\) setSaleEditRequest\(id\)/);
+  assert.match(app, /else setPurchaseEditRequest\(id\)/);
   assert.match(app, /printPreparedDocument\(await loadPrintSettings\(\), true\)/);
 });
 
@@ -181,7 +182,7 @@ test("invoice history renders every filtered record and expense actions are stru
 test("party history footer and framed bank workflows preserve semantic hierarchy", () => {
   const party = between("function PartyPage", "export function periodQuantity");
   assert.doesNotMatch(party, /دفع للطرف/);
-  assert.match(party, /دفع لل\{customer\?"عميل":"مورد"\}/);
+  assert.match(party, /customer\?"دفع للعميل":"دفع للمورد"/);
   assert.match(party, /className="party-history-toolbar"><CompactDateRange/);
   assert.ok(party.indexOf('<Recent title="الحركات"') < party.indexOf('<PartyMetricStrip'));
   assert.match(css, /\.party-payment-row\{[^}]*grid-template-columns:280px 130px 105px minmax\(150px,1fr\)/);
@@ -190,7 +191,11 @@ test("party history footer and framed bank workflows preserve semantic hierarchy
   assert.match(css, /\.party-history-toolbar\s*\{[^}]*min-height:34px[^}]*overflow:visible/);
   assert.match(css, /\.party-trade-metrics\{[^}]*justify-content:flex-end[^}]*width:100%/);
   const banks = between("function Banks", "function PaymentAccountDialog");
-  for (const title of ["تحويل جديد", "سجل التحويلات", "عملية سحب أو إيداع", "سجل السحب والإيداع"]) assert.match(banks, new RegExp(`FramedSection title="${title}"`));
+  assert.match(banks, /FramedSection title=\{editingTransferId\?/);
+  assert.match(banks, /تحويل جديد/);
+  assert.match(banks, /FramedSection title=\{editingAdjustmentId\?/);
+  assert.match(banks, /عملية سحب أو إيداع/);
+  for (const title of ["سجل التحويلات", "سجل السحب والإيداع"]) assert.match(banks, new RegExp(`FramedSection title="${title}"`));
 });
 
 test("party financial summaries use explicit business-semantic tones", () => {
@@ -217,12 +222,22 @@ test("account overview is accounts-only, global, and uses a two-region semantic 
   assert.match(accounts, /className="bank-summary"/);
   assert.doesNotMatch(afterAccounts, /className="bank-summary"/);
   assert.equal((banks.match(/className="bank-summary"/g) ?? []).length, 1);
-  assert.match(banks, /accountSummary=bankScopeMetrics\(data\.paymentAccounts,data\.financialMovements,data\.parties\)/);
+  assert.match(banks, /accountSummary=useMemo\(\(\)=>bankScopeMetrics\(data\.paymentAccounts,data\.financialMovements,data\.parties\)/);
   assert.doesNotMatch(banks, /accountSummary=bankScopeMetrics\([^;]*movementScope|accountSummary=bankScopeMetrics\([^;]*accountFilter|accountSummary=bankScopeMetrics\([^;]*typeFilter/);
-  assert.match(banks, /movements=filterFinancialMovements\(operationalMovements,movementScope\.period,accountFilter,typeFilter\)/);
+  assert.match(banks, /movements=useMemo\(\(\)=>tab==="movements"\?filterFinancialMovements\(operationalMovements,movementScope\.period,accountFilter,typeFilter\):\[\]/);
   assert.match(accounts, /account\.balance>0\?"metric-positive":account\.balance<0\?"metric-negative":"metric-neutral"/);
   assert.match(accounts, /إجمالي المداخيل<\/small><MoneyValue value=\{accountSummary\.income\}/);
   assert.match(css, /\.bank-tab-accounts\{[^}]*grid-template-columns:minmax\(0,2fr\) minmax\(280px,1fr\)/);
   assert.match(css, /\.bank-summary\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
   assert.doesNotMatch(css, /\.banks-workspace\{[^}]*grid-template-rows:[^}]*bank-summary/);
+});
+
+
+test("new audit dialogs share escape and focus containment behavior", () => {
+  assert.match(app,/function handleModalKeyboard/);
+  assert.match(app,/event\.key==="Escape"/);
+  assert.match(app,/event\.key!=="Tab"/);
+  assert.match(app,/summary-breakdown-modal[\s\S]*?autoFocus[^>]+aria-label="إغلاق"/);
+  assert.match(app,/archived-parties-dialog[\s\S]*?autoFocus[^>]+aria-label="إغلاق"/);
+  assert.match(app,/وسائل الدفع المؤرشفة[\s\S]*?handleModalKeyboard/);
 });

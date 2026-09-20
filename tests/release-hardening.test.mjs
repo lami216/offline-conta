@@ -24,12 +24,12 @@ test("backup parser accepts payloads larger than the former 50 MiB cap", () => {
   assert.equal(parseAndValidateBackup(input).collections.appSettings.length, 1);
 });
 
-test("payment and settlement reject an invalid balance side", async t => {
+test("current party cash rejects an invalid direction while retired balance-side commands stay closed", async t => {
   const h = await sqliteHarness();
   t.after(() => h.close());
   await h.db.collection("parties").insertOne({ id: "party", name: "Party", partyType: "customer", receivable: 100, payable: 100, net: 0 });
-  await assert.rejects(command(h.db, { type: "payment.post", partyId: "party", side: "typo", amount: 10, paymentMethod: "cash" }), /جهة الرصيد غير صالحة/);
-  await assert.rejects(command(h.db, { type: "settlement.post", partyId: "party", side: "typo", amount: 10 }), /جهة الرصيد غير صالحة/);
+  await assert.rejects(command(h.db, { type: "party-cash.post", partyId: "party", direction: "typo", amount: 10, paymentMethod: "cash" }), /اتجاه الحركة غير صالح/);
+  for (const type of ["payment.post","settlement.post","offset.post"]) await assert.rejects(command(h.db,{type,partyId:"party",side:"receivable",amount:10,paymentMethod:"cash"}),/المسار المحاسبي القديم/);
   const party = await h.db.collection("parties").findOne({ id: "party" });
   assert.deepEqual([party.receivable, party.payable], [100, 100]);
 });

@@ -222,7 +222,7 @@ test("account overview is accounts-only, global, and uses a two-region semantic 
   assert.match(accounts, /className="bank-summary"/);
   assert.doesNotMatch(afterAccounts, /className="bank-summary"/);
   assert.equal((banks.match(/className="bank-summary"/g) ?? []).length, 1);
-  assert.match(banks, /accountSummary=bankScopeMetrics\(data\.paymentAccounts,data\.financialMovements,data\.parties\)/);
+  assert.match(banks, /accountSummary=useMemo\(\(\)=>bankScopeMetrics\(data\.paymentAccounts,data\.financialMovements,data\.parties\)/);
   assert.doesNotMatch(banks, /accountSummary=bankScopeMetrics\([^;]*movementScope|accountSummary=bankScopeMetrics\([^;]*accountFilter|accountSummary=bankScopeMetrics\([^;]*typeFilter/);
   assert.match(banks, /movements=filterFinancialMovements\(operationalMovements,movementScope\.period,accountFilter,typeFilter\)/);
   assert.match(accounts, /account\.balance>0\?"metric-positive":account\.balance<0\?"metric-negative":"metric-neutral"/);

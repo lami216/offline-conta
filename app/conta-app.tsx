@@ -73,6 +73,7 @@ import { tr, type MessageKey } from "./i18n/messages";
 import ProductCategoryDialog from "./product-category-dialog";
 import { translateApiError } from "./i18n/api-errors";
 import OpeningStockHistory from "./opening-stock-history";
+import LowStockWarningDialog from "./low-stock-warning-dialog";
 import { isOpeningStockCorrectionDocument, isOpeningStockDocument, optionalFiniteNumber, periodStockMovementQuantity, stockMovementMatchesFilter } from "./stock-movement";
 import { adjustmentActualQuantity, canUseCapability, documentProductQuantityEffect } from "./transaction-ui";
 import { DEFAULT_PRINT_SETTINGS, PRINT_PROFILES, desktopPrintingAvailable, listPrinters, loadPrintSettings, printPreparedDocument, savePrintSettings, type PrintProfile, type PrintSettings, type PrinterInfo } from "./printing";
@@ -213,6 +214,7 @@ function ContaAppContent() {
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
+    [lowStockWarning, setLowStockWarning] = useState(""),
     [menu, setMenu] = useState(false),
     [invoiceMenu, setInvoiceMenu] = useState(false),
     [warehouseMenu, setWarehouseMenu] = useState(false),
@@ -244,6 +246,7 @@ function ContaAppContent() {
     return () => window.clearTimeout(timer);
   }, [error, notice]);
   useEffect(() => { const receive = (event: Event) => setNotice((event as CustomEvent<string>).detail); window.addEventListener("alkarna:notice", receive); return () => window.removeEventListener("alkarna:notice", receive); }, []);
+  useEffect(() => { const receive = (event: Event) => setLowStockWarning((event as CustomEvent<string>).detail); window.addEventListener("alkarna:low-stock-warning", receive); return () => window.removeEventListener("alkarna:low-stock-warning", receive); }, []);
   const registerEditorGuard: RegisterEditorGuard = guard => { activeEditorGuard.current = guard; };
   const warehouseMenuRef = useRef<HTMLDivElement>(null);
   const invoiceMenuRef = useRef<HTMLDivElement>(null);
@@ -399,6 +402,7 @@ function ContaAppContent() {
   if(!loading&&licenseStatus&&!licenseStatus.valid)return <div className="unlicensed-shell" dir={dir}><div className="unlicensed-session"><button className="language-switch soft" type="button" onClick={()=>setLocale(locale==="ar"?"fr":"ar")}><Globe/>{locale==="ar"?"Français":"العربية"}</button><form action="/api/auth/logout" method="post"><button className="soft" type="submit"><LogOut/>  {tr("خروج")}</button></form></div><SupportLicensePage initialStatus={licenseStatus} onActivated={()=>reload({blocking:true})}/></div>;
   return (
     <div className={`app-shell section-${view}`} dir={dir}>
+      {lowStockWarning && <LowStockWarningDialog message={lowStockWarning} locale={locale} onClose={() => setLowStockWarning("")} />}
       <aside className={menu ? "sidebar open" : "sidebar"}>
         <div className="brand">
           <div className="brand-logo"><img src={APP_LOGO_PATH} alt={APP_LOGO_ALT}/></div>

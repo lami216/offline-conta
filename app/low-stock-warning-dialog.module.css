@@ -1,0 +1,135 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.52);
+  backdrop-filter: blur(3px);
+}
+
+.dialog {
+  width: min(560px, 100%);
+  max-height: min(78vh, 620px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  padding: 24px;
+  overflow: auto;
+  border: 1px solid #f59e0b;
+  border-radius: 20px;
+  background: #fffdf7;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  color: #1f2937;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: #fff3cd;
+  color: #b45309;
+}
+
+.icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.content {
+  min-width: 0;
+}
+
+.heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.heading h2 {
+  margin: 2px 0 0;
+  font-size: 1.3rem;
+  line-height: 1.35;
+}
+
+.iconButton {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #4b5563;
+  cursor: pointer;
+}
+
+.iconButton:hover,
+.iconButton:focus-visible {
+  border-color: #d97706;
+  color: #92400e;
+  outline: 3px solid rgba(245, 158, 11, 0.18);
+  outline-offset: 2px;
+}
+
+.content p {
+  margin: 16px 0 0;
+  white-space: pre-line;
+  font-size: 1.04rem;
+  line-height: 1.85;
+  color: #374151;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+.closeButton {
+  min-width: 120px;
+  padding: 10px 22px;
+  border: 1px solid #b45309;
+  border-radius: 11px;
+  background: #b45309;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.closeButton:hover,
+.closeButton:focus-visible {
+  background: #92400e;
+  border-color: #92400e;
+  outline: 3px solid rgba(245, 158, 11, 0.2);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .overlay {
+    padding: 14px;
+  }
+
+  .dialog {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 20px;
+  }
+
+  .icon {
+    width: 46px;
+    height: 46px;
+  }
+
+  .actions,
+  .closeButton {
+    width: 100%;
+  }
+}

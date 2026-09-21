@@ -2430,3 +2430,141 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 .summary-breakdown-compact .summary-breakdown-note{display:inline;margin:0;white-space:nowrap}
 .summary-breakdown-compact .summary-source-link{flex:0 0 auto;min-height:24px;margin:0;margin-inline-start:auto;padding:2px 7px;white-space:nowrap}
 @media(max-width:700px){.summary-breakdown-modal.summary-breakdown-compact{width:100%}.summary-breakdown-compact .summary-breakdown-label{gap:5px}.summary-breakdown-compact .summary-breakdown-note{white-space:normal}.summary-breakdown-compact .summary-source-link{white-space:normal}}
+
+
+/* Persistent low-stock warning dialog */
+.low-stock-warning-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.52);
+  backdrop-filter: blur(3px);
+}
+
+.low-stock-warning-dialog {
+  width: min(560px, 100%);
+  max-height: min(78vh, 620px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 18px;
+  padding: 24px;
+  overflow: auto;
+  border: 1px solid #f59e0b;
+  border-radius: 20px;
+  background: #fffdf7;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+  color: #1f2937;
+}
+
+.low-stock-warning-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: #fff3cd;
+  color: #b45309;
+}
+
+.low-stock-warning-icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.low-stock-warning-content {
+  min-width: 0;
+}
+
+.low-stock-warning-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.low-stock-warning-heading h2 {
+  margin: 2px 0 0;
+  font-size: 1.3rem;
+  line-height: 1.35;
+}
+
+.low-stock-warning-icon-button {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #4b5563;
+  cursor: pointer;
+}
+
+.low-stock-warning-icon-button:hover,
+.low-stock-warning-icon-button:focus-visible {
+  border-color: #d97706;
+  color: #92400e;
+  outline: 3px solid rgba(245, 158, 11, 0.18);
+  outline-offset: 2px;
+}
+
+.low-stock-warning-content p {
+  margin: 16px 0 0;
+  white-space: pre-line;
+  font-size: 1.04rem;
+  line-height: 1.85;
+  color: #374151;
+}
+
+.low-stock-warning-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 22px;
+}
+
+.low-stock-warning-close-button {
+  min-width: 120px;
+  padding: 10px 22px;
+  border: 1px solid #b45309;
+  border-radius: 11px;
+  background: #b45309;
+  color: #ffffff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.low-stock-warning-close-button:hover,
+.low-stock-warning-close-button:focus-visible {
+  background: #92400e;
+  border-color: #92400e;
+  outline: 3px solid rgba(245, 158, 11, 0.2);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .low-stock-warning-overlay {
+    padding: 14px;
+  }
+
+  .low-stock-warning-dialog {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    padding: 20px;
+  }
+
+  .low-stock-warning-icon {
+    width: 46px;
+    height: 46px;
+  }
+
+  .low-stock-warning-actions,
+  .low-stock-warning-close-button {
+    width: 100%;
+  }
+}

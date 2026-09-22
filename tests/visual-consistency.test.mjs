@@ -80,6 +80,16 @@ test("stock operations collapse idle search and edit a serial ERP draft", () => 
 });
 
 
+test("adjustment workspace explicitly places all three desktop panels", () => {
+  const adjustment = between("function Adjustment", "function Records");
+  assert.match(adjustment, /className="stock-workspace adjustment-workspace"/);
+  assert.match(adjustment, /<Recent title=\{tr\("سجل التصحيحات"\)\}/);
+  assert.match(adjustment, /<OpeningStockHistory/);
+  assert.match(css, /\.adjustment-workspace\s*>\s*\.stock-workspace-main\s*\{[^}]*grid-column:\s*1[^}]*grid-row:\s*1\s*\/\s*span\s*2/s);
+  assert.match(css, /\.adjustment-workspace\s*>\s*\.recent-table:not\(\.opening-stock-history\)\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*1/s);
+  assert.match(css, /\.adjustment-workspace\s*>\s*\.opening-stock-history\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*2/s);
+});
+
 test("POS checkout, records, scoped stock, and document print retain explicit structures", () => {
   const pos = between("function Pos", "function Purchase");
   assert.match(pos, /checkout-layout.*checkout-body.*checkout-footer/s);

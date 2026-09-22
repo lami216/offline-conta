@@ -2568,3 +2568,32 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
     width: 100%;
   }
 }
+
+
+/* Keep the three adjustment panels on one desktop viewport: editor full-height, histories stacked. */
+@media (min-width: 1051px) {
+  .adjustment-workspace {
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .adjustment-workspace > .stock-workspace-main {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .adjustment-workspace > .recent-table:not(.opening-stock-history) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+  .adjustment-workspace > .opening-stock-history {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .adjustment-workspace > .recent-table {
+    min-height: 0;
+    overflow: hidden;
+  }
+  .adjustment-workspace > .recent-table > .erp-table-wrap {
+    min-height: 0;
+    height: 100%;
+    overflow: auto;
+  }
+}

@@ -2597,3 +2597,24 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
     overflow: auto;
   }
 }
+
+
+/* Keep stock-operation search focused and give histories a little more room. */
+@media (min-width: 1051px) {
+  .stock-workspace {
+    grid-template-columns: minmax(0, 57fr) minmax(460px, 43fr);
+  }
+  .stock-operation-panel.searching {
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
+  }
+  .stock-operation-panel.searching .product-search-grid {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    min-height: 0;
+  }
+  .stock-operation-panel.searching .picker-results {
+    min-height: 0;
+    max-height: none;
+    overflow: auto;
+  }
+}

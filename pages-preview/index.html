@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>معاينة تصحيح المخزون — الكرنه</title>
+<style>
+:root{--bg:#f4f7fb;--panel:#fff;--line:#b7c3cf;--text:#18212b;--muted:#667383;--purple:#6658cc;--purple-soft:#f2efff;--teal:#148e83;--blue:#1e6bb8;--orange:#b56b00}
+*{box-sizing:border-box}body{margin:0;font-family:Tahoma,Arial,sans-serif;background:var(--bg);color:var(--text)}
+.preview-note{background:#fff6d8;border-bottom:1px solid #e4c86e;padding:8px 18px;text-align:center;font-size:13px;font-weight:700}
+.app{min-height:100vh;display:grid;grid-template-rows:auto auto 1fr}
+.topbar{background:#fff;border-bottom:1px solid #d6dde5;padding:9px 16px;display:flex;align-items:center;gap:8px;overflow:auto}
+.brand{display:flex;align-items:center;gap:10px;min-width:max-content;margin-left:auto}
+.brand img{width:48px;height:48px;object-fit:contain}.brand b{font-size:19px}.brand small{display:block;color:var(--muted);margin-top:3px}
+.nav{display:flex;gap:5px;min-width:max-content}.nav span{padding:11px 18px;border:2px solid;border-radius:10px;background:#fff;font-size:12px;font-weight:700}
+.nav .sales{border-color:#0b8d79;background:#eefbf7}.nav .inv{border-color:#2570b8;background:#eff7ff}.nav .wh{border-color:#7056d3;background:#f4f0ff}.nav .party{border-color:#168c9a;background:#ecfbfd}.nav .prod{border-color:#d36e24;background:#fff4ea}.nav .bank{border-color:#486b9e;background:#f0f4fa}.nav .report{border-color:#385e9c;background:#f0f4fa}.nav .settings{border-color:#b47610;background:#fff7e8}
+.pagebar{height:58px;background:#fff;border-bottom:3px solid var(--purple);display:flex;align-items:center;padding:0 24px}.pagebar h1{margin:0;color:var(--purple);font-size:24px}
+.content{padding:10px 30px 18px;min-height:0}
+.adjustment{height:calc(100vh - 147px);display:grid;grid-template-columns:minmax(0,3fr) minmax(430px,2fr);grid-template-rows:minmax(0,1fr) minmax(0,1fr);gap:8px}
+.panel{background:var(--panel);border:1px solid #7e8a95;border-radius:10px;min-width:0;min-height:0;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.03)}
+.panel-title{padding:7px 12px;border-bottom:1px solid #cbd4dc;font-weight:800;font-size:14px;text-align:right}
+.editor{grid-column:1;grid-row:1/span 2;display:grid;grid-template-rows:auto 1fr}
+.history-a{grid-column:2;grid-row:1}.history-b{grid-column:2;grid-row:2}
+.editor-body{padding:12px;display:grid;grid-template-rows:auto auto auto 1fr auto;gap:10px;min-height:0}
+label{display:grid;gap:5px;font-size:12px;font-weight:700}.field{height:38px;border:1px solid #b9c4cf;border-radius:8px;background:#fff;padding:9px 11px;color:#687482}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.search{height:40px;border:1px solid #b9c4cf;border-radius:8px;padding:10px;color:#87919a}.draft{border:1px solid #c8d1d9;border-radius:8px;min-height:100px;overflow:auto;background:#fbfcfd}
+.draft table,.table-wrap table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap}.draft th,.draft td,.table-wrap th,.table-wrap td{border:1px solid #17212c;padding:7px;text-align:center}.draft th,.table-wrap th{background:#5f54bf;color:#fff;font-weight:800;position:sticky;top:0}.draft tbody tr:nth-child(even),.table-wrap tbody tr:nth-child(even){background:#f7f8fb}
+.primary{height:42px;border:0;border-radius:9px;background:var(--purple);color:#fff;font-weight:800;font-size:14px}
+.history-a,.history-b{display:grid;grid-template-rows:auto 1fr}.table-wrap{overflow:auto;min-height:0;padding:8px}.history-b .panel-title{color:var(--purple);font-size:18px}
+.badge{display:inline-block;padding:3px 8px;border-radius:999px;background:#e9f8ee;color:#267843;font-size:11px;font-weight:700;margin-inline-start:8px}
+@media(max-width:1050px){.content{padding:10px}.adjustment{height:auto;grid-template-columns:1fr;grid-template-rows:auto}.editor,.history-a,.history-b{grid-column:1;grid-row:auto}.editor{min-height:620px}.history-a,.history-b{min-height:300px}.nav span{padding:9px 12px}.pagebar h1{font-size:20px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="preview-note">معاينة واجهة ثابتة لفرع الإصلاح — Build #506 <span class="badge">ناجح</span> — لا تحفظ أي بيانات</div>
+  <div class="topbar">
+    <div class="brand"><img src="https://raw.githubusercontent.com/lami216/offline-conta/f830b8a9f6064dbc442b080c23eb71e6d65cadaf/public/alkarna-logo.png" alt=""><div><b>الكرنه</b><small>نظام المتجر</small></div></div>
+    <div class="nav"><span class="sales">نقطة البيع</span><span class="inv">الفواتير</span><span class="wh">المخازن</span><span class="party">العملاء والموردون</span><span class="prod">المنتجات</span><span class="bank">البنوك</span><span class="report">التقارير</span><span class="settings">الإعدادات</span></div>
+  </div>
+  <div class="pagebar"><h1>تصحيح المخزون</h1></div>
+  <main class="content">
+    <section class="adjustment">
+      <article class="panel editor">
+        <div class="panel-title">تصحيح المخزون</div>
+        <div class="editor-body">
+          <label>المخزن<div class="field">اختر المخزن</div></label>
+          <div class="row"><label>سبب التصحيح<div class="field">مثال: نتيجة الجرد الفعلي</div></label><label>بحث المنتجات<div class="search">ابحث باسم المنتج أو الباركود…</div></label></div>
+          <div class="panel-title" style="padding-inline:0;border:0">مسودة التصحيح</div>
+          <div class="draft"><table><thead><tr><th>رقم</th><th>المنتج</th><th>الكمية الحالية</th><th>الكمية الفعلية</th><th>الفرق</th></tr></thead><tbody><tr><td>1</td><td>الرونتوك</td><td>12</td><td>11</td><td>-1</td></tr><tr><td>2</td><td>منتج تجريبي</td><td>3</td><td>5</td><td>+2</td></tr></tbody></table></div>
+          <button class="primary">حفظ تصحيح المخزون</button>
+        </div>
+      </article>
+      <article class="panel history-a">
+        <div class="panel-title">سجل التصحيحات</div>
+        <div class="table-wrap"><table><thead><tr><th>رقم</th><th>التاريخ</th><th>المستند</th><th>النوع</th><th>الحالة</th><th>إجراءات</th></tr></thead><tbody><tr><td>1</td><td>22/09/2026</td><td>ADJ-0012</td><td>تصحيح مخزون</td><td>معتمد</td><td>تعديل</td></tr><tr><td>2</td><td>21/09/2026</td><td>ADJ-0011</td><td>تصحيح مخزون</td><td>معتمد</td><td>تعديل</td></tr></tbody></table></div>
+      </article>
+      <article class="panel history-b">
+        <div class="panel-title">سجل التصحيحات — تصحيح رصيد البداية</div>
+        <div class="table-wrap"><table><thead><tr><th>رقم</th><th>التاريخ</th><th>المستند</th><th>المنتج</th><th>التغيير</th><th>رصيد البداية</th><th>المخزن</th></tr></thead><tbody><tr><td>1</td><td>20/09/2026</td><td>OPEN-CORR-08</td><td>الرونتوك</td><td>-1</td><td>12 → 11</td><td>المخزن الرئيسي</td></tr><tr><td>2</td><td>19/09/2026</td><td>OPEN-17</td><td>منتج تجريبي</td><td>+10</td><td>0 → 10</td><td>المخزن الرئيسي</td></tr></tbody></table></div>
+      </article>
+    </section>
+  </main>
+</div>
+</body>
+</html>

@@ -8,7 +8,7 @@ const apiRequest=(path,method,token='',body)=>new Request(`${origin}${path}`,{me
 const context=id=>({params:Promise.resolve({id})});
 test('zero users enables direct local access, while creating the first user starts authenticated access',async()=>{
  assert.equal(await harness.db.collection('users').countDocuments(),0);const local=await auth.getPrincipalFromRequest(apiRequest('/','GET'));assert.equal(local.principalType,'local');assert.equal(auth.hasCapability(local,'settings.users.manage'),true);
- let response=await usersRoute.POST(apiRequest('/api/settings/users','POST','',{username:'Test',password:'1234',permissions:['pos.view','settings.users.manage','not.real']}));assert.equal(response.status,201);const firstCookie=cookie(response),user=(await response.json()).user;assert.ok(firstCookie);assert.deepEqual(user.permissions,['pos.view','settings.users.manage']);assert.equal('passwordHash' in user,false);
+ let response=await usersRoute.POST(apiRequest('/api/settings/users','POST','',{username:'Test',password:'1234',permissions:['pos.view','settings.users.manage','not.real']}));assert.equal(response.status,201);const firstCookie=cookie(response),firstPayload=await response.json(),user=firstPayload.user;assert.ok(firstCookie);assert.equal(firstPayload.sessionStarted,true);assert.deepEqual(user.permissions,['pos.view','settings.users.manage']);assert.equal('passwordHash' in user,false);
  assert.equal(await auth.getPrincipalFromRequest(apiRequest('/','GET')),null);assert.equal((await usersRoute.GET(apiRequest('/api/settings/users','GET'))).status,401);
  assert.equal((await usersRoute.POST(apiRequest('/api/settings/users','POST',firstCookie,{username:' test ',password:'abcd'}))).status,409);
  const regular=await login(loginRequest('test','1234'));assert.equal(regular.status,303);assert.ok(cookie(regular));const rejected=await login(loginRequest('test','wrong'));assert.equal(rejected.status,303);assert.equal(cookie(rejected),'');assert.equal(rejected.headers.get('location'),`${origin}/login?error=1`);const principal=await auth.getPrincipalFromRequest(apiRequest('/','GET',cookie(regular)));assert.deepEqual(principal.permissions,['pos.view','settings.users.manage']);
@@ -26,7 +26,7 @@ test('first user is always a manager and the last active user manager cannot be 
  assert.equal(response.status,201);const firstCookie=cookie(response),first=(await response.json()).user;
  assert.ok(first.permissions.includes('settings.users.manage'));
  response=await usersRoute.POST(apiRequest('/api/settings/users','POST',firstCookie,{username:'second',password:'1234',permissions:['pos.view']}));
- assert.equal(response.status,201);const second=(await response.json()).user;
+ assert.equal(response.status,201);const secondPayload=await response.json(),second=secondPayload.user;assert.equal(secondPayload.sessionStarted,false);
  response=await userRoute.PUT(apiRequest(`/api/settings/users/${first.id}`,'PUT',firstCookie,{username:'first',isActive:true,permissions:['pos.view']}),context(first.id));
  assert.equal(response.status,409);
  response=await userRoute.PUT(apiRequest(`/api/settings/users/${second.id}`,'PUT',firstCookie,{username:'second',isActive:true,permissions:['pos.view','settings.users.manage']}),context(second.id));

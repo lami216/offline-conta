@@ -84,7 +84,9 @@ test("bank movement-only permission has its own navigation gate",async()=>{const
 test("traceable records open details first and expose a source-navigation action",async()=>{
   const source=normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
   assert.match(source,/function DocumentDetail\([^)]*onSource/);
-  assert.match(source,/onSource&&!onEdit&&<button className="primary" onClick=\{onSource\}>الانتقال إلى المصدر<\/button>/);
+  assert.match(source,/onSource&&!onEdit&&\(sourceUnavailable\?<button[^>]*disabled/);
+  assert.match(source,/:<button className="primary" onClick=\{onSource\}>الانتقال إلى المصدر<\/button>/);
+  assert.match(source,/document\.status==="voided"\?المستند ملغى — المصدر غير متاح/);
   assert.match(source,/const openDocumentSource = async \(document: DocumentRecord\)/);
   for(const mapping of [
     /document\.kind==="sale"[\s\S]*?navigate\("pos",\{replaceEditor:edit\}\)/,

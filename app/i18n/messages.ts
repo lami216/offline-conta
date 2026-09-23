@@ -936,6 +936,8 @@ export const arMessages = {
   "إلغاء تصحيح مخزون": "إلغاء تصحيح مخزون",
   "المستند ملغى — المصدر غير متاح": "المستند ملغى — المصدر غير متاح",
   "سجل تاريخي — المصدر غير متاح": "سجل تاريخي — المصدر غير متاح",
+  "عكس الحركة": "عكس الحركة",
+  "تم عكسها": "تم عكسها",
   "تنبيه": "تنبيه",
 } as const;
 
@@ -1880,6 +1882,8 @@ export const frMessages: Record<MessageKey, string> = {
   "إلغاء تصحيح مخزون": "Annulation de la correction de stock",
   "المستند ملغى — المصدر غير متاح": "Document annulé — source indisponible",
   "سجل تاريخي — المصدر غير متاح": "Historique en lecture seule — source indisponible",
+  "عكس الحركة": "Annulation du mouvement",
+  "تم عكسها": "annulée",
   "تنبيه": "Attention",
 };
 export const messages = { ar: arMessages, fr: frMessages } as const;

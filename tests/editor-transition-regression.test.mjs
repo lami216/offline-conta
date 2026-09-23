@@ -46,3 +46,11 @@ test("voided source navigation is also blocked defensively outside the button", 
   const navigation = source.slice(source.indexOf("const openDocumentSource"), source.indexOf("useEffect(() =>", source.indexOf("const openDocumentSource")));
   assert.match(navigation, /if\(document\.status==="voided"\)return/);
 });
+
+test("financial audit history distinguishes reversal evidence from the original business movement", () => {
+  const records = source.slice(source.indexOf("function Records"), source.indexOf("const reportNames"));
+  assert.match(records, /financialAuditLabel/);
+  assert.match(records, /row\.isReversal===true\|\|raw\.endsWith\(":reversal"\)/);
+  assert.match(records, /row\.status==="reversed"/);
+  assert.match(records, /financialAuditLabel\(row\)/);
+});

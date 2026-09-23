@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { clearStockOperationDraft, stockOperationDraftKeys } from "../app/stock-operation-draft.ts";
 
 const source = readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+const styles = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
 
 test("cancelling a historical stock edit clears every edit-loaded field and persisted draft", () => {
   const form = source.slice(source.indexOf("function MultiStockForm"), source.indexOf("function Transfer"));
@@ -61,4 +62,12 @@ test("opening a movement source resolves the current document from history befor
 test("stock audit labels stay compact enough for the records table", () => {
   for (const label of ["تعديل تحويل","عكس تحويل","تعديل تصحيح","عكس تصحيح","إرجاع بيع","زيادة شراء"]) assert.match(source,new RegExp(`"${label}"`));
   assert.doesNotMatch(source,/عكس التصحيح السابق — تعديل/);
+});
+
+test("document detail opened from inventory movements is portaled above the product movement dialog", () => {
+  const warehouse = source.slice(source.indexOf("function Warehouses"), source.indexOf("function ProductMovementPanel"));
+  assert.match(warehouse, /detailProduct&&createPortal\(<div className="modal-overlay section-warehouses"/);
+  assert.match(source, /doc && createPortal\(<div className="modal-overlay document-modal-overlay"/);
+  assert.match(source, /document\.body\)\}/);
+  assert.match(styles, /\.document-modal-overlay\s*\{\s*z-index:\s*110;\s*\}/);
 });

@@ -44,7 +44,7 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
   // Replay insertion order. Edits/voids retain the invoice's original occurredAt,
   // so sorting by that date would move today's correction into the past.
   const movements = await db.collection("stockMovements").find({ productId }, { session }).toArray();
-  const hasNativeOpening = movements.some(movement => movement.type === "opening" || movement.type === "opening-correction");
+  const hasNativeOpening = movements.some(movement => movement.type === "opening" || String(movement.type ?? "").startsWith("opening-correction"));
   const hasStockHistory = movements.length > 0;
   const legacySnapshot = movements.some(movement => movement.type === "legacy-opening") || positive(product.legacyOpeningCost) !== null;
   const openingDocumentIds = [...new Set(movements.filter(movement => movement.type === "opening").map(movement => String(movement.documentId ?? "")).filter(Boolean))];
@@ -85,7 +85,7 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
       }
       continue;
     }
-    if (type === "opening-correction") {
+    if (type === "opening-correction" || type.startsWith("opening-correction-")) {
       if (delta > 0) add(allocations, warehouseId, delta);
       else take(allocations, warehouseId, -delta);
       total += delta;

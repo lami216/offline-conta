@@ -67,6 +67,52 @@ export function stockMovementPresentationType(type: unknown, quantityDelta: unkn
   return current || "unknown";
 }
 
+
+export type PresentableStockMovement = {
+  id?: unknown;
+  documentId?: unknown;
+  documentRevision?: unknown;
+  productId?: unknown;
+  warehouseId?: unknown;
+  type?: unknown;
+  quantityDelta?: unknown;
+  balanceBefore?: unknown;
+  balanceAfter?: unknown;
+  occurredAt?: unknown;
+  [key: string]: unknown;
+};
+
+/**
+ * Builds a readable audit view for edits produced by older builds that recorded
+ * a full "reverse old state + replay new state" pair. Raw database rows are
+ * untouched; only presentation is collapsed to the net stock effect.
+ */
+export function collapseLegacyStockEditMovements<T extends PresentableStockMovement>(rows: T[]): T[] {
+  const editKinds = new Set(["transfer", "adjustment"]);
+  const keyOf = (row: T) => {
+    const type=asText(row.type),kind=type.startsWith("transfer-edit")?"transfer":type.startsWith("adjustment-edit")?"adjustment":"";
+    if(!editKinds.has(kind))return "";
+    return [kind,String(row.documentId??""),String(row.documentRevision??""),String(row.productId??""),String(row.warehouseId??"")].join("\u0000");
+  };
+  const groups=new Map<string,T[]>();
+  for(const row of rows){const key=keyOf(row);if(key)(groups.get(key)??(groups.set(key,[]),groups.get(key)!)).push(row)}
+  const emitted=new Set<string>(),result:T[]=[];
+  for(const row of rows){
+    const key=keyOf(row);
+    if(!key){result.push(row);continue}
+    if(emitted.has(key))continue;
+    emitted.add(key);
+    const group=groups.get(key)??[row],kind=asText(row.type).startsWith("transfer")?"transfer":"adjustment";
+    const reversals=group.filter(item=>asText(item.type)===`${kind}-edit-reversal`),edits=group.filter(item=>asText(item.type)===`${kind}-edit`);
+    if(!reversals.length||!edits.length){result.push(...group);continue}
+    const net=group.reduce((sum,item)=>sum+Number(item.quantityDelta??0),0);
+    if(Math.abs(net)<1e-9)continue;
+    const edit=edits[0],reversal=reversals[0];
+    result.push({...edit,type:`${kind}-edit`,quantityDelta:net,balanceBefore:Number(reversal.balanceBefore??0),balanceAfter:Number(edit.balanceAfter??(Number(reversal.balanceBefore??0)+net))} as T);
+  }
+  return result;
+}
+
 /** Sale/purchase edit and void movements belong to their parent commercial filter. */
 export function stockMovementMatchesFilter(type: unknown, filter: string | null | undefined) {
   if (!filter) return true;

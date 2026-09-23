@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {compareTableValues,sortTableRows} from "../app/table-sorting.tsx";
-import {periodStockMovementQuantity,stockMovementPresentationType} from "../app/stock-movement.ts";
+import {collapseLegacyStockEditMovements,periodStockMovementQuantity,stockMovementPresentationType} from "../app/stock-movement.ts";
 import { normalizePresentationSource } from "./presentation-source.mjs";
 const app=normalizePresentationSource(readFileSync(new URL("../app/conta-app.tsx",import.meta.url), "utf8")),css=readFileSync(new URL("../app/globals.css",import.meta.url),"utf8"),command=readFileSync(new URL("../app/api/command/route.ts",import.meta.url),"utf8");
 test("application selection guard preserves editable selection",()=>{assert.match(css,/user-select:none/);assert.match(css,/input,textarea,\[contenteditable="true"\],\[contenteditable=""\][^}]*user-select:text/)});
@@ -93,4 +93,20 @@ test("stock audit presentation distinguishes sale returns, extra sales and suppl
   assert.equal(stockMovementPresentationType("purchase-edit",-2),"purchase-edit-return");
   assert.equal(stockMovementPresentationType("purchase-edit",3),"purchase-edit-extra");
   assert.equal(stockMovementPresentationType("transfer-edit-reversal",-4),"transfer-edit-reversal");
+});
+
+test("legacy reversal plus replay stock edits collapse to one net row without deleting raw audit",()=>{
+  const rows=[
+    {id:"r1",documentId:"a",documentRevision:1,productId:"p",warehouseId:"w",type:"adjustment-edit-reversal",quantityDelta:28,balanceBefore:4,balanceAfter:32,occurredAt:"2026-09-23T21:53:00Z"},
+    {id:"e1",documentId:"a",documentRevision:1,productId:"p",warehouseId:"w",type:"adjustment-edit",quantityDelta:-27,balanceBefore:32,balanceAfter:5,occurredAt:"2026-09-23T21:53:00Z"},
+    {id:"r2",documentId:"a",documentRevision:2,productId:"p",warehouseId:"w",type:"adjustment-edit-reversal",quantityDelta:27,balanceBefore:5,balanceAfter:32,occurredAt:"2026-09-23T21:54:00Z"},
+    {id:"e2",documentId:"a",documentRevision:2,productId:"p",warehouseId:"w",type:"adjustment-edit",quantityDelta:-27,balanceBefore:32,balanceAfter:5,occurredAt:"2026-09-23T21:54:00Z"},
+    {id:"n",documentId:"a",documentRevision:3,productId:"p",warehouseId:"w",type:"adjustment-edit",quantityDelta:2,balanceBefore:5,balanceAfter:7,occurredAt:"2026-09-23T21:55:00Z"},
+  ];
+  const presented=collapseLegacyStockEditMovements(rows);
+  assert.deepEqual(presented.map(row=>[row.id,row.type,row.quantityDelta,row.balanceBefore,row.balanceAfter]),[
+    ["e1","adjustment-edit",1,4,5],
+    ["n","adjustment-edit",2,5,7],
+  ]);
+  assert.equal(rows.length,5);
 });

@@ -88,7 +88,7 @@ test("command lifecycle and operational read model stay in lockstep across updat
   assert.ok(auditRows.some(row => row.isReversal === true));
 });
 
-test("stock transfer update and void preserve the document id and exact inventory", async () => {
+test("stock transfer update records only the net edit and keeps the latest document authoritative", async () => {
   await insertProduct();
   const documentId = await command({ type: "transfer.post", fromWarehouseId: "a", toWarehouseId: "b", lines: [{ productId: "p", quantity: 5 }] });
   assert.deepEqual((await db.collection("products").findOne({ id: "p" })).stocks, { a: 5, b: 5 });
@@ -97,11 +97,19 @@ test("stock transfer update and void preserve the document id and exact inventor
   assert.deepEqual((await db.collection("products").findOne({ id: "p" })).stocks, { a: 7, b: 3 });
   let document = await db.collection("documents").findOne({ id: documentId });
   assert.deepEqual([document.status, document.revision, document.lines[0].quantity], ["posted", 1, 3]);
+  let editRows=(await db.collection("stockMovements").find({documentId,type:"transfer-edit"}).toArray()).map(row=>[row.warehouseId,row.quantityDelta]);
+  assert.deepEqual(editRows.sort((a,b)=>String(a[0]).localeCompare(String(b[0]))),[["a",2],["b",-2]]);
+  assert.equal(await db.collection("stockMovements").countDocuments({documentId,type:"transfer-edit-reversal"}),0);
+
+  await command({ type: "transfer.update", documentId, fromWarehouseId: "a", toWarehouseId: "b", lines: [{ productId: "p", quantity: 4 }] });
+  document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([document.revision,document.lines[0].quantity],[2,4]);
+  assert.deepEqual((await db.collection("products").findOne({ id: "p" })).stocks, { a: 6, b: 4 });
 
   await command({ type: "transfer.void", documentId });
   assert.deepEqual((await db.collection("products").findOne({ id: "p" })).stocks, { a: 10, b: 0 });
   document = await db.collection("documents").findOne({ id: documentId });
-  assert.deepEqual([document.status, document.revision], ["voided", 2]);
+  assert.deepEqual([document.status, document.revision], ["voided", 3]);
 });
 
 test("stock transfer edit rolls back completely when destination stock was consumed", async () => {
@@ -114,15 +122,32 @@ test("stock transfer edit rolls back completely when destination stock was consu
   assert.deepEqual([transfer.status, transfer.revision ?? 0, transfer.lines[0].quantity], ["posted", 0, 5]);
 });
 
-test("inventory adjustment update replays the historical delta and void restores the pre-adjustment quantity", async () => {
+test("inventory adjustment edits apply only the net difference instead of stacking reversal corrections", async () => {
   await insertProduct();
   await establishOpeningCost();
   const documentId = await command({ type: "adjustment.post", warehouseId: "a", reason: "count", lines: [{ productId: "p", actualQuantity: 12 }] });
   assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 12);
+
   await command({ type: "adjustment.update", documentId, reason: "corrected count", lines: [{ productId: "p", actualQuantity: 11 }] });
   assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 11);
   let document = await db.collection("documents").findOne({ id: documentId });
   assert.deepEqual([document.revision, document.lines[0].balanceBefore, document.lines[0].balanceAfter, document.lines[0].quantity], [1, 10, 11, 1]);
+  let edits=await db.collection("stockMovements").find({documentId,type:"adjustment-edit"}).toArray();
+  assert.deepEqual(edits.map(row=>[row.quantityDelta,row.balanceBefore,row.balanceAfter]),[[-1,12,11]]);
+  assert.equal(await db.collection("stockMovements").countDocuments({documentId,type:"adjustment-edit-reversal"}),0);
+
+  await command({ type: "adjustment.update", documentId, reason: "second correction", lines: [{ productId: "p", actualQuantity: 13 }] });
+  assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 13);
+  document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([document.revision,document.lines[0].balanceBefore,document.lines[0].balanceAfter,document.lines[0].quantity],[2,10,13,3]);
+  edits=await db.collection("stockMovements").find({documentId,type:"adjustment-edit"}).sort({occurredAt:1}).toArray();
+  assert.deepEqual(edits.map(row=>row.quantityDelta),[-1,2]);
+
+  const movementCount=await db.collection("stockMovements").countDocuments({documentId});
+  await command({ type: "adjustment.update", documentId, reason: "reason only", lines: [{ productId: "p", actualQuantity: 13 }] });
+  assert.equal(await db.collection("stockMovements").countDocuments({documentId}),movementCount);
+  assert.equal((await db.collection("documents").findOne({id:documentId})).revision,3);
+
   await command({ type: "adjustment.void", documentId });
   assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 10);
   document = await db.collection("documents").findOne({ id: documentId });

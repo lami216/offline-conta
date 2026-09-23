@@ -166,14 +166,6 @@ async function updateTransfer(db: Db, session: ClientSession, body: Input) {
   const oldTo = await db.collection("warehouses").findOne({ _id: String(original.destinationWarehouseId) }, { session });
   if (!oldFrom || !oldTo) throw new LifecycleCommandError("تعذر تحديد مخازن التحويل الأصلية", 409);
   const oldFromWasArchived=oldFrom.isArchived===true,oldFromArchivedAt=oldFrom.archivedAt,oldToWasArchived=oldTo.isArchived===true,oldToArchivedAt=oldTo.archivedAt;
-  const oldLines = (original.lines ?? []) as Stored[], oldIds = oldLines.map(line => String(line.productId));
-  const oldProducts = await loadProducts(db, session, oldIds), revision = Number(original.revision ?? 0) + 1, audit = stockAuditDocument(original, revision);
-  for (const line of oldLines) {
-    const product = oldProducts.get(String(line.productId))!, quantity = Number(line.quantity ?? 0);
-    await changeStock(db, session, product, oldFrom, quantity, audit, "transfer-edit-reversal");
-    try { await changeStock(db, session, product, oldTo, -quantity, audit, "transfer-edit-reversal"); }
-    catch (error) { if (error instanceof LifecycleCommandError && /المخزون غير كاف/.test(error.message)) throw new LifecycleCommandError("لا يمكن تعديل التحويل لأن جزءًا من المخزون المحول تم التصرف فيه.", 409); throw error; }
-  }
   const input = parseTransferLines(body), fromId = text(body.fromWarehouseId), toId = text(body.toWarehouseId);
   if (!fromId || !toId || fromId === toId) throw new LifecycleCommandError("اختر مخزنين مختلفين");
   const [from, to] = await Promise.all([
@@ -181,15 +173,33 @@ async function updateTransfer(db: Db, session: ClientSession, body: Input) {
     db.collection("warehouses").findOne({ _id: toId, ...(toId===String(original.destinationWarehouseId)?{}:{isArchived:{ $ne:true }}) }, { session }),
   ]);
   if (!from || !to) throw new LifecycleCommandError("أحد المخازن غير موجود", 404);
-  const requestedIds=input.map(line=>line.productId),products=await loadProducts(db,session,requestedIds);
-  for(const product of products.values())if(product.isArchived===true&&!oldIds.includes(String(product.id)))throw new LifecycleCommandError("لا يمكن إضافة منتج محذوف إلى تحويل مخزون",409);
-  const lines: Stored[] = [];
-  for (const line of input) {
-    const product = products.get(line.productId)!;
-    await changeStock(db, session, product, from, -line.quantity, { ...audit, warehouseId: fromId, destinationWarehouseId: toId }, "transfer-edit");
-    await changeStock(db, session, product, to, line.quantity, { ...audit, warehouseId: fromId, destinationWarehouseId: toId }, "transfer-edit");
-    lines.push({ id: (oldLines.find(old => old.productId === line.productId)?.id as string | undefined) ?? id("line"), productId: line.productId, description: product.name, quantity: line.quantity, unitPrice: 0, lineTotal: 0 });
+
+  const oldLines = (original.lines ?? []) as Stored[], oldIds = oldLines.map(line => String(line.productId)), requestedIds=input.map(line=>line.productId);
+  const allIds=[...new Set([...oldIds,...requestedIds])],products=await loadProducts(db,session,allIds);
+  for(const productId of requestedIds){const product=products.get(productId)!;if(product.isArchived===true&&!oldIds.includes(productId))throw new LifecycleCommandError("لا يمكن إضافة منتج محذوف إلى تحويل مخزون",409)}
+  const revision = Number(original.revision ?? 0) + 1, audit = stockAuditDocument(original, revision);
+  const warehouseMap=new Map([[String(oldFrom._id),oldFrom],[String(oldTo._id),oldTo],[String(from._id),from],[String(to._id),to]]);
+  const deltas=new Map<string,{productId:string;warehouseId:string;delta:number}>();
+  const addDelta=(productId:string,warehouseId:string,delta:number)=>{const key=`${productId}\u0000${warehouseId}`,current=deltas.get(key);deltas.set(key,{productId,warehouseId,delta:(current?.delta??0)+delta})};
+
+  // Remove the old transfer effect and add the requested effect mathematically.
+  // The resulting movement is the edit's net stock change, not an artificial full reversal + replay.
+  for(const line of oldLines){const productId=String(line.productId),quantity=Number(line.quantity??0);addDelta(productId,String(oldFrom._id),quantity);addDelta(productId,String(oldTo._id),-quantity)}
+  for(const line of input){addDelta(line.productId,fromId,-line.quantity);addDelta(line.productId,toId,line.quantity)}
+
+  for(const {productId,warehouseId,delta} of deltas.values()){
+    if(!delta)continue;
+    const product=products.get(productId)!,current=Number(((product.stocks??{}) as Record<string,number>)[warehouseId]??0);
+    if(current+delta<0)throw new LifecycleCommandError("لا يمكن تعديل التحويل لأن جزءًا من المخزون المطلوب عكسه تم التصرف فيه.",409);
   }
+  for(const {productId,warehouseId,delta} of deltas.values()){
+    if(!delta)continue;
+    const warehouse=warehouseMap.get(warehouseId);
+    if(!warehouse)throw new LifecycleCommandError("تعذر تحديد مخزن مرتبط بالتعديل",409);
+    await changeStock(db,session,products.get(productId)!,warehouse,delta,audit,"transfer-edit");
+  }
+
+  const lines: Stored[] = input.map(line=>({ id: (oldLines.find(old => String(old.productId) === line.productId)?.id as string | undefined) ?? id("line"), productId: line.productId, description: products.get(line.productId)!.name, quantity: line.quantity, unitPrice: 0, lineTotal: 0 }));
   await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: { warehouseId: fromId, warehouseName: from.name, destinationWarehouseId: toId, destinationWarehouseName: to.name, lines, updatedAt: new Date(), revision } }, { session });
   await preserveHistoricalWarehouseArchiveIfEmpty(db,session,String(oldFrom._id),oldFromWasArchived,oldFromArchivedAt);
   await preserveHistoricalWarehouseArchiveIfEmpty(db,session,String(oldTo._id),oldToWasArchived,oldToArchivedAt);
@@ -236,19 +246,17 @@ async function updateAdjustment(db: Db, session: ClientSession, body: Input) {
   if (!warehouse) throw new LifecycleCommandError("مخزن التصحيح غير موجود", 409);
   const warehouseWasArchived=warehouse.isArchived===true,warehouseArchivedAt=warehouse.archivedAt;
   const products = await loadProducts(db, session, oldIds), revision = Number(original.revision ?? 0) + 1, audit = stockAuditDocument(original, revision);
-  for (const old of oldLines) {
-    const product = products.get(String(old.productId))!, oldDelta = Number(old.quantity ?? 0);
-    try { await changeStock(db, session, product, warehouse, -oldDelta, audit, "adjustment-edit-reversal"); }
-    catch (error) { if (error instanceof LifecycleCommandError && /المخزون غير كاف/.test(error.message)) throw new LifecycleCommandError("لا يمكن تعديل التصحيح لأن مخزونًا ناتجًا عنه تم التصرف فيه.", 409); throw error; }
-  }
   const revisedLines: Stored[] = [];
   for (const line of input) {
     const old = oldLines.find(item => String(item.productId) === line.productId)!;
-    const before = Number(old.balanceBefore);
-    if (!Number.isFinite(before)) throw new LifecycleCommandError("سند التصحيح القديم لا يحتوي بيانات كافية للتعديل الآمن", 409);
-    const delta = line.actualQuantity - before, product = products.get(line.productId)!;
-    if (delta) await changeStock(db, session, product, warehouse, delta, audit, "adjustment-edit");
-    revisedLines.push({ ...old, description: `${product.name} — ${reason} (قبل ${before}، بعد ${line.actualQuantity})`, quantity: delta, balanceBefore: before, balanceAfter: line.actualQuantity });
+    const baseline = Number(old.balanceBefore), oldDelta=Number(old.quantity??0);
+    if (!Number.isFinite(baseline)||!Number.isFinite(oldDelta)) throw new LifecycleCommandError("سند التصحيح القديم لا يحتوي بيانات كافية للتعديل الآمن", 409);
+    const revisedDelta = line.actualQuantity - baseline, editDelta = revisedDelta - oldDelta, product = products.get(line.productId)!;
+    if(editDelta){
+      try { await changeStock(db, session, product, warehouse, editDelta, audit, "adjustment-edit"); }
+      catch (error) { if (error instanceof LifecycleCommandError && /المخزون غير كاف/.test(error.message)) throw new LifecycleCommandError("لا يمكن تعديل التصحيح لأن المخزون الحالي لا يكفي لهذا التغيير.", 409); throw error; }
+    }
+    revisedLines.push({ ...old, description: `${product.name} — ${reason} (قبل ${baseline}، بعد ${line.actualQuantity})`, quantity: revisedDelta, balanceBefore: baseline, balanceAfter: line.actualQuantity });
   }
   await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: { title: reason, lines: revisedLines, updatedAt: new Date(), revision } }, { session });
   await preserveHistoricalWarehouseArchiveIfEmpty(db,session,String(warehouse._id),warehouseWasArchived,warehouseArchivedAt);

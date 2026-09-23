@@ -50,3 +50,15 @@ test("row lifecycle actions cannot also trigger the row open action", () => {
   const actions = source.slice(source.indexOf("function LifecycleActions"), source.indexOf("function Recent"));
   assert.ok((actions.match(/event=>\{event\.stopPropagation\(\);/g)??[]).length >= 2);
 });
+
+test("opening a movement source resolves the current document from history before using bootstrap cache", () => {
+  const open = source.slice(source.indexOf("const openDoc = async"), source.indexOf("const closeDoc"));
+  assert.match(open, /fetch\("\/api\/history\?resource=documents&id="/);
+  assert.match(open, /cache:"no-store"/);
+  assert.ok(open.indexOf("fetch(") < open.indexOf("data.documents.find"));
+});
+
+test("stock audit labels stay compact enough for the records table", () => {
+  for (const label of ["تعديل تحويل","عكس تحويل","تعديل تصحيح","عكس تصحيح","إرجاع بيع","زيادة شراء"]) assert.match(source,new RegExp(`"${label}"`));
+  assert.doesNotMatch(source,/عكس التصحيح السابق — تعديل/);
+});

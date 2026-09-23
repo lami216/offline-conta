@@ -75,7 +75,7 @@ test("party ledger filters real compatible roles and transient documents overlay
   assert.match(source, /search:`\$\{p\.name\} \$\{p\.phone\?\?""\}`/);
   assert.match(source, /setPartyTypeFilter\("supplier"\);setPartyId\(""\);setResult\(null\)/);
   assert.doesNotMatch(source, /\) : doc \? \(/);
-  assert.match(source, /\{doc && <div className="modal-overlay"/);
+  assert.match(source, /\{doc && createPortal\(<div className="modal-overlay document-modal-overlay"/);
 });
 
 

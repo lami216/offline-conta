@@ -145,14 +145,8 @@ function useSessionDraft<T>(key: string, initial: T) {
     if (typeof window === "undefined") return initial;
     try { const saved = sessionStorage.getItem(`conta:${key}`); return saved ? JSON.parse(saved) as T : initial; } catch { return initial; }
   });
-  const valueRef=useRef(value);valueRef.current=value;
-  const setDraft=useCallback((next:T|((current:T)=>T))=>{
-    const current=valueRef.current,resolved=typeof next==="function"?(next as (current:T)=>T)(current):next;
-    valueRef.current=resolved;
-    try{sessionStorage.setItem(`conta:${key}`,JSON.stringify(resolved))}catch{}
-    setValue(resolved);
-  },[key]);
-  return [value, setDraft] as const;
+  useEffect(() => { sessionStorage.setItem(`conta:${key}`, JSON.stringify(value)); }, [key, value]);
+  return [value, setValue] as const;
 }
 const nav: Array<{ id: View; label: string; icon: typeof ShoppingCart }> = [
   { id: "pos", label: "نقطة البيع", icon: ShoppingCart },
@@ -1441,8 +1435,8 @@ function MultiStockForm({
     setLines(values.lines);
     editorBaseline.current=JSON.stringify(values);
   },[editingDocument,mode,setFrom,setLines,setReason,setTo]);
-  const resetEditor=()=>{const leavingEdit=Boolean(editingDocument);if(leavingEdit){clearStockOperationDraft(sessionStorage,mode);setFrom("");setTo("")}setLines([]);setReason("");setQ("");editorBaseline.current="";onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
-  const discardEditor=()=>{clearStockOperationDraft(sessionStorage,mode);setFrom("");setTo("");setLines([]);setReason("");setQ("");editorBaseline.current="";onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
+  const resetEditor=()=>{const leavingEdit=Boolean(editingDocument);if(leavingEdit){clearStockOperationDraft(sessionStorage,mode);setFrom("");setTo("")}setLines([]);setReason("");setQ("");onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
+  const discardEditor=()=>{clearStockOperationDraft(sessionStorage,mode);setFrom("");setTo("");setLines([]);setReason("");setQ("");onCancelEdit?.();if(mode==="adjust")clearPrefill?.()};
   useEffect(()=>{registerEditorGuard({isEditing:()=>Boolean(editingDocument)||draftDirty(),isDirty:draftDirty,discard:discardEditor});return()=>registerEditorGuard(null)});
   async function submit() {
     const body = mode === "transfer"

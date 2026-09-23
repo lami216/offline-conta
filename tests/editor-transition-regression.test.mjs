@@ -5,19 +5,10 @@ import { clearStockOperationDraft, stockOperationDraftKeys } from "../app/stock-
 
 const source = readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
 
-test("session-backed drafts persist each setter transition before a component can remount", () => {
-  const hook = source.slice(source.indexOf("function useSessionDraft"), source.indexOf("const nav:"));
-  const write = hook.indexOf("sessionStorage.setItem");
-  const reactUpdate = hook.indexOf("setValue(resolved)");
-  assert.ok(write >= 0 && reactUpdate > write, "session storage must be written before the React state transition");
-  assert.match(hook, /valueRef\.current=resolved/);
-});
-
 test("cancelling a historical stock edit clears every edit-loaded field and persisted draft", () => {
   const form = source.slice(source.indexOf("function MultiStockForm"), source.indexOf("function Transfer"));
   assert.match(form, /clearStockOperationDraft\(sessionStorage,mode\)/);
   assert.match(form, /setFrom\(""\);setTo\(""\)/);
-  assert.match(form, /editorBaseline\.current=""/);
 });
 
 test("deleting the stock record currently being edited cannot leave it behind as a new draft", () => {

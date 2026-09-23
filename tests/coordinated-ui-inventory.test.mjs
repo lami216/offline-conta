@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {compareTableValues,sortTableRows} from "../app/table-sorting.tsx";
-import {periodStockMovementQuantity} from "../app/stock-movement.ts";
+import {periodStockMovementQuantity,stockMovementPresentationType} from "../app/stock-movement.ts";
 import { normalizePresentationSource } from "./presentation-source.mjs";
 const app=normalizePresentationSource(readFileSync(new URL("../app/conta-app.tsx",import.meta.url), "utf8")),css=readFileSync(new URL("../app/globals.css",import.meta.url),"utf8"),command=readFileSync(new URL("../app/api/command/route.ts",import.meta.url),"utf8");
 test("application selection guard preserves editable selection",()=>{assert.match(css,/user-select:none/);assert.match(css,/input,textarea,\[contenteditable="true"\],\[contenteditable=""\][^}]*user-select:text/)});
@@ -84,4 +84,13 @@ test("archived parties are discoverable, read-only and restorable while nonzero 
   assert.match(edit,/disabled=\{hasBalance\}/);
   assert.doesNotMatch(edit,/writeOffBalance/);
   assert.match(page,/canCreatePayment=!archived&&canUseCapability/);
+});
+
+test("stock audit presentation distinguishes sale returns, extra sales and supplier returns",()=>{
+  assert.equal(stockMovementPresentationType("sale-edit",2),"sale-edit-return");
+  assert.equal(stockMovementPresentationType("sale-edit",-1),"sale-edit-extra");
+  assert.equal(stockMovementPresentationType("sale-void",2),"sale-void");
+  assert.equal(stockMovementPresentationType("purchase-edit",-2),"purchase-edit-return");
+  assert.equal(stockMovementPresentationType("purchase-edit",3),"purchase-edit-extra");
+  assert.equal(stockMovementPresentationType("transfer-edit-reversal",-4),"transfer-edit-reversal");
 });

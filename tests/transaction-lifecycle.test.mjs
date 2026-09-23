@@ -219,3 +219,48 @@ test("party cash update may keep its original archived payment account but rejec
   const unchanged = await db.collection("documents").findOne({ id: documentId });
   assert.deepEqual([unchanged.paymentMethod, unchanged.total, unchanged.revision], ["party-old", 120, 1]);
 });
+
+
+test("sale edit and void keep one invoice identity while stock audit records the return explicitly", async () => {
+  await insertProduct();
+  const documentId = await command({ type: "sale.post", warehouseId: "a", paymentMethod: "cash", lines: [{ productId: "p", quantity: 4, piecePrice: 10 }] });
+  const original = await db.collection("documents").findOne({ id: documentId });
+  assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 6);
+
+  assert.equal(await command({ type: "sale.update", documentId, warehouseId: "a", paymentMethod: "cash", lines: [{ productId: "p", quantity: 2, piecePrice: 10 }] }), documentId);
+  let document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([document.id, document.number, document.sequence, document.revision, document.lines[0].quantity], [documentId, original.number, original.sequence, 1, 2]);
+  assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 8);
+  let movements = await db.collection("stockMovements").find({ documentId }).sort({ occurredAt: 1 }).toArray();
+  assert.deepEqual(movements.map(row => [row.type, row.quantityDelta]), [["sale", -4], ["sale-edit", 2]]);
+
+  await command({ type: "sale.void", documentId });
+  document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([document.id, document.number, document.sequence, document.status, document.revision], [documentId, original.number, original.sequence, "voided", 2]);
+  assert.equal(await db.collection("documents").countDocuments({ kind: "sale" }), 1);
+  assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 10);
+  movements = await db.collection("stockMovements").find({ documentId }).sort({ occurredAt: 1 }).toArray();
+  assert.deepEqual(movements.map(row => [row.type, row.quantityDelta]), [["sale", -4], ["sale-edit", 2], ["sale-void", 2]]);
+});
+
+test("purchase reduction and void preserve identity and distinguish supplier-return stock effects", async () => {
+  await insertProduct();
+  const documentId = await command({ type: "purchase.post", warehouseId: "a", paymentMethod: "cash", lines: [{ productId: "p", quantity: 4, unitPrice: 5 }] });
+  const original = await db.collection("documents").findOne({ id: documentId });
+  assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 14);
+
+  await command({ type: "purchase.update", documentId, warehouseId: "a", paymentMethod: "cash", lines: [{ productId: "p", quantity: 2, unitPrice: 5 }] });
+  let document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([document.number, document.sequence, document.revision, document.lines[0].quantity], [original.number, original.sequence, 1, 2]);
+  assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 12);
+  let movements = await db.collection("stockMovements").find({ documentId }).sort({ occurredAt: 1 }).toArray();
+  assert.deepEqual(movements.map(row => [row.type, row.quantityDelta]), [["purchase", 4], ["purchase-edit", -2]]);
+
+  await command({ type: "purchase.void", documentId });
+  document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([document.number, document.sequence, document.status, document.revision], [original.number, original.sequence, "voided", 2]);
+  assert.equal(await db.collection("documents").countDocuments({ kind: "purchase" }), 1);
+  assert.equal((await db.collection("products").findOne({ id: "p" })).stocks.a, 10);
+  movements = await db.collection("stockMovements").find({ documentId }).sort({ occurredAt: 1 }).toArray();
+  assert.deepEqual(movements.map(row => [row.type, row.quantityDelta]), [["purchase", 4], ["purchase-edit", -2], ["purchase-void", -2]]);
+});

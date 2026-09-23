@@ -51,6 +51,22 @@ export function classifyStockMovementType(type: unknown, document?: StockMovemen
   return asText(type) || "unknown";
 }
 
+/** Preserve the audit event while describing whether an invoice edit returned
+ * stock or consumed more stock. The raw movement type remains the accounting
+ * authority; this key is presentation-only. */
+export function stockMovementPresentationType(type: unknown, quantityDelta: unknown = 0) {
+  const current = asText(type), delta = Number(quantityDelta);
+  if (current === "sale-edit") {
+    if (Number.isFinite(delta) && delta > 0) return "sale-edit-return";
+    if (Number.isFinite(delta) && delta < 0) return "sale-edit-extra";
+  }
+  if (current === "purchase-edit") {
+    if (Number.isFinite(delta) && delta > 0) return "purchase-edit-extra";
+    if (Number.isFinite(delta) && delta < 0) return "purchase-edit-return";
+  }
+  return current || "unknown";
+}
+
 /** Sale/purchase edit and void movements belong to their parent commercial filter. */
 export function stockMovementMatchesFilter(type: unknown, filter: string | null | undefined) {
   if (!filter) return true;

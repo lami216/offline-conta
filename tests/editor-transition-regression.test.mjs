@@ -1,0 +1,48 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { clearStockOperationDraft, stockOperationDraftKeys } from "../app/stock-operation-draft.ts";
+
+const source = readFileSync(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+
+test("session-backed drafts persist each setter transition before a component can remount", () => {
+  const hook = source.slice(source.indexOf("function useSessionDraft"), source.indexOf("const nav:"));
+  const write = hook.indexOf("sessionStorage.setItem");
+  const reactUpdate = hook.indexOf("setValue(resolved)");
+  assert.ok(write >= 0 && reactUpdate > write, "session storage must be written before the React state transition");
+  assert.match(hook, /valueRef\.current=resolved/);
+});
+
+test("cancelling a historical stock edit clears every edit-loaded field and persisted draft", () => {
+  const form = source.slice(source.indexOf("function MultiStockForm"), source.indexOf("function Transfer"));
+  assert.match(form, /clearStockOperationDraft\(sessionStorage,mode\)/);
+  assert.match(form, /setFrom\(""\);setTo\(""\)/);
+  assert.match(form, /editorBaseline\.current=""/);
+});
+
+test("deleting the stock record currently being edited cannot leave it behind as a new draft", () => {
+  const transfer = source.slice(source.indexOf("function Transfer"), source.indexOf("function Adjustment"));
+  const adjustment = source.slice(source.indexOf("function Adjustment"), source.indexOf("function Records"));
+  assert.match(transfer, /clearStockOperationDraft\(sessionStorage,"transfer"\);setEditing\(null\)/);
+  assert.match(adjustment, /clearStockOperationDraft\(sessionStorage,"adjust"\);setEditing\(null\)/);
+});
+
+test("stock operation cleanup removes the complete persisted editor state", () => {
+  const removed = [];
+  const storage = { removeItem: key => removed.push(key) };
+  clearStockOperationDraft(storage, "transfer");
+  assert.deepEqual(removed, stockOperationDraftKeys("transfer").map(key => `conta:${key}`));
+});
+
+test("voided documents keep audit actions but disable the dead operational-source action", () => {
+  const detail = source.slice(source.indexOf("function DocumentDetail"), source.indexOf("function Linked"));
+  assert.match(detail, /document\.status==="voided"\?tr\("المستند ملغى — المصدر غير متاح"\)/);
+  assert.match(detail, /className="soft" disabled title=\{sourceUnavailable\}/);
+  const presentation = source.slice(source.indexOf("function buildDocumentPresentation"), source.indexOf("function OfficialRecordSheet"));
+  assert.match(presentation, /record\.status==="voided"\?tr\("ملغى"\)/);
+});
+
+test("voided source navigation is also blocked defensively outside the button", () => {
+  const navigation = source.slice(source.indexOf("const openDocumentSource"), source.indexOf("useEffect(() =>", source.indexOf("const openDocumentSource")));
+  assert.match(navigation, /if\(document\.status==="voided"\)return/);
+});

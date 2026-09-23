@@ -119,6 +119,8 @@ export function stockMovementMatchesFilter(type: unknown, filter: string | null 
   const current = asText(type);
   if (filter === "sale") return current === "sale" || current.startsWith("sale-");
   if (filter === "purchase") return current === "purchase" || current.startsWith("purchase-");
+  if (filter === "transfer") return current === "transfer" || current.startsWith("transfer-");
+  if (filter === "adjustment") return current === "adjustment" || current.startsWith("adjustment-") || current === "opening" || current === "opening-correction";
   return current === filter;
 }
 

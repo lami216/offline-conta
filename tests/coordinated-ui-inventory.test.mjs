@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {compareTableValues,sortTableRows} from "../app/table-sorting.tsx";
-import {collapseLegacyStockEditMovements,periodStockMovementQuantity,stockMovementPresentationType} from "../app/stock-movement.ts";
+import {collapseLegacyStockEditMovements,periodStockMovementQuantity,stockMovementMatchesFilter,stockMovementPresentationType} from "../app/stock-movement.ts";
 import { normalizePresentationSource } from "./presentation-source.mjs";
 const app=normalizePresentationSource(readFileSync(new URL("../app/conta-app.tsx",import.meta.url), "utf8")),css=readFileSync(new URL("../app/globals.css",import.meta.url),"utf8"),command=readFileSync(new URL("../app/api/command/route.ts",import.meta.url),"utf8");
 test("application selection guard preserves editable selection",()=>{assert.match(css,/user-select:none/);assert.match(css,/input,textarea,\[contenteditable="true"\],\[contenteditable=""\][^}]*user-select:text/)});
@@ -109,4 +109,10 @@ test("legacy reversal plus replay stock edits collapse to one net row without de
     ["n","adjustment-edit",2,5,7],
   ]);
   assert.equal(rows.length,5);
+});
+
+test("stock operation family filters include transfer and adjustment edit/void variants",()=>{
+  for(const type of ["transfer-in","transfer-out","transfer-edit","transfer-void"])assert.equal(stockMovementMatchesFilter(type,"transfer"),true);
+  for(const type of ["adjustment","adjustment-edit","adjustment-void","opening","opening-correction"])assert.equal(stockMovementMatchesFilter(type,"adjustment"),true);
+  assert.equal(stockMovementMatchesFilter("sale-edit","transfer"),false);
 });

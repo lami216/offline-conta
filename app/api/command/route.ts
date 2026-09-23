@@ -346,10 +346,28 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const documentId = text(body.documentId), context = await requireLatestProductOpeningCorrection(db, session, documentId);
     const desiredTotal = context.before, desiredCost = desiredTotal > 0 ? (Number.isFinite(Number(context.original.openingCostBefore)) ? Number(context.original.openingCostBefore) : context.state.cost) : null;
     if (desiredTotal > 0 && (!desiredCost || desiredCost <= 0)) throw new CommandError("تعذر استعادة تكلفة رصيد البداية السابقة", 409);
-    const targetWarehouseId = text(context.original.warehouseId) || context.state.warehouseId;
-    const relocateOpeningStock = Boolean(targetWarehouseId && text(context.original.destinationWarehouseId) && targetWarehouseId !== text(context.original.destinationWarehouseId));
-    const revision = Number(context.original.revision ?? 0) + 1;
-    await applyProductOpeningTarget(db, session, context, desiredTotal, desiredCost, targetWarehouseId, relocateOpeningStock, "opening-correction-void", revision);
+    const revision = Number(context.original.revision ?? 0) + 1, audit = { ...context.original, revision, occurredAt: new Date().toISOString() };
+    const movements = await db.collection("stockMovements").find({ documentId }, { session }).toArray();
+    const netByWarehouse = new Map<string, number>();
+    for (const movement of movements) {
+      if (!String(movement.type ?? "").startsWith("opening-correction")) continue;
+      const warehouseId = String(movement.warehouseId ?? "");
+      if (!warehouseId) continue;
+      netByWarehouse.set(warehouseId, Number(netByWarehouse.get(warehouseId) ?? 0) + Number(movement.quantityDelta ?? 0));
+    }
+    for (const [warehouseId, net] of netByWarehouse) {
+      if (Math.abs(net) < 1e-9) continue;
+      const warehouse = await warehouses(db).findOne({ _id: warehouseId }, { session });
+      if (!warehouse) throw new CommandError("تعذر تحديد مخزن رصيد البداية السابق", 409);
+      try { await changeStock(db, session, context.product, warehouse, -net, audit, "opening-correction-void"); }
+      catch (error) { if (error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("لا يمكن حذف تصحيح رصيد البداية لأن جزءًا من المخزون الناتج عنه تم التصرف فيه.", 409); throw error; }
+    }
+    const restoredWarehouseId = text(context.original.warehouseId) || context.state.warehouseId || null;
+    await db.collection("products").updateOne({ id: context.productId }, { $set: { openingStock: desiredTotal, openingCost: desiredCost, openingWarehouseId: restoredWarehouseId, updatedAt: new Date() } }, { session });
+    context.product.openingStock = desiredTotal;
+    context.product.openingCost = desiredCost;
+    context.product.openingWarehouseId = restoredWarehouseId;
+    await recomputePurchaseCosts(db, session, [context.productId]);
     const now = new Date();
     await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: { status: "voided", voidedAt: now, updatedAt: now, revision } }, { session });
     return documentId;

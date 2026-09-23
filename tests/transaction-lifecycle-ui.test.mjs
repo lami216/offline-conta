@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+const openingHistory = await readFile(new URL("../app/opening-stock-history.tsx", import.meta.url), "utf8");
 
 const expectedCommands = [
   "party-cash.update",
@@ -49,9 +50,14 @@ test("lifecycle row actions reuse the current visual system and shared confirmat
   assert.doesNotMatch(source, /window\.alert\s*\(/);
 });
 
-test("opening-stock history remains outside ordinary adjustment edit and delete", () => {
+test("opening-stock history has its own latest-correction edit and delete lifecycle", () => {
   assert.match(source, /document\.kind === "adjustment" && !isOpeningStockDocument\(document\)/);
-  assert.match(source, /<OpeningStockHistory/);
+  assert.match(source, /<OpeningStockHistory[\s\S]*run=\{p\.run\}[\s\S]*canEdit=\{canEdit\}[\s\S]*canDelete=\{canDelete\}/);
+  assert.match(openingHistory, /"opening-stock-correction\.update"/);
+  assert.match(openingHistory, /"opening-stock-correction\.void"/);
+  assert.match(openingHistory, /latestCorrectionByProduct/);
+  assert.match(openingHistory, /document\.openingCorrection === true/);
+  assert.match(openingHistory, /useAppConfirm\(\)/);
 });
 
 test("product movement view derives the current document effect instead of selecting one audit movement", () => {

@@ -20,7 +20,7 @@ test("inventory product details are driven by stock movements so operation names
 test("document details opened from inventory are rendered above the product movement dialog",()=>{
   const source=normalizePresentationSource(readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"));
   const css=readFileSync(new URL("../app/globals.css",import.meta.url),"utf8");
-  assert.match(source,/doc&&createPortal\(<div className="modal-overlay document-modal-overlay"/);
+  assert.match(source,/doc\s*&&\s*createPortal\(<div className="modal-overlay document-modal-overlay"/);
   assert.match(source,/document\.body\)/);
   assert.match(css,/\.document-modal-overlay\s*\{\s*z-index:\s*180;\s*\}/);
 });

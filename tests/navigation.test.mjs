@@ -100,7 +100,7 @@ test("traceable records open details first and expose a source-navigation action
   ]) assert.match(source,mapping);
   assert.match(source,/stockRows\.map\(row=><tr key=\{row\.id\} onClick=\{\(\)=>row\.documentId&&openDoc\(row\.documentId\)\}/);
   assert.match(source,/financialRows\.map\(row=><tr key=\{row\.id\} onClick=\{\(\)=>row\.documentId&&openDoc\(row\.documentId\)\}/);
-  assert.match(source,/fallbackMovements\.map\(movement=><tr[^>]+onClick=\{\(\)=>movement\.documentId&&openDoc\(movement\.documentId\)\}/);
+  assert.match(source,/movementRows\.map\(movement=>[\s\S]*?<tr key=\{movement\.id\} onClick=\{\(\)=>movement\.documentId&&openDoc\(movement\.documentId\)\}/);
 });
 
 

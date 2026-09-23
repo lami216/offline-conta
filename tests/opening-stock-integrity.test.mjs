@@ -176,3 +176,53 @@ test("cost-only opening correction changes future cost without stock movement", 
   const saleId=await command({type:"sale.post",warehouseId:"wh-a",partyId:"customer",paymentMethod:"note",lines:[{productId,quantity:1,piecePrice:100}]});
   assert.equal((await db.collection("documents").findOne({id:saleId})).lines[0].costAtSale,65);
 });
+
+
+test("latest opening correction can be edited with net audit movements", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  await updateOpening(productId,8,60,"wh-a");
+  const correction=await db.collection("documents").findOne({openingCorrection:true,status:"posted"});
+  await command({type:"opening-stock-correction.update",documentId:correction.id,newOpeningStock:9,openingCost:65,openingWarehouseId:"wh-a",relocateOpeningStock:false});
+  const product=await db.collection("products").findOne({id:productId});
+  const revised=await db.collection("documents").findOne({id:correction.id});
+  const movements=await db.collection("stockMovements").find({documentId:correction.id}).toArray();
+  assert.deepEqual([product.openingStock,product.openingCost,product.stocks["wh-a"]],[9,65,9]);
+  assert.deepEqual([revised.openingStockBefore,revised.openingStockAfter,revised.openingCostBefore,revised.openingCostAfter,revised.revision],[10,9,50,65,1]);
+  assert.deepEqual(movements.map(row=>[row.type,row.quantityDelta]),[["opening-correction",-2],["opening-correction-edit",1]]);
+  const state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([state.total,state.remaining,state.consumed,state.cost],[9,9,0,65]);
+});
+
+test("deleting latest opening correction reverses only that correction and keeps an audit trail", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  await updateOpening(productId,8,60,"wh-a");
+  const correction=await db.collection("documents").findOne({openingCorrection:true,status:"posted"});
+  await command({type:"opening-stock-correction.void",documentId:correction.id});
+  const product=await db.collection("products").findOne({id:productId});
+  const voided=await db.collection("documents").findOne({id:correction.id});
+  const movements=await db.collection("stockMovements").find({documentId:correction.id}).toArray();
+  assert.deepEqual([product.openingStock,product.openingCost,product.stocks["wh-a"]],[10,50,10]);
+  assert.equal(voided.status,"voided");
+  assert.deepEqual(movements.map(row=>[row.type,row.quantityDelta]),[["opening-correction",-2],["opening-correction-void",2]]);
+  const state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([state.total,state.remaining,state.consumed,state.cost],[10,10,0,50]);
+});
+
+test("only the latest active opening correction can be edited or deleted", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  await updateOpening(productId,9,55,"wh-a");
+  const first=await db.collection("documents").findOne({openingCorrection:true,status:"posted"});
+  await updateOpening(productId,8,60,"wh-a");
+  await assert.rejects(command({type:"opening-stock-correction.update",documentId:first.id,newOpeningStock:7,openingCost:60,openingWarehouseId:"wh-a"}),/آخر تصحيح رصيد بداية/);
+  await assert.rejects(command({type:"opening-stock-correction.void",documentId:first.id}),/آخر تصحيح رصيد بداية/);
+});
+
+test("voiding a relocated opening correction does not undo later unrelated warehouse transfers", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  await updateOpening(productId,10,55,"wh-b",true);
+  const correction=await db.collection("documents").findOne({openingCorrection:true,status:"posted"});
+  await command({type:"transfer.post",fromWarehouseId:"wh-b",toWarehouseId:"wh-a",lines:[{productId,quantity:2}]});
+  await command({type:"opening-stock-correction.void",documentId:correction.id});
+  const product=await db.collection("products").findOne({id:productId});
+  assert.deepEqual(product.stocks,{"wh-a":12,"wh-b":-2});
+});

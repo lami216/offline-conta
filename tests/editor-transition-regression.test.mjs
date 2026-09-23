@@ -54,3 +54,8 @@ test("financial audit history distinguishes reversal evidence from the original 
   assert.match(records, /row\.status==="reversed"/);
   assert.match(records, /financialAuditLabel\(row\)/);
 });
+
+test("row lifecycle actions cannot also trigger the row open action", () => {
+  const actions = source.slice(source.indexOf("function LifecycleActions"), source.indexOf("function Recent"));
+  assert.ok((actions.match(/event=>\{event\.stopPropagation\(\);/g)??[]).length >= 2);
+});

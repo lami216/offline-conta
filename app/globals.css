@@ -2603,7 +2603,7 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 /* Keep stock-operation search focused and give histories a little more room. */
 @media (min-width: 1051px) {
   .stock-workspace {
-    grid-template-columns: minmax(0, 57fr) minmax(460px, 43fr);
+    grid-template-columns: minmax(0, 54fr) minmax(500px, 46fr);
   }
   .stock-operation-panel.searching {
     grid-template-rows: auto minmax(0, 1fr) auto auto;

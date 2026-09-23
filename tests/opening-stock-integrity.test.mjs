@@ -217,12 +217,14 @@ test("only the latest active opening correction can be edited or deleted", async
   await assert.rejects(command({type:"opening-stock-correction.void",documentId:first.id}),/آخر تصحيح رصيد بداية/);
 });
 
-test("voiding a relocated opening correction does not undo later unrelated warehouse transfers", async () => {
+test("deleting a relocated opening correction is blocked after its stock was moved away", async () => {
   const productId=await createOpened(10,50,"wh-a");
   await updateOpening(productId,10,55,"wh-b",true);
   const correction=await db.collection("documents").findOne({openingCorrection:true,status:"posted"});
   await command({type:"transfer.post",fromWarehouseId:"wh-b",toWarehouseId:"wh-a",lines:[{productId,quantity:2}]});
-  await command({type:"opening-stock-correction.void",documentId:correction.id});
+  await assert.rejects(command({type:"opening-stock-correction.void",documentId:correction.id}),/جزءًا من المخزون الناتج عنه تم التصرف فيه/);
   const product=await db.collection("products").findOne({id:productId});
-  assert.deepEqual(product.stocks,{"wh-a":12,"wh-b":-2});
+  const retained=await db.collection("documents").findOne({id:correction.id});
+  assert.deepEqual(product.stocks,{"wh-a":2,"wh-b":8});
+  assert.equal(retained.status,"posted");
 });

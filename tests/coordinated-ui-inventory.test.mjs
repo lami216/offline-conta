@@ -113,6 +113,6 @@ test("legacy reversal plus replay stock edits collapse to one net row without de
 
 test("stock operation family filters include transfer and adjustment edit/void variants",()=>{
   for(const type of ["transfer-in","transfer-out","transfer-edit","transfer-void"])assert.equal(stockMovementMatchesFilter(type,"transfer"),true);
-  for(const type of ["adjustment","adjustment-edit","adjustment-void","opening","opening-correction"])assert.equal(stockMovementMatchesFilter(type,"adjustment"),true);
+  for(const type of ["adjustment","adjustment-edit","adjustment-void","opening","opening-correction","opening-correction-edit","opening-correction-void"])assert.equal(stockMovementMatchesFilter(type,"adjustment"),true);
   assert.equal(stockMovementMatchesFilter("sale-edit","transfer"),false);
 });

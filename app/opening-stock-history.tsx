@@ -23,7 +23,7 @@ function OpeningCorrectionEditor({ document, data, run, close }: { document: Doc
   const [warehouseId, setWarehouseId] = useState(currentWarehouseId);
   const quantityValue = Number(openingStock), costValue = openingCost === "" ? null : Number(openingCost);
   const invalid = !Number.isInteger(quantityValue) || quantityValue < 0 || (quantityValue > 0 && (!warehouseId || costValue == null || !Number.isFinite(costValue) || costValue <= 0));
-  const warehouseOptions = data.warehouses.filter(warehouse => !warehouse.isArchived || warehouse._id === currentWarehouseId);
+  const warehouseOptions = data.warehouses.filter(warehouse => !warehouse.isArchived || warehouse.id === currentWarehouseId);
 
   return <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={tr("تعديل تصحيح رصيد البداية")}>
     <form className="modal-card account-dialog opening-correction-editor" onSubmit={async event => {
@@ -44,7 +44,7 @@ function OpeningCorrectionEditor({ document, data, run, close }: { document: Doc
       <label>{tr("رصيد البداية الحالي")}<input readOnly value={String(product?.openingStock ?? initialOpening)} /></label>
       <label>{tr("رصيد البداية الصحيح")}<input type="number" min="0" step="1" dir="ltr" required value={openingStock} onChange={event => setOpeningStock(event.target.value)} /></label>
       <label>{tr("opening.cost")}<input type="number" min="0" step="any" dir="ltr" disabled={quantityValue === 0} required={quantityValue > 0} value={openingCost} onChange={event => setOpeningCost(event.target.value)} /></label>
-      <label>{tr("مخزن رصيد البداية")}<select required={quantityValue > 0} disabled={quantityValue === 0} value={warehouseId} onChange={event => setWarehouseId(event.target.value)}><option value="">{tr("اختر المخزن")}</option>{warehouseOptions.map(warehouse => <option key={warehouse._id} value={warehouse._id}>{warehouse.name}</option>)}</select></label>
+      <label>{tr("مخزن رصيد البداية")}<select required={quantityValue > 0} disabled={quantityValue === 0} value={warehouseId} onChange={event => setWarehouseId(event.target.value)}><option value="">{tr("اختر المخزن")}</option>{warehouseOptions.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></label>
       <div className="dialog-actions"><button type="button" className="soft" onClick={close}>{tr("إلغاء")}</button><button className="primary" disabled={invalid}>{tr("حفظ التعديل")}</button></div>
     </form>
   </div>;

@@ -73,7 +73,7 @@ function OpeningCorrectionEditor({ document, data, run, close }: { document: Doc
   </div>;
 }
 
-function OpeningCorrectionBlockers({ payload, data, openDoc, close }: { payload: OpeningCorrectionBlockedPayload; data: BootstrapData; openDoc: (id: string) => void; close: () => void }) {
+function OpeningCorrectionBlockers({ payload, data, openSource, close }: { payload: OpeningCorrectionBlockedPayload; data: BootstrapData; openSource: (id: string) => void; close: () => void }) {
   const operationLabel = (blocker: OpeningCorrectionBlocker) => {
     const kind = blocker.kind as DocumentKind;
     return kindLabels[kind] ? tr(kindLabels[kind]) : blocker.title || blocker.movementTypes.join(" / ") || tr("عملية غير معروفة");
@@ -91,7 +91,7 @@ function OpeningCorrectionBlockers({ payload, data, openDoc, close }: { payload:
         <thead><tr><th>{tr("التاريخ")}</th><th>{tr("العملية")}</th><th>{tr("المستند")}</th><th>{tr("المخزن")}</th><th>{tr("الأثر على المخزون")}</th><th>{tr("الحالة")}</th><th>{tr("إجراءات")}</th></tr></thead>
         <tbody>{payload.blockers.map(blocker => {
           const warehouseEffect = blocker.warehouses.map(effect => `${effect.warehouseName}: ${effect.quantityDelta > 0 ? "+" : ""}${number(effect.quantityDelta)}`).join("، ");
-          return <tr key={blocker.documentId}><td>{blocker.occurredAt ? formatDateTime(blocker.occurredAt) : "—"}</td><td>{operationLabel(blocker)}</td><td dir="ltr">{blocker.documentNumber || "—"}</td><td>{blocker.warehouses.map(effect => effect.warehouseName).join("، ") || "—"}</td><td className="num-cell">{warehouseEffect || "—"}</td><td>{blocker.status === "voided" ? tr("ملغى") : blocker.status === "posted" ? tr("معتمد") : blocker.status || "—"}</td><td className="action-cell"><button type="button" className="soft" onClick={() => { close(); openDoc(blocker.documentId); }}>{tr("الانتقال إلى المصدر")}</button></td></tr>;
+          return <tr key={blocker.documentId}><td>{blocker.occurredAt ? formatDateTime(blocker.occurredAt) : "—"}</td><td>{operationLabel(blocker)}</td><td dir="ltr">{blocker.documentNumber || "—"}</td><td>{blocker.warehouses.map(effect => effect.warehouseName).join("، ") || "—"}</td><td className="num-cell">{warehouseEffect || "—"}</td><td>{blocker.status === "voided" ? tr("ملغى") : blocker.status === "posted" ? tr("معتمد") : blocker.status || "—"}</td><td className="action-cell"><button type="button" className="soft" onClick={() => { close(); openSource(blocker.documentId); }}>{tr("الانتقال إلى المصدر")}</button></td></tr>;
         })}{!payload.blockers.length && <tr><td colSpan={7}>{tr("لا توجد تفاصيل حركات متاحة. راجع حركة المنتج ثم حاول مرة أخرى.")}</td></tr>}</tbody>
       </table></div>
       <div className="dialog-actions"><button type="button" className="primary" onClick={close}>{tr("إغلاق")}</button></div>
@@ -99,7 +99,7 @@ function OpeningCorrectionBlockers({ payload, data, openDoc, close }: { payload:
   </div>;
 }
 
-export default function OpeningStockHistory({ data, docs, openDoc, run, canEdit, canDelete }: { data: BootstrapData; docs: DocumentRecord[]; openDoc: (id: string) => void; run: RunCommand; canEdit: boolean; canDelete: boolean }) {
+export default function OpeningStockHistory({ data, docs, openDoc, openSource, run, canEdit, canDelete }: { data: BootstrapData; docs: DocumentRecord[]; openDoc: (id: string) => void; openSource: (id: string) => void; run: RunCommand; canEdit: boolean; canDelete: boolean }) {
   const confirmAction = useAppConfirm();
   const [editing, setEditing] = useState<DocumentRecord | null>(null);
   const [blocked, setBlocked] = useState<OpeningCorrectionBlockedPayload | null>(null);
@@ -147,6 +147,6 @@ export default function OpeningStockHistory({ data, docs, openDoc, run, canEdit,
       })}{!rows.length && <tr><td colSpan={11}>{tr("لا توجد فواتير ضمن الفترة المحددة")}</td></tr>}</tbody>
     </table></div>
     {editing && <OpeningCorrectionEditor key={editing.id} document={editing} data={data} run={run} close={() => setEditing(null)} />}
-    {blocked && <OpeningCorrectionBlockers payload={blocked} data={data} openDoc={openDoc} close={() => setBlocked(null)} />}
+    {blocked && <OpeningCorrectionBlockers payload={blocked} data={data} openSource={openSource} close={() => setBlocked(null)} />}
   </section>;
 }

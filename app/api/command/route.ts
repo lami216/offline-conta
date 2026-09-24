@@ -452,7 +452,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const movements = await db.collection("stockMovements").find({ documentId }, { session }).toArray();
     const netByWarehouse = new Map<string, number>();
     for (const movement of movements) {
-      if (!String(movement.type ?? "").startsWith("opening-correction")) continue;
+      if (!isOpeningCorrectionMovementType(movement.type)) continue;
       const warehouseId = String(movement.warehouseId ?? "");
       if (!warehouseId) continue;
       netByWarehouse.set(warehouseId, Number(netByWarehouse.get(warehouseId) ?? 0) + Number(movement.quantityDelta ?? 0));
@@ -494,7 +494,11 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     context.product.openingWarehouseId = restoredWarehouseId;
     await recomputePurchaseCosts(db, session, [context.productId]);
     const now = new Date();
-    await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: { status: "voided", voidedAt: now, updatedAt: now, revision } }, { session });
+    await db.collection("documents").updateOne(
+      { id: documentId, status: "posted" },
+      { $set: { openingCorrection: true, title: "تصحيح رصيد البداية", openingStockBefore: context.before, openingStockAfter: context.after, openingCostBefore: context.beforeCost, openingCostAfter: context.afterCost, status: "voided", voidedAt: now, updatedAt: now, revision } },
+      { session },
+    );
     return documentId;
   }
   if (type === "party.create") {

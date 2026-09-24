@@ -339,7 +339,7 @@ function ContaAppContent() {
   async function run(body: Record<string, unknown>, message: string, afterSuccess?: () => void) {
     const fingerprint=JSON.stringify(body), existing=inFlightCommands.current.get(fingerprint);
     if(existing)return existing as ReturnType<RunCommand>;
-    const operation=(async()=>{setError("");const r=await fetch("/api/command",{method:"POST",headers:{"content-type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)}),j=await r.json();if(!r.ok){setError(translateApiError(locale,String(j.error??"تعذر تنفيذ العملية")));throw new Error(j.error)}setNotice(message);await finishSuccessfulCommand(afterSuccess,()=>reload({blocking:false}));return j.disposition?j:j.id as string})();
+    const operation=(async()=>{setError("");const r=await fetch("/api/command",{method:"POST",headers:{"content-type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)}),j=await r.json();if(!r.ok){const apiMessage=String(j.error??"تعذر تنفيذ العملية");if(j.code!=="OPENING_CORRECTION_BLOCKED")setError(translateApiError(locale,apiMessage));throw Object.assign(new Error(apiMessage),{payload:j,status:r.status})}setNotice(message);await finishSuccessfulCommand(afterSuccess,()=>reload({blocking:false}));return j.disposition?j:j.id as string})();
     inFlightCommands.current.set(fingerprint,operation);
     try{return await operation as Awaited<ReturnType<RunCommand>>}finally{inFlightCommands.current.delete(fingerprint)}
   }

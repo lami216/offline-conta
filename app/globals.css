@@ -2621,7 +2621,7 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 /* Keep stock-operation search focused and give histories a little more room. */
 @media (min-width: 1051px) {
   .stock-workspace {
-    grid-template-columns: minmax(0, 64fr) minmax(410px, 36fr);
+    grid-template-columns: minmax(410px, 44fr) minmax(0, 56fr);
   }
   .stock-operation-panel.searching {
     grid-template-rows: auto minmax(0, 1fr) auto auto;

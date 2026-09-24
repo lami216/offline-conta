@@ -278,3 +278,60 @@ test("later purchases do not hide opening stock that was already consumed from t
   assert.equal(blocked?.details?.restoredOpening,2);
   assert.equal(blocked?.details?.blockers?.some(row=>row.documentId===saleId),true);
 });
+
+
+test("legacy additive opening correction without audit fields can be deleted and is canonicalized", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  const legacyId="legacy-opening-add";
+  const occurredAt="2026-01-02T00:00:00.000Z";
+  await db.collection("documents").insertOne({
+    id:legacyId,number:"OPEN-LEGACY-ADD",kind:"adjustment",status:"posted",occurredAt,
+    partyId:null,partyName:null,warehouseId:"wh-a",warehouseName:"A",destinationWarehouseId:null,destinationWarehouseName:null,
+    parentDocumentId:null,paymentMethod:null,title:"إضافة رصيد افتتاحي",total:0,dueTotal:0,paidTotal:0,cashAmount:0,
+    lines:[{id:"legacy-line",productId,description:"Opened",quantity:2,unitPrice:50,lineTotal:0}],
+  });
+  await db.collection("stockMovements").insertOne({
+    id:"legacy-opening-movement",documentId:legacyId,documentNumber:"OPEN-LEGACY-ADD",warehouseId:"wh-a",warehouseName:"A",
+    productId,productName:"Opened",type:"opening",quantityDelta:2,balanceBefore:10,balanceAfter:12,occurredAt,
+  });
+  await db.collection("products").updateOne({id:productId},{$set:{openingStock:12,openingCost:50,openingWarehouseId:"wh-a","stocks.wh-a":12}});
+  const saleId=await command({type:"sale.post",warehouseId:"wh-a",partyId:"customer",paymentMethod:"note",lines:[{productId,quantity:10,piecePrice:100}]});
+  assert.equal((await db.collection("products").findOne({id:productId})).stocks["wh-a"],2);
+
+  await command({type:"opening-stock-correction.void",documentId:legacyId});
+
+  const product=await db.collection("products").findOne({id:productId});
+  const legacy=await db.collection("documents").findOne({id:legacyId});
+  const sale=await db.collection("documents").findOne({id:saleId});
+  const movements=await db.collection("stockMovements").find({documentId:legacyId}).toArray();
+  assert.deepEqual([product.openingStock,product.openingCost,product.stocks["wh-a"]],[10,50,0]);
+  assert.deepEqual([legacy.openingCorrection,legacy.title,legacy.openingStockBefore,legacy.openingStockAfter,legacy.status],[true,"تصحيح رصيد البداية",10,12,"voided"]);
+  assert.deepEqual(movements.map(row=>[row.type,row.quantityDelta]),[["opening",2],["opening-correction-void",-2]]);
+  assert.equal(sale.status,"posted");
+});
+
+test("legacy additive opening correction becomes fully editable and gains missing audit fields", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  const legacyId="legacy-opening-edit";
+  const occurredAt="2026-01-02T00:00:00.000Z";
+  await db.collection("documents").insertOne({
+    id:legacyId,number:"OPEN-LEGACY-EDIT",kind:"adjustment",status:"posted",occurredAt,
+    partyId:null,partyName:null,warehouseId:"wh-a",warehouseName:"A",destinationWarehouseId:null,destinationWarehouseName:null,
+    parentDocumentId:null,paymentMethod:null,title:"إضافة رصيد افتتاحي",total:0,dueTotal:0,paidTotal:0,cashAmount:0,
+    lines:[{id:"legacy-edit-line",productId,description:"Opened",quantity:2,unitPrice:50,lineTotal:0}],
+  });
+  await db.collection("stockMovements").insertOne({
+    id:"legacy-opening-edit-movement",documentId:legacyId,documentNumber:"OPEN-LEGACY-EDIT",warehouseId:"wh-a",warehouseName:"A",
+    productId,productName:"Opened",type:"opening",quantityDelta:2,balanceBefore:10,balanceAfter:12,occurredAt,
+  });
+  await db.collection("products").updateOne({id:productId},{$set:{openingStock:12,openingCost:50,openingWarehouseId:"wh-a","stocks.wh-a":12}});
+
+  await command({type:"opening-stock-correction.update",documentId:legacyId,newOpeningStock:11,openingCost:60,openingWarehouseId:"wh-a",relocateOpeningStock:false});
+
+  const product=await db.collection("products").findOne({id:productId});
+  const legacy=await db.collection("documents").findOne({id:legacyId});
+  const movements=await db.collection("stockMovements").find({documentId:legacyId}).toArray();
+  assert.deepEqual([product.openingStock,product.openingCost,product.stocks["wh-a"]],[11,60,11]);
+  assert.deepEqual([legacy.openingCorrection,legacy.title,legacy.openingStockBefore,legacy.openingStockAfter,legacy.openingCostBefore,legacy.openingCostAfter],[true,"تصحيح رصيد البداية",10,11,50,60]);
+  assert.deepEqual(movements.map(row=>[row.type,row.quantityDelta]),[["opening",2],["opening-correction-edit",-1]]);
+});

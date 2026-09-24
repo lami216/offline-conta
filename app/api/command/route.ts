@@ -14,7 +14,15 @@ type Input = Record<string, unknown>;
 type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; costAtSale?: number | null; grossProfit?: number | null };
 type WarehouseDoc = { _id: string; name: string; isSalesDefault?: boolean; [key: string]: unknown };
 const warehouses = (db: Db) => db.collection<WarehouseDoc>("warehouses");
-class CommandError extends Error { status: number; constructor(message: string, status = 400) { super(message); this.status = status; } }
+class CommandError extends Error {
+  status: number;
+  details?: Record<string, unknown>;
+  constructor(message: string, status = 400, details?: Record<string, unknown>) {
+    super(message);
+    this.status = status;
+    this.details = details;
+  }
+}
 const id = (prefix: string) => `${prefix}-${crypto.randomUUID()}`;
 const text = (v: unknown) => typeof v === "string" ? v.trim() : "";
 const num = (v: unknown) => typeof v === "number" ? v : Number(v);
@@ -304,6 +312,68 @@ async function currentOpeningCorrectionLines(db: Db, session: ClientSession, doc
   return lines.length ? lines : [{ id: id("line"), productId, description: `${productName} — تصحيح تكلفة رصيد البداية`, quantity: 0, unitPrice: openingCost ?? 0, lineTotal: 0 }];
 }
 
+async function openingCorrectionBlockingOperations(
+  db: Db,
+  session: ClientSession,
+  productId: string,
+  correctionDocumentId: string,
+) {
+  const productMovements = await db.collection("stockMovements").find({ productId }, { session }).toArray();
+  let lastCorrectionMovement = -1;
+  for (let index = 0; index < productMovements.length; index++) {
+    const movement = productMovements[index];
+    if (String(movement.documentId ?? "") === correctionDocumentId && String(movement.type ?? "").startsWith("opening-correction")) lastCorrectionMovement = index;
+  }
+  const subsequent = lastCorrectionMovement >= 0 ? productMovements.slice(lastCorrectionMovement + 1) : [];
+  const grouped = new Map<string, {
+    documentId: string;
+    documentNumber: string;
+    occurredAt: string;
+    movementTypes: Set<string>;
+    effects: Map<string, { warehouseName: string; quantityDelta: number }>;
+  }>();
+  for (const movement of subsequent) {
+    const documentId = String(movement.documentId ?? "");
+    if (!documentId || documentId === correctionDocumentId) continue;
+    const warehouseId = String(movement.warehouseId ?? "");
+    const quantityDelta = Number(movement.quantityDelta ?? 0);
+    if (!warehouseId || !Number.isFinite(quantityDelta) || quantityDelta === 0) continue;
+    const current = grouped.get(documentId) ?? {
+      documentId,
+      documentNumber: String(movement.documentNumber ?? ""),
+      occurredAt: String(movement.occurredAt ?? ""),
+      movementTypes: new Set<string>(),
+      effects: new Map<string, { warehouseName: string; quantityDelta: number }>(),
+    };
+    current.documentNumber ||= String(movement.documentNumber ?? "");
+    current.occurredAt = String(movement.occurredAt ?? current.occurredAt);
+    current.movementTypes.add(String(movement.type ?? ""));
+    const effect = current.effects.get(warehouseId) ?? { warehouseName: String(movement.warehouseName ?? warehouseId), quantityDelta: 0 };
+    effect.quantityDelta += quantityDelta;
+    current.effects.set(warehouseId, effect);
+    grouped.set(documentId, current);
+  }
+  const relevant = [...grouped.values()].filter(item => [...item.effects.values()].some(effect => effect.quantityDelta < -1e-9));
+  if (!relevant.length) return [];
+  const documents = await db.collection("documents").find({ id: { $in: relevant.map(item => item.documentId) } }, { session }).toArray();
+  const documentMap = new Map(documents.map(document => [String(document.id), document]));
+  return relevant.map(item => {
+    const document = documentMap.get(item.documentId);
+    return {
+      documentId: item.documentId,
+      documentNumber: String(document?.number ?? item.documentNumber),
+      kind: String(document?.kind ?? ""),
+      title: String(document?.title ?? ""),
+      status: String(document?.status ?? ""),
+      occurredAt: String(document?.updatedAt ?? item.occurredAt ?? document?.occurredAt ?? ""),
+      movementTypes: [...item.movementTypes].filter(Boolean),
+      warehouses: [...item.effects.entries()]
+        .map(([warehouseId, effect]) => ({ warehouseId, warehouseName: effect.warehouseName, quantityDelta: effect.quantityDelta }))
+        .filter(effect => Math.abs(effect.quantityDelta) > 1e-9),
+    };
+  });
+}
+
 export async function execute(db: Db, session: ClientSession, body: Input) {
   const type = text(body.type);
   const lifecycle = await executeLifecycleCommand(db, session, body);
@@ -355,12 +425,32 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
       if (!warehouseId) continue;
       netByWarehouse.set(warehouseId, Number(netByWarehouse.get(warehouseId) ?? 0) + Number(movement.quantityDelta ?? 0));
     }
+    const deficits = [...netByWarehouse.entries()]
+      .filter(([, net]) => net > 1e-9)
+      .map(([warehouseId, required]) => {
+        const available = Number((context.product.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0);
+        return { warehouseId, required, available, missing: Math.max(0, required - available) };
+      })
+      .filter(item => item.missing > 1e-9);
+    if (deficits.length) {
+      const blockers = await openingCorrectionBlockingOperations(db, session, context.productId, documentId);
+      throw new CommandError(
+        "لا يمكن حذف تصحيح رصيد البداية لأن جزءًا من المخزون الناتج عنه تم التصرف فيه.",
+        409,
+        {
+          code: "OPENING_CORRECTION_BLOCKED",
+          productId: context.productId,
+          productName: String(context.product.name ?? ""),
+          deficits,
+          blockers,
+        },
+      );
+    }
     for (const [warehouseId, net] of netByWarehouse) {
       if (Math.abs(net) < 1e-9) continue;
       const warehouse = await warehouses(db).findOne({ _id: warehouseId }, { session });
       if (!warehouse) throw new CommandError("تعذر تحديد مخزن رصيد البداية السابق", 409);
-      try { await changeStock(db, session, context.product, warehouse, -net, audit, "opening-correction-void"); }
-      catch (error) { if (error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("لا يمكن حذف تصحيح رصيد البداية لأن جزءًا من المخزون الناتج عنه تم التصرف فيه.", 409); throw error; }
+      await changeStock(db, session, context.product, warehouse, -net, audit, "opening-correction-void");
     }
     const restoredWarehouseId = text(context.original.warehouseId) || context.state.warehouseId || null;
     await db.collection("products").updateOne({ id: context.productId }, { $set: { openingStock: desiredTotal, openingCost: desiredCost, openingWarehouseId: restoredWarehouseId, updatedAt: new Date() } }, { session });
@@ -712,5 +802,9 @@ export async function POST(request: Request) {const licenseDenied=await requireV
     });}
     catch(error){if((error as {code?:number}).code===11000){const duplicate=await receipts.findOne({_id:idempotencyKey as never});if(duplicate?.fingerprint!==fingerprint)return Response.json({error:"مفتاح العملية مستخدم لطلب مختلف"},{status:409});if(duplicate?.status==="committed")return Response.json(duplicate.result);return Response.json({error:"العملية قيد التنفيذ"},{status:409});}throw error;}
     log("info","api.command.completed",{commandType:type,entityId:result});return Response.json(response);
-  }catch(error){const status=error instanceof CommandError||error instanceof LifecycleCommandError?error.status:500;log("error","api.command.failed",{commandType:type,error});return Response.json({error:error instanceof CommandError||error instanceof LifecycleCommandError?error.message:"تعذر تنفيذ العملية"},{status});}
+  }catch(error){
+    const known=error instanceof CommandError||error instanceof LifecycleCommandError,status=known?error.status:500;
+    log("error","api.command.failed",{commandType:type,error});
+    return Response.json({error:known?error.message:"تعذر تنفيذ العملية",...(error instanceof CommandError&&error.details?error.details:{})},{status});
+  }
 }

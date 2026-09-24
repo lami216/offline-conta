@@ -243,20 +243,49 @@ function openingCorrectionProductId(document: Record<string, unknown>) {
   const documentLines = Array.isArray(document.lines) ? document.lines as Record<string, unknown>[] : [];
   return text(documentLines[0]?.productId);
 }
+function finiteOpeningAudit(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+function isOpeningCorrectionRecord(document: Record<string, unknown> | null | undefined) {
+  if (!document || text(document.kind) !== "adjustment") return false;
+  const number = text(document.number), title = text(document.title);
+  return document.openingCorrection === true
+    || number.startsWith("OPEN-COR")
+    || title === "تصحيح رصيد البداية"
+    || title === "إضافة رصيد افتتاحي"
+    || (Object.prototype.hasOwnProperty.call(document, "openingStockBefore") && Object.prototype.hasOwnProperty.call(document, "openingStockAfter"));
+}
+function isOpeningCorrectionMovementType(type: unknown) {
+  const current = text(type);
+  return current === "opening" || current.startsWith("opening-correction");
+}
 async function requireLatestProductOpeningCorrection(db: Db, session: ClientSession, documentId: string) {
-  const original = await db.collection("documents").findOne({ id: documentId, kind: "adjustment", status: "posted", openingCorrection: true }, { session });
-  if (!original) throw new CommandError("تصحيح رصيد البداية غير موجود أو ملغى", 404);
+  const original = await db.collection("documents").findOne({ id: documentId, kind: "adjustment", status: "posted" }, { session });
+  if (!original || !isOpeningCorrectionRecord(original)) throw new CommandError("تصحيح رصيد البداية غير موجود أو ملغى", 404);
   const productId = openingCorrectionProductId(original);
   if (!productId) throw new CommandError("تصحيح رصيد البداية لا يحتوي منتجًا صالحًا", 409);
   const product = await db.collection("products").findOne({ id: productId }, { session });
   if (!product) throw new CommandError("المنتج المرتبط بتصحيح رصيد البداية غير موجود", 409);
-  const activeCorrections = await db.collection("documents").find({ kind: "adjustment", status: "posted", openingCorrection: true }, { session }).sort({ occurredAt: -1, updatedAt: -1, id: -1 }).toArray();
-  const latest = activeCorrections.find(document => openingCorrectionProductId(document) === productId);
+  const activeAdjustments = await db.collection("documents").find({ kind: "adjustment", status: "posted" }, { session }).sort({ occurredAt: -1, updatedAt: -1, id: -1 }).toArray();
+  const latest = activeAdjustments.find(document => isOpeningCorrectionRecord(document) && openingCorrectionProductId(document) === productId);
   if (!latest || String(latest.id) !== String(original.id)) throw new CommandError("يمكن تعديل أو إلغاء آخر تصحيح رصيد بداية للمنتج فقط", 409);
   const state = await deriveOpeningStockState(db, session, product);
-  const before = Number(original.openingStockBefore), after = Number(original.openingStockAfter);
-  if (!Number.isFinite(before) || !Number.isFinite(after) || state.total !== after || Number(product.openingStock) !== after) throw new CommandError("تسلسل تصحيحات رصيد البداية لا يسمح بهذه العملية", 409);
-  return { original, product, productId, state, before, after };
+  const movements = await db.collection("stockMovements").find({ documentId }, { session }).toArray();
+  const netOpeningDelta = movements
+    .filter(movement => isOpeningCorrectionMovementType(movement.type))
+    .reduce((sum, movement) => sum + Number(movement.quantityDelta ?? 0), 0);
+  const explicitAfter = finiteOpeningAudit(original.openingStockAfter);
+  const after = explicitAfter ?? state.total;
+  const explicitBefore = finiteOpeningAudit(original.openingStockBefore);
+  const before = explicitBefore ?? after - netOpeningDelta;
+  const productOpening = finiteOpeningAudit(product.openingStock);
+  if (!Number.isFinite(before) || !Number.isFinite(after) || Math.abs(state.total - after) > 1e-9 || (productOpening !== null && Math.abs(productOpening - after) > 1e-9)) throw new CommandError("تسلسل تصحيحات رصيد البداية لا يسمح بهذه العملية", 409);
+  const line = (Array.isArray(original.lines) ? original.lines as Record<string, unknown>[] : []).find(item => text(item.productId) === productId);
+  const afterCost = finiteOpeningAudit(original.openingCostAfter) ?? state.cost ?? finiteOpeningAudit(line?.unitPrice);
+  const beforeCost = finiteOpeningAudit(original.openingCostBefore) ?? afterCost;
+  return { original, product, productId, state, before, after, beforeCost, afterCost, legacy: original.openingCorrection !== true };
 }
 async function applyProductOpeningTarget(
   db: Db,
@@ -299,7 +328,7 @@ async function currentOpeningCorrectionLines(db: Db, session: ClientSession, doc
   const movements = await db.collection("stockMovements").find({ documentId }, { session }).toArray();
   const grouped = new Map<string, { warehouseName: string; quantity: number }>();
   for (const movement of movements) {
-    if (!String(movement.type ?? "").startsWith("opening-correction")) continue;
+    if (!isOpeningCorrectionMovementType(movement.type)) continue;
     const warehouseId = String(movement.warehouseId ?? "");
     if (!warehouseId) continue;
     const current = grouped.get(warehouseId) ?? { warehouseName: String(movement.warehouseName ?? warehouseId), quantity: 0 };
@@ -322,7 +351,7 @@ async function openingCorrectionBlockingOperations(
   let firstCorrectionMovement = -1;
   for (let index = 0; index < productMovements.length; index++) {
     const movement = productMovements[index];
-    if (String(movement.documentId ?? "") === correctionDocumentId && String(movement.type ?? "").startsWith("opening-correction")) {
+    if (String(movement.documentId ?? "") === correctionDocumentId && isOpeningCorrectionMovementType(movement.type)) {
       firstCorrectionMovement = index;
       break;
     }
@@ -410,14 +439,14 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const revisedLines = await currentOpeningCorrectionLines(db, session, documentId, context.productId, String(context.product.name ?? context.productId), desiredCost);
     await db.collection("documents").updateOne(
       { id: documentId, status: "posted" },
-      { $set: { openingStockAfter: desiredTotal, openingCostAfter: desiredCost, destinationWarehouseId: applied.targetWarehouse?._id ?? targetWarehouseId ?? null, destinationWarehouseName: applied.targetWarehouse?.name ?? null, lines: revisedLines, updatedAt: new Date(), revision } },
+      { $set: { openingCorrection: true, title: "تصحيح رصيد البداية", openingStockBefore: context.before, openingStockAfter: desiredTotal, openingCostBefore: context.beforeCost, openingCostAfter: desiredCost, destinationWarehouseId: applied.targetWarehouse?._id ?? targetWarehouseId ?? null, destinationWarehouseName: applied.targetWarehouse?.name ?? null, lines: revisedLines, updatedAt: new Date(), revision } },
       { session },
     );
     return documentId;
   }
   if (type === "opening-stock-correction.void") {
     const documentId = text(body.documentId), context = await requireLatestProductOpeningCorrection(db, session, documentId);
-    const desiredTotal = context.before, desiredCost = desiredTotal > 0 ? (Number.isFinite(Number(context.original.openingCostBefore)) ? Number(context.original.openingCostBefore) : context.state.cost) : null;
+    const desiredTotal = context.before, desiredCost = desiredTotal > 0 ? context.beforeCost : null;
     if (desiredTotal > 0 && (!desiredCost || desiredCost <= 0)) throw new CommandError("تعذر استعادة تكلفة رصيد البداية السابقة", 409);
     const revision = Number(context.original.revision ?? 0) + 1, audit = { ...context.original, revision, occurredAt: new Date().toISOString() };
     const movements = await db.collection("stockMovements").find({ documentId }, { session }).toArray();

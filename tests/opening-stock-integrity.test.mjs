@@ -259,3 +259,22 @@ test("blocked opening correction delete exposes related source operations and su
   assert.equal(voidedCorrection.status,"voided");
   assert.equal(voidedSale.status,"voided");
 });
+
+
+test("later purchases do not hide opening stock that was already consumed from the correction", async () => {
+  const productId=await createOpened(2,50,"wh-a");
+  await updateOpening(productId,10,55,"wh-a");
+  const correction=await db.collection("documents").findOne({openingCorrection:true,status:"posted"});
+  const saleId=await command({type:"sale.post",warehouseId:"wh-a",partyId:"customer",paymentMethod:"note",lines:[{productId,quantity:5,piecePrice:100}]});
+  await command({type:"purchase.post",warehouseId:"wh-a",partyId:"supplier",paymentMethod:"note",lines:[{productId,quantity:10,unitPrice:70}]});
+  const stocked=await db.collection("products").findOne({id:productId});
+  assert.equal(stocked.stocks["wh-a"],15);
+
+  let blocked;
+  try { await command({type:"opening-stock-correction.void",documentId:correction.id}); }
+  catch (error) { blocked=error; }
+  assert.equal(blocked?.details?.code,"OPENING_CORRECTION_BLOCKED");
+  assert.equal(blocked?.details?.consumedOpening,5);
+  assert.equal(blocked?.details?.restoredOpening,2);
+  assert.equal(blocked?.details?.blockers?.some(row=>row.documentId===saleId),true);
+});

@@ -228,3 +228,34 @@ test("deleting a relocated opening correction is blocked after its stock was mov
   assert.deepEqual(product.stocks,{"wh-a":2,"wh-b":8});
   assert.equal(retained.status,"posted");
 });
+
+
+test("blocked opening correction delete exposes related source operations and succeeds after the sale is voided", async () => {
+  const productId=await createOpened(2,50,"wh-a");
+  await updateOpening(productId,10,55,"wh-a");
+  const correction=await db.collection("documents").findOne({openingCorrection:true,status:"posted"});
+  const saleId=await command({type:"sale.post",warehouseId:"wh-a",partyId:"customer",paymentMethod:"note",lines:[{productId,quantity:5,piecePrice:100}]});
+
+  let blocked;
+  try { await command({type:"opening-stock-correction.void",documentId:correction.id}); }
+  catch (error) { blocked=error; }
+  assert.ok(blocked);
+  assert.match(blocked.message,/جزءًا من المخزون الناتج عنه تم التصرف فيه/);
+  assert.equal(blocked.details?.code,"OPENING_CORRECTION_BLOCKED");
+  assert.deepEqual(blocked.details?.deficits,[{warehouseId:"wh-a",required:8,available:5,missing:3}]);
+  assert.equal(blocked.details?.blockers?.length,1);
+  assert.deepEqual(
+    [blocked.details.blockers[0].documentId,blocked.details.blockers[0].kind,blocked.details.blockers[0].status],
+    [saleId,"sale","posted"],
+  );
+  assert.deepEqual(blocked.details.blockers[0].warehouses.map(row=>[row.warehouseId,row.quantityDelta]),[["wh-a",-5]]);
+
+  await command({type:"sale.void",documentId:saleId});
+  await command({type:"opening-stock-correction.void",documentId:correction.id});
+  const product=await db.collection("products").findOne({id:productId});
+  const voidedCorrection=await db.collection("documents").findOne({id:correction.id});
+  const voidedSale=await db.collection("documents").findOne({id:saleId});
+  assert.deepEqual([product.openingStock,product.openingCost,product.stocks["wh-a"]],[2,50,2]);
+  assert.equal(voidedCorrection.status,"voided");
+  assert.equal(voidedSale.status,"voided");
+});

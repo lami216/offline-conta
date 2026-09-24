@@ -58,6 +58,10 @@ test("opening-stock history has its own latest-correction edit and delete lifecy
   assert.match(openingHistory, /latestCorrectionByProduct/);
   assert.match(openingHistory, /document\.openingCorrection === true/);
   assert.match(openingHistory, /useAppConfirm\(\)/);
+  assert.match(openingHistory, /OPENING_CORRECTION_BLOCKED/);
+  assert.match(openingHistory, /function OpeningCorrectionBlockers/);
+  assert.match(openingHistory, /الانتقال إلى المصدر/);
+  assert.match(openingHistory, /openDoc\(blocker\.documentId\)/);
 });
 
 test("product movement view derives the current document effect instead of selecting one audit movement", () => {

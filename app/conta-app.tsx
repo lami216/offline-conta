@@ -393,6 +393,11 @@ function ContaAppContent() {
     if(document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(party){const target:View=resolvePartyType(party)==="customer"?"customers":"suppliers";if(await navigate(target))setPartyDetail(party);return}}
     await navigate("records");
   };
+  const openDocumentSourceById = async (documentId: string) => {
+    const document=data.documents.find(item=>item.id===documentId);
+    if(document){await openDocumentSource(document);return}
+    await openDoc(documentId);
+  };
   useEffect(() => {
     if (!autoPrintId || !data.documents.some(document => document.id === autoPrintId)) return;
     let cancelled=false;
@@ -483,7 +488,7 @@ function ContaAppContent() {
                 <Transfer data={data} run={run} openDoc={openDoc} editRequest={transferEditRequest} clearEditRequest={() => setTransferEditRequest(null)} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
               )}{" "}
               {view === "adjustments" && (
-                <Adjustment data={data} run={run} openDoc={openDoc} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} editRequest={adjustmentEditRequest} clearEditRequest={() => setAdjustmentEditRequest(null)} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
+                <Adjustment data={data} run={run} openDoc={openDoc} openSource={id=>void openDocumentSourceById(id)} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} editRequest={adjustmentEditRequest} clearEditRequest={() => setAdjustmentEditRequest(null)} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
               )}{" "}
               {view === "records" && <Records data={data} openDoc={openDoc} />}{" "}
               {view === "reports" && (
@@ -1477,7 +1482,7 @@ function Transfer(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) 
       <FramedSection title={tr("سجل التحويلات")} className="records transfer-history"><div className="erp-table-wrap transfer-list"><table className="erp-table" aria-label={tr("سجل التحويلات")}><colgroup><col style={{width:"16%"}}/><col style={{width:"18%"}}/><col style={{width:"17%"}}/><col style={{width:"17%"}}/><col style={{width:"12%"}}/><col style={{width:"20%"}}/></colgroup><thead><tr><SortableTableHeader column="date" label={tr("التاريخ")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="number" label={tr("المستند")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="from" label={tr("من")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="to" label={tr("إلى")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="quantity" label={tr("الكمية")} sort={transferSort} toggle={toggleTransferSort}/><th>{tr("إجراءات")}</th></tr></thead><tbody>{sortedTransfers.map(document => <tr key={document.id} onClick={() => p.openDoc(document.id)}><td>{formatDate(document.occurredAt)}</td><td dir="ltr">{displayDocumentNumber(document)}</td><td>{document.warehouseName ?? "—"}</td><td>{document.destinationWarehouseName ?? "—"}</td><td className="num-cell">{number(document.lines.reduce((sum, line) => sum + Number(line.quantity), 0))}</td><td className="action-cell"><LifecycleActions onEdit={canEdit?()=>void startEdit(document):undefined} onVoid={canDelete?()=>void remove(document):undefined}/></td></tr>)}{!transfers.length && <tr><td colSpan={6}>{tr("لا توجد تحويلات مسجلة")}</td></tr>}</tbody></table></div></FramedSection>
     </section>;
 }
-function Adjustment(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) => void;prefill?: AdjustmentPrefill | null;clearPrefill?: () => void;editRequest?:string|null;clearEditRequest?:()=>void;registerEditorGuard:RegisterEditorGuard;prepareEditorReplacement:()=>Promise<boolean>;}) {
+function Adjustment(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) => void;openSource: (id: string) => void;prefill?: AdjustmentPrefill | null;clearPrefill?: () => void;editRequest?:string|null;clearEditRequest?:()=>void;registerEditorGuard:RegisterEditorGuard;prepareEditorReplacement:()=>Promise<boolean>;}) {
   const confirmAction=useAppConfirm(),[editing,setEditing]=useState<DocumentRecord|null>(null);
   const canEdit=canUseCapability(p.data.principal,"warehouses.adjust.edit"),canDelete=canUseCapability(p.data.principal,"warehouses.adjust.delete");
   const openingDocs = p.data.documents.filter(document => isOpeningStockDocument(document));
@@ -1489,7 +1494,7 @@ function Adjustment(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string
   return <section className="stock-workspace adjustment-workspace">
       <FramedSection title={editing?`${tr("تعديل")} · ${tr("تصحيح المخزون")}`:tr("تصحيح المخزون")} className="stock-workspace-main" allowOverflow><MultiStockForm key={editing?.id??"new-adjustment"} {...p} mode="adjust" editingDocument={editing} onCancelEdit={()=>setEditing(null)}/></FramedSection>
       <Recent title={tr("سجل التصحيحات")} docs={adjustmentDocs} openDoc={p.openDoc} actions={document=><LifecycleActions onEdit={canEdit?()=>void startEdit(document):undefined} onVoid={canDelete?()=>void remove(document):undefined}/>}/>
-      <OpeningStockHistory data={p.data} docs={openingDocs} openDoc={p.openDoc} run={p.run} canEdit={canEdit} canDelete={canDelete} />
+      <OpeningStockHistory data={p.data} docs={openingDocs} openDoc={p.openDoc} openSource={p.openSource} run={p.run} canEdit={canEdit} canDelete={canDelete} />
     </section>;
 }
 

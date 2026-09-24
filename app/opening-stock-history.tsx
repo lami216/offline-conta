@@ -99,14 +99,14 @@ function OpeningCorrectionBlockers({ payload, data, openSource, close }: { paylo
   </div>;
 }
 
-export default function OpeningStockHistory({ data, docs, openDoc, openSource, run, canEdit, canDelete }: { data: BootstrapData; docs: DocumentRecord[]; openDoc: (id: string) => void; openSource: (id: string) => void; run: RunCommand; canEdit: boolean; canDelete: boolean }) {
+export default function OpeningStockHistory({ data, docs, openDoc, openSource, openOpeningSource, run, canEdit, canDelete }: { data: BootstrapData; docs: DocumentRecord[]; openDoc: (id: string) => void; openSource: (id: string) => void; openOpeningSource: (productId: string) => void; run: RunCommand; canEdit: boolean; canDelete: boolean }) {
   const confirmAction = useAppConfirm();
   const [editing, setEditing] = useState<DocumentRecord | null>(null);
   const [blocked, setBlocked] = useState<OpeningCorrectionBlockedPayload | null>(null);
   const rows = docs.filter(isOpeningStockDocument).slice().sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt)));
   const latestCorrectionByProduct = new Map<string, string>();
   for (const document of rows) {
-    if (document.status !== "posted" || document.openingCorrection !== true || !isOpeningStockCorrectionDocument(document)) continue;
+    if (document.status !== "posted" || !isOpeningStockCorrectionDocument(document)) continue;
     const productId = correctionProductId(document);
     if (productId && !latestCorrectionByProduct.has(productId)) latestCorrectionByProduct.set(productId, document.id);
   }
@@ -132,18 +132,23 @@ export default function OpeningStockHistory({ data, docs, openDoc, openSource, r
         const lineDelta = document.lines.reduce((sum, line) => sum + Number(line.quantity ?? 0), 0);
         const delta = movements.length ? movementDelta : lineDelta;
         const initialAfter = document.lines.reduce((sum, line) => sum + Math.max(0, Number(line.quantity ?? 0)), 0);
-        const before = correction ? optionalFiniteNumber(document.openingStockBefore) : 0;
-        const after = optionalFiniteNumber(document.openingStockAfter) ?? (correction ? null : initialAfter);
+        const productId = correctionProductId(document);
+        const product = productId ? data.products.find(item => item.id === productId) : null;
+        const explicitAfter = optionalFiniteNumber(document.openingStockAfter);
+        const inferredCurrentAfter = correction && document.status === "posted" && productId && latestCorrectionByProduct.get(productId) === document.id ? optionalFiniteNumber(product?.openingStock) : null;
+        const after = explicitAfter ?? inferredCurrentAfter ?? (correction ? null : initialAfter);
+        const explicitBefore = correction ? optionalFiniteNumber(document.openingStockBefore) : 0;
+        const before = explicitBefore ?? (correction && after !== null ? after - delta : null);
         const costBefore = optionalFiniteNumber(document.openingCostBefore);
-        const costAfter = optionalFiniteNumber(document.openingCostAfter) ?? optionalFiniteNumber(document.lines[0]?.unitPrice);
+        const costAfter = optionalFiniteNumber(document.openingCostAfter) ?? optionalFiniteNumber(product?.openingCost) ?? optionalFiniteNumber(document.lines[0]?.unitPrice);
         const stockBasis = before !== null && after !== null ? `${number(before)} → ${number(after)}` : "—";
         const cost = costAfter === null ? "—" : correction && costBefore !== null && costBefore !== costAfter ? `${money(costBefore)} → ${money(costAfter)}` : money(costAfter);
         const productNames = [...new Set(document.lines.map(line => data.products.find(product => product.id === line.productId)?.name ?? line.description.split(" — ")[0]).filter(Boolean))].join("، ") || "—";
         const from = document.warehouseName || movements[0]?.warehouseName || "—", to = document.destinationWarehouseName;
         const warehouse = to && to !== from ? `${from} → ${to}` : from;
-        const productId = correctionProductId(document);
-        const manageable = Boolean(correction && document.openingCorrection === true && document.status === "posted" && productId && latestCorrectionByProduct.get(productId) === document.id);
-        return <tr key={document.id} onClick={() => openDoc(document.id)}><td className="num-cell">{number(index + 1)}</td><td>{formatDateTime(document.occurredAt)}</td><td dir="ltr">{displayDocumentNumber(document)}</td><td className="name-cell">{productNames}</td><td>{correction ? tr("تصحيح رصيد البداية") : tr("رصيد بداية")}</td><td className="num-cell">{delta > 0 ? "+" : ""}{number(delta)}</td><td className="num-cell">{stockBasis}</td><td className="num-cell">{cost}</td><td>{warehouse}</td><td>{document.status === "voided" ? tr("ملغى") : tr("معتمد")}</td><td className="action-cell">{manageable && (canEdit || canDelete) ? <div className="party-row-actions lifecycle-row-actions">{canEdit && <button type="button" className="soft" onClick={event => { event.stopPropagation(); setEditing(document); }}>{tr("تعديل")}</button>}{canDelete && <button type="button" className="danger compact-delete" onClick={event => { event.stopPropagation(); void remove(document); }}>{tr("حذف")}</button>}</div> : "—"}</td></tr>;
+        const manageable = Boolean(correction && document.status === "posted" && productId && latestCorrectionByProduct.get(productId) === document.id);
+        const initialSource = Boolean(!correction && document.status === "posted" && productId);
+        return <tr key={document.id} onClick={() => openDoc(document.id)}><td className="num-cell">{number(index + 1)}</td><td>{formatDateTime(document.occurredAt)}</td><td dir="ltr">{displayDocumentNumber(document)}</td><td className="name-cell">{productNames}</td><td>{correction ? tr("تصحيح رصيد البداية") : tr("رصيد بداية")}</td><td className="num-cell">{delta > 0 ? "+" : ""}{number(delta)}</td><td className="num-cell">{stockBasis}</td><td className="num-cell">{cost}</td><td>{warehouse}</td><td>{document.status === "voided" ? tr("ملغى") : tr("معتمد")}</td><td className="action-cell">{manageable && (canEdit || canDelete) ? <div className="party-row-actions lifecycle-row-actions">{canEdit && <button type="button" className="soft" onClick={event => { event.stopPropagation(); setEditing(document); }}>{tr("تعديل")}</button>}{canDelete && <button type="button" className="danger compact-delete" onClick={event => { event.stopPropagation(); void remove(document); }}>{tr("حذف")}</button>}</div> : initialSource && productId ? <button type="button" className="soft" onClick={event => { event.stopPropagation(); openOpeningSource(productId); }}>{tr("الانتقال إلى المصدر")}</button> : "—"}</td></tr>;
       })}{!rows.length && <tr><td colSpan={11}>{tr("لا توجد فواتير ضمن الفترة المحددة")}</td></tr>}</tbody>
     </table></div>
     {editing && <OpeningCorrectionEditor key={editing.id} document={editing} data={data} run={run} close={() => setEditing(null)} />}

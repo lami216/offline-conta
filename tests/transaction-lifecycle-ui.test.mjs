@@ -56,7 +56,12 @@ test("opening-stock history has its own latest-correction edit and delete lifecy
   assert.match(openingHistory, /"opening-stock-correction\.update"/);
   assert.match(openingHistory, /"opening-stock-correction\.void"/);
   assert.match(openingHistory, /latestCorrectionByProduct/);
-  assert.match(openingHistory, /document\.openingCorrection === true/);
+  assert.doesNotMatch(openingHistory, /document\.openingCorrection === true/);
+  assert.match(openingHistory, /isOpeningStockCorrectionDocument\(document\)/);
+  assert.match(openingHistory, /openOpeningSource\(productId\)/);
+  assert.match(source, /productSourceRequest/);
+  assert.match(source, /<Products[\s\S]*sourceRequest=\{productSourceRequest\}/);
+  assert.match(source, /<OpeningStockHistory[\s\S]*openOpeningSource=\{p\.openOpeningSource\}/);
   assert.match(openingHistory, /useAppConfirm\(\)/);
   assert.match(openingHistory, /OPENING_CORRECTION_BLOCKED/);
   assert.match(openingHistory, /function OpeningCorrectionBlockers/);

@@ -319,12 +319,15 @@ async function openingCorrectionBlockingOperations(
   correctionDocumentId: string,
 ) {
   const productMovements = await db.collection("stockMovements").find({ productId }, { session }).toArray();
-  let lastCorrectionMovement = -1;
+  let firstCorrectionMovement = -1;
   for (let index = 0; index < productMovements.length; index++) {
     const movement = productMovements[index];
-    if (String(movement.documentId ?? "") === correctionDocumentId && String(movement.type ?? "").startsWith("opening-correction")) lastCorrectionMovement = index;
+    if (String(movement.documentId ?? "") === correctionDocumentId && String(movement.type ?? "").startsWith("opening-correction")) {
+      firstCorrectionMovement = index;
+      break;
+    }
   }
-  const subsequent = lastCorrectionMovement >= 0 ? productMovements.slice(lastCorrectionMovement + 1) : [];
+  const subsequent = firstCorrectionMovement >= 0 ? productMovements.slice(firstCorrectionMovement + 1) : [];
   const grouped = new Map<string, {
     documentId: string;
     documentNumber: string;
@@ -432,7 +435,8 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
         return { warehouseId, required, available, missing: Math.max(0, required - available) };
       })
       .filter(item => item.missing > 1e-9);
-    if (deficits.length) {
+    const consumedBeyondOriginalOpening = context.state.consumed > desiredTotal + 1e-9;
+    if (consumedBeyondOriginalOpening || deficits.length) {
       const blockers = await openingCorrectionBlockingOperations(db, session, context.productId, documentId);
       throw new CommandError(
         "لا يمكن حذف تصحيح رصيد البداية لأن جزءًا من المخزون الناتج عنه تم التصرف فيه.",
@@ -441,6 +445,8 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
           code: "OPENING_CORRECTION_BLOCKED",
           productId: context.productId,
           productName: String(context.product.name ?? ""),
+          consumedOpening: context.state.consumed,
+          restoredOpening: desiredTotal,
           deficits,
           blockers,
         },

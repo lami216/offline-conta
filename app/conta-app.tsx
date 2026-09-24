@@ -1293,7 +1293,7 @@ function Products({ data, run, sourceRequest, clearSourceRequest }: { data: Boot
   useEffect(()=>{
     if(!sourceRequest)return;
     const product=data.products.find(item=>item.id===sourceRequest);
-    if(product){if(canEdit)openForm(product);else setViewing(product)}
+    if(product){setViewing(canEdit?null:product);if(canEdit){setEditing(product);setFormOpen(true)}}
     clearSourceRequest?.();
   },[sourceRequest,data.products,canEdit,clearSourceRequest]);
   const remove = async (product: Product) => { if(await confirmAction({message:tr("سيُحذف المنتج من الاستخدام الجديد مع الاحتفاظ بمخزونه وتاريخه. هل تريد المتابعة؟"),confirmLabel:tr("حذف المنتج"),tone:"danger"}))await run({type:"product.delete",id:product.id},tr("تم حذف المنتج بأمان")); };

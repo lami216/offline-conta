@@ -27,6 +27,7 @@ test("opening-stock movement classification repairs current and historical corre
   assert.equal(classifyStockMovementType("unknown", current), "opening-correction");
   assert.equal(classifyStockMovementType("opening-correction-edit", current), "opening-correction-edit");
   assert.equal(classifyStockMovementType("opening-correction-void", current), "opening-correction-void");
+  assert.equal(classifyStockMovementType("opening-void", initial), "opening-void");
   assert.equal(classifyStockMovementType("opening", oldAdd), "opening-correction");
   assert.equal(classifyStockMovementType("unknown", initial), "opening");
   assert.equal(isOpeningStockCorrectionDocument(oldAdd), true);
@@ -36,6 +37,7 @@ test("opening-stock movement classification repairs current and historical corre
   assert.equal(stockMovementMatchesFilter("opening-correction", "opening"), false);
   assert.equal(stockMovementMatchesFilter("opening-correction-edit", "adjustment"), true);
   assert.equal(stockMovementMatchesFilter("opening-correction-void", "adjustment"), true);
+  assert.equal(stockMovementMatchesFilter("opening-void", "adjustment"), true);
 });
 
 test("stock report finds historical opening edits even when their stored movement type was not canonical", async () => {
@@ -61,6 +63,7 @@ test("bootstrap, reports, UI history and official records share the opening-stoc
   const history = readFileSync(new URL("../app/opening-stock-history.tsx", import.meta.url), "utf8");
   assert.match(bootstrap, /classifyStockMovementType/);
   assert.match(reports, /stockMovementMatchesFilter/);
+  assert.match(app, /"opening-void":"حذف رصيد البداية"/);
   assert.match(app, /"opening-correction":"تصحيح رصيد البداية"/);
   assert.match(app, /OpeningStockHistory/);
   assert.match(app, /isOpeningStockDocument\(record\)/);

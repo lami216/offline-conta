@@ -20,6 +20,7 @@ export type OpeningStockState = {
   hasNativeOpening: boolean;
   hasStockHistory: boolean;
   legacySnapshot: boolean;
+  consumptionByDocument: Record<string, Record<string, number>>;
 };
 
 function take(allocation: Record<string, number>, warehouseId: string, quantity: number) {
@@ -40,11 +41,11 @@ function add(allocation: Record<string, number>, warehouseId: string, quantity: 
  */
 export async function deriveOpeningStockState(db: Db, session: ClientSession | undefined, product: Document): Promise<OpeningStockState> {
   const productId = String(product.id ?? "");
-  if (!productId) return { total: 0, remaining: 0, consumed: 0, allocations: {}, warehouseId: null, cost: null, hasNativeOpening: false, hasStockHistory: false, legacySnapshot: false };
+  if (!productId) return { total: 0, remaining: 0, consumed: 0, allocations: {}, warehouseId: null, cost: null, hasNativeOpening: false, hasStockHistory: false, legacySnapshot: false, consumptionByDocument: {} };
   // Replay insertion order. Edits/voids retain the invoice's original occurredAt,
   // so sorting by that date would move today's correction into the past.
   const movements = await db.collection("stockMovements").find({ productId }, { session }).toArray();
-  const hasNativeOpening = movements.some(movement => movement.type === "opening" || String(movement.type ?? "").startsWith("opening-correction"));
+  const hasNativeOpening = movements.some(movement => movement.type === "opening" || movement.type === "opening-void" || String(movement.type ?? "").startsWith("opening-correction"));
   const hasStockHistory = movements.length > 0;
   const legacySnapshot = movements.some(movement => movement.type === "legacy-opening") || positive(product.legacyOpeningCost) !== null;
   const openingDocumentIds = [...new Set(movements.filter(movement => movement.type === "opening").map(movement => String(movement.documentId ?? "")).filter(Boolean))];
@@ -60,7 +61,50 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
 
   const allocations: Record<string, number> = {};
   const consumedBySale = new Map<string, Array<{ opening: number; other: number }>>();
-  const transferredByDocument = new Map<string, number>();
+  const adjustmentOtherByDocument = new Map<string, Map<string, number>>();
+  const consumptionByDocument: Record<string, Record<string, number>> = {};
+  const transferGroups = new Map<string, Document[]>();
+  const processedTransferGroups = new Set<string>();
+  const transferGroupKey = (movement: Document) => {
+    const type = String(movement.type ?? "");
+    const documentId = String(movement.documentId ?? "");
+    if (!documentId || !(type === "transfer" || type === "transfer-out" || type === "transfer-in" || type.startsWith("transfer-edit") || type === "transfer-void")) return "";
+    const family = type.startsWith("transfer-edit") ? "edit" : type === "transfer-void" ? "void" : "post";
+    return [documentId, String(movement.documentRevision ?? 0), family].join("\u0000");
+  };
+  for (const movement of movements) {
+    const key = transferGroupKey(movement);
+    if (!key) continue;
+    const rows = transferGroups.get(key) ?? [];
+    rows.push(movement);
+    transferGroups.set(key, rows);
+  }
+  const recordConsumption = (documentId: string, warehouseId: string, quantity: number) => {
+    if (!documentId || quantity <= 0) return;
+    const byWarehouse = consumptionByDocument[documentId] ?? (consumptionByDocument[documentId] = {});
+    byWarehouse[warehouseId] = Math.max(0, Number(byWarehouse[warehouseId] ?? 0)) + quantity;
+  };
+  const restoreConsumption = (documentId: string, warehouseId: string, quantity: number) => {
+    if (!documentId || quantity <= 0) return 0;
+    const byWarehouse = consumptionByDocument[documentId];
+    const outstanding = Math.max(0, Number(byWarehouse?.[warehouseId] ?? 0));
+    const restored = Math.min(quantity, outstanding);
+    if (restored > 0) {
+      add(allocations, warehouseId, restored);
+      byWarehouse![warehouseId] = outstanding - restored;
+      if (byWarehouse![warehouseId] <= 1e-9) delete byWarehouse![warehouseId];
+      if (!Object.keys(byWarehouse!).length) delete consumptionByDocument[documentId];
+    }
+    return restored;
+  };
+  const adjustmentOther = (documentId: string, warehouseId: string) => {
+    const byWarehouse = adjustmentOtherByDocument.get(documentId) ?? new Map<string, number>();
+    adjustmentOtherByDocument.set(documentId, byWarehouse);
+    return {
+      get: () => Math.max(0, Number(byWarehouse.get(warehouseId) ?? 0)),
+      set: (value: number) => { if (value > 1e-9) byWarehouse.set(warehouseId, value); else byWarehouse.delete(warehouseId); },
+    };
+  };
   let total = 0;
   let inferredCost: number | null = null;
   let firstWarehouseId: string | null = null;
@@ -72,8 +116,8 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
     const delta = finite(movement.quantityDelta) ?? 0;
     if (!warehouseId || !delta) continue;
 
-    if (type === "opening") {
-      // Native opening entries created by product create/update before this fix.
+    if (type === "opening" || type === "opening-void") {
+      // Native opening entries and an explicit deletion of that opening source.
       if (delta > 0) {
         add(allocations, warehouseId, delta);
         total += delta;
@@ -93,20 +137,32 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
     }
     if (type === "legacy-opening" || type === "purchase" || type === "purchase-edit" || type === "purchase-void") continue;
 
-    if (type === "transfer-out" && delta < 0) {
-      const moved = take(allocations, warehouseId, -delta);
-      transferredByDocument.set(documentId, Number(transferredByDocument.get(documentId) ?? 0) + moved);
-      continue;
-    }
-    if (type === "transfer-in" && delta > 0) {
-      const pending = Math.max(0, Number(transferredByDocument.get(documentId) ?? 0));
-      const moved = Math.min(delta, pending);
-      add(allocations, warehouseId, moved);
-      transferredByDocument.set(documentId, pending - moved);
+    const transferKey = transferGroupKey(movement);
+    if (transferKey) {
+      if (processedTransferGroups.has(transferKey)) continue;
+      processedTransferGroups.add(transferKey);
+      const netByWarehouse = new Map<string, number>();
+      for (const row of transferGroups.get(transferKey) ?? [movement]) {
+        const rowWarehouseId = String(row.warehouseId ?? "");
+        const rowDelta = finite(row.quantityDelta) ?? 0;
+        if (!rowWarehouseId || !rowDelta) continue;
+        netByWarehouse.set(rowWarehouseId, Number(netByWarehouse.get(rowWarehouseId) ?? 0) + rowDelta);
+      }
+      let movedOpening = 0;
+      for (const [rowWarehouseId, rowDelta] of netByWarehouse) {
+        if (rowDelta < 0) movedOpening += take(allocations, rowWarehouseId, -rowDelta);
+      }
+      for (const [rowWarehouseId, rowDelta] of netByWarehouse) {
+        if (rowDelta <= 0 || movedOpening <= 0) continue;
+        const restored = Math.min(rowDelta, movedOpening);
+        add(allocations, rowWarehouseId, restored);
+        movedOpening -= restored;
+      }
       continue;
     }
     if ((type === "sale" || type === "sale-edit") && delta < 0) {
       const used = take(allocations, warehouseId, -delta);
+      recordConsumption(documentId, warehouseId, used);
       const segments = consumedBySale.get(documentId) ?? [];
       segments.push({ opening: used, other: -delta - used });
       consumedBySale.set(documentId, segments);
@@ -125,14 +181,37 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
         const opening = Math.min(returning, segment.opening);
         segment.opening -= opening;
         returning -= opening;
-        add(allocations, warehouseId, opening);
+        restoreConsumption(documentId, warehouseId, opening);
         if (!segment.opening && !segment.other) segments.pop();
       }
       continue;
     }
-    // Inventory corrections and any future stock outflow consume opening units first.
-    // Positive non-opening movements never create opening provenance.
-    if (delta < 0) take(allocations, warehouseId, -delta);
+    if (type === "adjustment" || type === "adjustment-edit" || type === "adjustment-edit-reversal" || type === "adjustment-void") {
+      const tracked = adjustmentOther(documentId, warehouseId);
+      if (delta < 0) {
+        let removing = -delta;
+        const other = tracked.get(), fromOther = Math.min(removing, other);
+        tracked.set(other - fromOther);
+        removing -= fromOther;
+        if (removing > 0) {
+          const used = take(allocations, warehouseId, removing);
+          recordConsumption(documentId, warehouseId, used);
+        }
+      } else {
+        let returning = delta;
+        const restored = restoreConsumption(documentId, warehouseId, returning);
+        returning -= restored;
+        if (returning > 0) tracked.set(tracked.get() + returning);
+      }
+      continue;
+    }
+
+    // Any future stock outflow consumes opening units first. Positive unknown
+    // movements never create opening provenance.
+    if (delta < 0) {
+      const used = take(allocations, warehouseId, -delta);
+      recordConsumption(documentId, warehouseId, used);
+    }
   }
 
   for (const key of Object.keys(allocations)) if (allocations[key] <= 0) delete allocations[key];
@@ -146,7 +225,7 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
   const explicitWarehouseId = typeof product.openingWarehouseId === "string" && product.openingWarehouseId ? product.openingWarehouseId : null;
   const warehouseId = explicitWarehouseId ?? Object.keys(allocations)[0] ?? firstWarehouseId;
   const cost = Object.hasOwn(product, "openingCost") ? positive(product.openingCost) : inferredCost;
-  return { total, remaining, consumed, allocations, warehouseId, cost, hasNativeOpening, hasStockHistory, legacySnapshot };
+  return { total, remaining, consumed, allocations, warehouseId, cost, hasNativeOpening, hasStockHistory, legacySnapshot, consumptionByDocument };
 }
 
 export function planOpeningStockCorrection(state: OpeningStockState, desiredTotal: number, targetWarehouseId: string | null, relocateRemaining = false) {

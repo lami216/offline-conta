@@ -1375,7 +1375,7 @@ function ProductDetails({product,warehouses,categories,canEdit,close,edit}:{prod
   </section>;
 }
 
-type ProductOpeningView = { total:number; remaining:number; consumed:number; allocations:Record<string,number>; warehouseId:string|null; warehouseName?:string|null; cost:number|null; hasNativeOpening:boolean; hasStockHistory:boolean; legacySnapshot:boolean };
+type ProductOpeningView = { total:number; remaining:number; consumed:number; allocations:Record<string,number>; warehouseId:string|null; warehouseName?:string|null; cost:number|null; hasNativeOpening:boolean; hasActiveInitialOpening:boolean; hasStockHistory:boolean; legacySnapshot:boolean };
 function ProductForm({ data, run, close, product, warehouses, categories, canAdjustOpening, canDeleteOpening, openSource, openMovements }: { data: BootstrapData; run: RunCommand; close: () => void; product: Product | null; warehouses: BootstrapData["warehouses"]; categories: BootstrapData["categories"]; canAdjustOpening:boolean; canDeleteOpening:boolean; openSource:(id:string)=>void; openMovements:(productId:string)=>void }) {
   const confirmAction=useAppConfirm();
   const defaultWarehouseId=warehouses.find(warehouse=>warehouse.isSalesDefault)?.id??"";
@@ -1397,7 +1397,7 @@ function ProductForm({ data, run, close, product, warehouses, categories, canAdj
   const openingInvalid=openingEditable&&desiredOpening>0&&(!openingWarehouseId||!desiredOpeningCost||desiredOpeningCost<=0)||(openingState?desiredOpening<openingState.consumed:false);
   const openingWarehouseOptions=[...(openingState?.warehouseId&&!warehouses.some(warehouse=>warehouse.id===openingState.warehouseId)?[{value:openingState.warehouseId,label:openingState.warehouseName||tr("opening.oldWarehouse")}]:[]),...warehouses.map(warehouse=>({value:warehouse.id,label:warehouse.name}))];
   const deleteOpening=async()=>{
-    if(!product||!openingState||openingState.total<=0||!canDeleteOpening)return;
+    if(!product||!openingState?.hasActiveInitialOpening||!canDeleteOpening)return;
     if(!await confirmAction({message:tr("هل تريد حذف رصيد البداية الأصلي لهذا المنتج؟ سيتم إزالة الكمية المتبقية منه من المخزون مع الاحتفاظ بسجل التدقيق. إذا كانت هناك تصحيحات نشطة أو كمية تم التصرف فيها فسيتم إيقاف الحذف وإظهار الحركات المرتبطة."),confirmLabel:tr("حذف رصيد البداية"),tone:"danger"}))return;
     try{await run({type:"opening-stock-initial.void",productId:product.id},tr("تم حذف رصيد البداية"));close()}
     catch(reason){const payload=asOpeningStockBlockedPayload(reason);if(payload)setOpeningBlocked(payload)}
@@ -1427,7 +1427,7 @@ function ProductForm({ data, run, close, product, warehouses, categories, canAdj
         {product&&!canAdjustOpening&&<small>{tr("opening.permission")}</small>}
         {product&&openingState?.hasNativeOpening&&openingState.total>0&&<small>{tr("تصفير رصيد البداية يسجل تصحيحًا يمكن إلغاؤه لاحقًا. لحذف رصيد البداية الأصلي نفسه استخدم زر حذف رصيد البداية.")}</small>}
       </FramedSection>
-    </div><div className="product-form-actions"><button type="button" className="soft" onClick={close}>{tr("إلغاء")}</button>{product&&openingState?.hasNativeOpening&&openingState.total>0&&canDeleteOpening&&<button type="button" className="danger" onClick={()=>void deleteOpening()}>{tr("حذف رصيد البداية")}</button>}<button className="primary" disabled={Boolean(product&&openingLoading)||Boolean((!product||openingDirty)&&openingInvalid)}>{product?tr("حفظ التعديلات"):tr("حفظ المنتج")}</button></div>
+    </div><div className="product-form-actions"><button type="button" className="soft" onClick={close}>{tr("إلغاء")}</button>{product&&openingState?.hasActiveInitialOpening&&canDeleteOpening&&<button type="button" className="danger" onClick={()=>void deleteOpening()}>{tr("حذف رصيد البداية")}</button>}<button className="primary" disabled={Boolean(product&&openingLoading)||Boolean((!product||openingDirty)&&openingInvalid)}>{product?tr("حفظ التعديلات"):tr("حفظ المنتج")}</button></div>
     {openingBlocked&&<OpeningStockBlockers payload={openingBlocked} data={data} openSource={openSource} openMovements={openMovements} close={()=>setOpeningBlocked(null)}/>}
   </form>;
 }

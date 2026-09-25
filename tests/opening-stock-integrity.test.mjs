@@ -47,12 +47,17 @@ test("opening correction replaces the original balance while preserving consumed
   assert.deepEqual((await db.collection("stockMovements").find({ documentId: correction.id }).toArray()).map(m => [m.warehouseId, m.type, m.quantityDelta]), [["wh-a", "opening-correction", -2]]);
 });
 
-test("opening balance cannot be lowered below quantity already consumed", async () => {
+test("opening balance cannot be lowered below quantity already consumed and identifies the consuming source", async () => {
   const productId = await createOpened(10, 50, "wh-a");
-  await command({ type: "sale.post", warehouseId: "wh-a", partyId: "customer", paymentMethod: "note", lines: [{ productId, quantity: 3, piecePrice: 100 }] });
+  const saleId=await command({ type: "sale.post", warehouseId: "wh-a", partyId: "customer", paymentMethod: "note", lines: [{ productId, quantity: 3, piecePrice: 100 }] });
   const before = await db.collection("products").findOne({ id: productId });
   const counts = [await db.collection("documents").countDocuments(), await db.collection("stockMovements").countDocuments()];
-  await assert.rejects(updateOpening(productId, 2, 50, "wh-a"), /لا يمكن خفض رصيد البداية عن 3/);
+  let blocked;
+  try { await updateOpening(productId, 2, 50, "wh-a"); } catch(error) { blocked=error; }
+  assert.match(blocked?.message??"",/لا يمكن خفض رصيد البداية عن 3/);
+  assert.equal(blocked?.details?.code,"OPENING_STOCK_BLOCKED");
+  assert.equal(blocked?.details?.reason,"consumed");
+  assert.equal(blocked?.details?.blockers?.some(row=>row.documentId===saleId),true);
   const after = await db.collection("products").findOne({ id: productId });
   assert.deepEqual(after.stocks, before.stocks);
   assert.deepEqual([await db.collection("documents").countDocuments(), await db.collection("stockMovements").countDocuments()], counts);

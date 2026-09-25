@@ -513,7 +513,22 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const relocateOpeningStock = body.relocateOpeningStock === true;
     let preview;
     try { preview = planOpeningStockCorrection(context.state, desiredTotal, targetWarehouseId, relocateOpeningStock); }
-    catch (error) { throw new CommandError(error instanceof Error ? error.message : "رصيد البداية غير صالح", 409); }
+    catch (error) {
+      const message = error instanceof Error ? error.message : "رصيد البداية غير صالح";
+      if (desiredTotal < context.state.consumed || /تم التصرف/.test(message)) {
+        const blockers = await openingStockBlockingOperations(db, session, context.productId, documentId);
+        throw new CommandError(message, 409, {
+          code: "OPENING_CORRECTION_BLOCKED",
+          productId: context.productId,
+          productName: String(context.product.name ?? ""),
+          consumedOpening: context.state.consumed,
+          restoredOpening: desiredTotal,
+          deficits: [],
+          blockers,
+        });
+      }
+      throw new CommandError(message, 409);
+    }
     const costChanged = Number(context.state.cost ?? 0) !== Number(desiredCost ?? 0);
     const warehouseChanged = relocateOpeningStock && targetWarehouseId !== context.state.warehouseId;
     if (!preview.deltas.length && !costChanged && !warehouseChanged) throw new CommandError("لا توجد تغييرات على تصحيح رصيد البداية");

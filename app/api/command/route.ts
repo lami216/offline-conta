@@ -2,7 +2,7 @@ import { requireValidLicense } from "../../../lib/license.ts";
 import type { SqliteSession as ClientSession, SqliteDatabase as Db } from "../../../lib/sqlite.ts";
 import { getDatabase } from "../../../lib/sqlite.ts";
 import { log } from "../../../lib/log.ts";
-import { requireCapability, validSameOrigin, type Capability } from "../../../lib/auth.ts";
+import { getPrincipalFromRequest, hasCapability, requireCapability, validSameOrigin, type Capability } from "../../../lib/auth.ts";
 import { isProductExpired, resolvePartyType } from "../../domain.ts";
 import { normalizePartyNet, partyNet } from "../../party-balance.ts";
 import { nextDocumentSequence, type SequencedDocumentKind } from "../../../lib/document-sequences.ts";
@@ -924,12 +924,13 @@ export async function POST(request: Request) {const licenseDenied=await requireV
     if(type==="legacy-party-document.void"){
       const database=await getDatabase(),document=await database.collection("documents").findOne({id:text(body.documentId),kind:{$in:["payment","settlement","offset"]}});
       const party=document?.partyId?await database.collection("parties").findOne({id:String(document.partyId)}):null;
-      let supplier=party?resolvePartyType(party)==="supplier":false;
-      if(!party&&document?.partyId){
-        const historical=await database.collection("documents").findOne({partyId:String(document.partyId),kind:{$in:["purchase","sale"]}});
-        supplier=historical?.kind==="purchase";
+      const historical=!party&&document?.partyId?await database.collection("documents").findOne({partyId:String(document.partyId),kind:{$in:["purchase","sale"]}}):null;
+      if(party)capability=resolvePartyType(party)==="supplier"?"suppliers.pay.delete":"customers.collect.delete";
+      else if(historical)capability=historical.kind==="purchase"?"suppliers.pay.delete":"customers.collect.delete";
+      else{
+        const principal=await getPrincipalFromRequest(request);
+        capability=hasCapability(principal,"suppliers.pay.delete")?"suppliers.pay.delete":"customers.collect.delete";
       }
-      capability=supplier?"suppliers.pay.delete":"customers.collect.delete";
     }
     if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;
     if((type==="product.update"&&body.replaceOpeningStock===true)||(type==="product.create"&&Number(body.openingStock??0)>0)){const stockDenied=await requireCapability(request,"warehouses.adjust");if(stockDenied)return stockDenied;}

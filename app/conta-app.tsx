@@ -1409,7 +1409,8 @@ function ProductForm({ data, run, close, product, warehouses, categories, canAdj
     catch(reason){const payload=asOpeningStockBlockedPayload(reason);if(payload)setOpeningBlocked(payload)}
   };
   return <form className="panel product-form" onSubmit={async event=>{event.preventDefault();const sensitive=Boolean(product&&(name.trim()!==product.name||(cost===""?null:val(cost))!==product.pieceCost||openingDirty));const confirmed=sensitive?await confirmAction({message:tr("product.sensitiveChangeConfirm",{name:product?.name??name})}):true;if(!confirmed)return;
-    await run({type:product?"product.update":"product.create",id:product?.id,name,barcode,expiryDate,note,pieceCost:cost,piecePrice:price,wholesalePrice, categoryId, openingStock,openingWarehouseId,...(product?{replaceOpeningStock:openingDirty,relocateOpeningStock:openingDirty&&openingWarehouseChanged,openingCost:desiredOpeningCost}:{}) ,confirmSensitive:confirmed},product?tr("تم تعديل المنتج"):tr("تم إنشاء المنتج"));close()}}>
+    try{await run({type:product?"product.update":"product.create",id:product?.id,name,barcode,expiryDate,note,pieceCost:cost,piecePrice:price,wholesalePrice, categoryId, openingStock,openingWarehouseId,...(product?{replaceOpeningStock:openingDirty,relocateOpeningStock:openingDirty&&openingWarehouseChanged,openingCost:desiredOpeningCost}:{}) ,confirmSensitive:confirmed},product?tr("تم تعديل المنتج"):tr("تم إنشاء المنتج"));close()}
+    catch(reason){const payload=asOpeningStockBlockedPayload(reason);if(payload)setOpeningBlocked(payload)}}}>
     <div className="product-form-head"><div><small>{product?tr("بيانات المنتج"):tr("منتج جديد")}</small><h2>{product?tr("تعديل المنتج"):tr("إضافة منتج جديد")}</h2></div><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}><X /></button></div>
     <div className="product-form-halves">
       <FramedSection title={tr("المعلومات الأساسية")} className="product-form-group">
@@ -1424,7 +1425,7 @@ function ProductForm({ data, run, close, product, warehouses, categories, canAdj
         <label>{tr("رصيد البداية")}<Num value={openingStock} disabled={!openingEditable} onChange={value=>{setOpeningStock(value);if(!value||Number(value)<=0)setOpeningWarehouseId("");else if(!openingWarehouseId)setOpeningWarehouseId(defaultWarehouseId)}} /></label>
         {product&&openingLoading&&<small>{tr("opening.loading")}</small>}
         {product&&openingError&&<small className="error">{openingError} — {tr("opening.failed")}</small>}
-        {product&&openingState&&<small>{tr("opening.consumed")}: <b>{number(openingState.consumed)}</b> · {tr("opening.remaining")}: <b>{number(openingState.remaining)}</b>{desiredOpening>=openingState.consumed&&desiredOpening!==openingState.total?<> · {tr("opening.after")}: <b>{number(desiredOpening-openingState.consumed)}</b></>:null}</small>}
+        {product&&openingState&&<div className="opening-stock-state-line"><small>{tr("opening.consumed")}: <b>{number(openingState.consumed)}</b> · {tr("opening.remaining")}: <b>{number(openingState.remaining)}</b>{desiredOpening>=openingState.consumed&&desiredOpening!==openingState.total?<> · {tr("opening.after")}: <b>{number(desiredOpening-openingState.consumed)}</b></>:null}</small>{openingState.consumed>0&&<button type="button" className="soft" onClick={()=>openMovements(product.id)}>{tr("عرض حركات المنتج")}</button>}</div>}
         {historyLocked&&<small className="error">{tr("opening.locked")}</small>}
         {product&&openingState?.legacySnapshot&&!openingState.hasNativeOpening&&<small>{tr("opening.legacy")}</small>}
         {product&&openingState?.hasNativeOpening&&<label>{tr("opening.cost")}<Num value={openingCost} disabled={!openingEditable} onChange={setOpeningCost}/></label>}

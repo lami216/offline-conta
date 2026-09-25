@@ -380,3 +380,24 @@ test("modern party cash document cannot be voided through the legacy compatibili
   assert.equal((await db.collection("documents").findOne({ id: documentId })).status, "posted");
   assert.equal((await db.collection("parties").findOne({ id: "c" })).net, 80);
 });
+
+
+test("obsolete bank balance correction can be reversed safely", async () => {
+  await db.collection("paymentAccounts").updateOne({ id: "bank" }, { $set: { balance: 70 } });
+  await db.collection("financialMovements").insertOne({
+    id: "legacy-balance-correction", paymentMethod: "bank", paymentCode: "bank",
+    direction: "in", amount: 70, delta: 70, balanceBefore: 0, balanceAfter: 70,
+    reason: "old correction", note: "old correction", type: "balance-correction",
+    occurredAt: "2026-09-01T00:00:00.000Z", documentId: "legacy-balance-correction",
+    documentNumber: "COR-OLD", partyId: null, partyName: null, transferId: null,
+  });
+
+  await command({ type: "legacy-account-balance-correction.void", movementId: "legacy-balance-correction" });
+
+  const account = await db.collection("paymentAccounts").findOne({ id: "bank" });
+  const movements = await db.collection("financialMovements").find({ documentId: "legacy-balance-correction" }).toArray();
+  assert.equal(account.balance, 0);
+  assert.equal(activeFinancial(movements).length, 0);
+  assert.ok(movements.some(row => row.status === "reversed"));
+  assert.ok(movements.some(row => row.isReversal === true));
+});

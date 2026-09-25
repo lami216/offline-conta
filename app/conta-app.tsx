@@ -491,15 +491,15 @@ function ContaAppContent() {
               {(view === "customers" || view === "suppliers") && (
                 <Parties key={view} partyType={view === "customers" ? "customer" : "supplier"} data={data} run={run} openParty={setPartyDetail} canEdit={can(view === "customers" ? "customers.edit" : "suppliers.edit")} canDelete={can(view === "customers" ? "customers.delete" : "suppliers.delete")} />
               )}{" "}
-              {view === "products" && <Products data={data} run={run} sourceRequest={productSourceRequest} clearSourceRequest={()=>setProductSourceRequest(null)} />}{" "}
+              {view === "products" && <Products data={data} run={run} openSource={id=>void openDocumentSourceById(id)} openMovements={id=>void openProductMovements(id)} sourceRequest={productSourceRequest} clearSourceRequest={()=>setProductSourceRequest(null)} />}{" "}
               {view === "warehouseAdmin" && <WarehouseAdmin data={data} run={run} canDelete={can("warehouses.delete")} />} {view === "warehouses" && (
-                <Warehouses data={data} run={run} openDoc={openDoc} />
+                <Warehouses data={data} run={run} openDoc={openDoc} openSource={id=>void openDocumentSourceById(id)} sourceRequest={inventorySourceRequest} clearSourceRequest={()=>setInventorySourceRequest(null)} />
               )}{" "}
               {view === "transfers" && (
                 <Transfer data={data} run={run} openDoc={openDoc} editRequest={transferEditRequest} clearEditRequest={() => setTransferEditRequest(null)} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
               )}{" "}
               {view === "adjustments" && (
-                <Adjustment data={data} run={run} openDoc={openDoc} openSource={id=>void openDocumentSourceById(id)} openOpeningSource={id=>void openOpeningStockSource(id)} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} editRequest={adjustmentEditRequest} clearEditRequest={() => setAdjustmentEditRequest(null)} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
+                <Adjustment data={data} run={run} openDoc={openDoc} openSource={id=>void openDocumentSourceById(id)} openOpeningSource={id=>void openOpeningStockSource(id)} openMovements={id=>void openProductMovements(id)} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} editRequest={adjustmentEditRequest} clearEditRequest={() => setAdjustmentEditRequest(null)} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
               )}{" "}
               {view === "records" && <Records data={data} openDoc={openDoc} />}{" "}
               {view === "reports" && (

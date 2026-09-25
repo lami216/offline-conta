@@ -8,6 +8,7 @@ const openingHistory = await readFile(new URL("../app/opening-stock-history.tsx"
 const expectedCommands = [
   "party-cash.update",
   "party-cash.void",
+  "legacy-party-entry.void",
   "transfer.update",
   "transfer.void",
   "adjustment.update",
@@ -100,4 +101,12 @@ test("bank edit actions release the old fixed 124px action column and allow tran
 test("party payment buttons use complete translated labels instead of concatenating fragments", () => {
   assert.match(source,/customer\?tr\("دفع للعميل"\):tr\("دفع للمورد"\)/);
   assert.doesNotMatch(source,/tr\("دفع لل"\)\}\{customer\?tr\("عميل"\):tr\("مورد"\)/);
+});
+
+
+test("obsolete settlement offset and legacy payment rows expose a delete action without entering the modern editor", () => {
+  assert.match(source, /document\.kind==="settlement"\|\|document\.kind==="offset"/);
+  assert.match(source, /document\.kind==="payment"&&!document\.partyCashDirection/);
+  assert.match(source, /type:"legacy-party-entry\.void"/);
+  assert.match(source, /Boolean\(document\.partyCashDirection\).*customers\.collect\.edit/);
 });

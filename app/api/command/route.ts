@@ -588,6 +588,14 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if (desiredTotal > 0 && (!desiredCost || desiredCost <= 0)) throw new CommandError("تكلفة رصيد البداية مطلوبة");
     const targetWarehouseId = text(body.openingWarehouseId) || context.state.warehouseId;
     const relocateOpeningStock = body.relocateOpeningStock === true;
+    if (desiredTotal < context.state.consumed) {
+      const blockers = await openingConsumptionBlockingOperations(db, session, context.state);
+      throw new CommandError(
+        `لا يمكن خفض رصيد البداية عن ${context.state.consumed} لأن هذه الكمية تم التصرف بها سابقًا`,
+        409,
+        { code: "OPENING_STOCK_BLOCKED", reason: "consumed", productId: context.productId, productName: String(context.product.name ?? ""), consumedOpening: context.state.consumed, restoredOpening: desiredTotal, deficits: [], blockers },
+      );
+    }
     let preview;
     try { preview = planOpeningStockCorrection(context.state, desiredTotal, targetWarehouseId, relocateOpeningStock); }
     catch (error) { throw new CommandError(error instanceof Error ? error.message : "رصيد البداية غير صالح", 409); }
@@ -777,6 +785,14 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const openingStock = optionalNumber(body.openingStock,"رصيد البداية") ?? 0;
     if (!state.hasNativeOpening && (state.hasStockHistory || Object.values(product.stocks ?? {}).some(quantity => Number(quantity) !== 0)) && openingStock > 0) throw new CommandError("لا يمكن إنشاء رصيد بداية رجعي بعد وجود حركات مخزون. استخدم تصحيح المخزون بدلًا من ذلك.", 409);
     if(!Number.isInteger(openingStock))throw new CommandError("رصيد البداية غير صالح");
+    if (openingStock < state.consumed) {
+      const blockers = await openingConsumptionBlockingOperations(db, session, state);
+      throw new CommandError(
+        `لا يمكن خفض رصيد البداية عن ${state.consumed} لأن هذه الكمية تم التصرف بها سابقًا`,
+        409,
+        { code: "OPENING_STOCK_BLOCKED", reason: "consumed", productId, productName: String(product.name ?? ""), consumedOpening: state.consumed, restoredOpening: openingStock, deficits: [], blockers },
+      );
+    }
     const requestedOpeningCost = optionalNumber(body.openingCost, "تكلفة رصيد البداية") ?? state.cost ?? pieceCost;
     if(openingStock>0&&(!requestedOpeningCost||requestedOpeningCost<=0))throw new CommandError("تكلفة رصيد البداية مطلوبة");
     const openingWarehouseId = text(body.openingWarehouseId) || state.warehouseId;

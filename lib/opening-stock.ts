@@ -223,7 +223,7 @@ export async function deriveOpeningStockState(db: Db, session: ClientSession | u
   total = Math.max(total, remaining);
   const consumed = Math.max(0, total - remaining);
   const explicitWarehouseId = typeof product.openingWarehouseId === "string" && product.openingWarehouseId ? product.openingWarehouseId : null;
-  const warehouseId = explicitWarehouseId ?? Object.keys(allocations)[0] ?? firstWarehouseId;
+  const warehouseId = total > 0 ? (explicitWarehouseId ?? Object.keys(allocations)[0] ?? firstWarehouseId) : null;
   const cost = Object.hasOwn(product, "openingCost") ? positive(product.openingCost) : inferredCost;
   return { total, remaining, consumed, allocations, warehouseId, cost, hasNativeOpening, hasStockHistory, legacySnapshot, consumptionByDocument };
 }

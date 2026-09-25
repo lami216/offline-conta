@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
 const openingHistory = await readFile(new URL("../app/opening-stock-history.tsx", import.meta.url), "utf8");
+const openingBlockers = await readFile(new URL("../app/opening-stock-blockers.tsx", import.meta.url), "utf8");
 
 const expectedCommands = [
   "party-cash.update",
@@ -63,11 +64,27 @@ test("opening-stock history has its own latest-correction edit and delete lifecy
   assert.match(source, /<Products[\s\S]*sourceRequest=\{productSourceRequest\}/);
   assert.match(source, /<OpeningStockHistory[\s\S]*openOpeningSource=\{p\.openOpeningSource\}/);
   assert.match(openingHistory, /useAppConfirm\(\)/);
-  assert.match(openingHistory, /OPENING_CORRECTION_BLOCKED/);
-  assert.match(openingHistory, /function OpeningCorrectionBlockers/);
-  assert.match(openingHistory, /الانتقال إلى المصدر/);
-  assert.match(openingHistory, /openSource\(blocker\.documentId\)/);
+  assert.match(openingHistory, /asOpeningStockBlockedPayload/);
+  assert.match(openingHistory, /<OpeningStockBlockers/);
+  assert.match(openingBlockers, /OPENING_STOCK_BLOCKED/);
+  assert.match(openingBlockers, /الانتقال إلى المصدر/);
+  assert.match(openingBlockers, /عرض حركات المنتج/);
+  assert.match(openingBlockers, /openSource\(blocker\.documentId\)/);
+  assert.match(openingBlockers, /openMovements\(payload\.productId\)/);
   assert.match(source, /<OpeningStockHistory[\s\S]*openSource=\{p\.openSource\}/);
+  assert.match(source, /<OpeningStockHistory[\s\S]*openMovements=\{p\.openMovements\}/);
+});
+
+test("original opening stock has an explicit delete action and blocked deletion opens the product movement history", () => {
+  assert.match(source, /"opening-stock-initial\.void"/);
+  assert.match(source, /حذف رصيد البداية/);
+  assert.match(source, /asOpeningStockBlockedPayload/);
+  assert.match(source, /inventorySourceRequest/);
+  assert.match(source, /setDetailProduct\(product\)/);
+  assert.match(source, /setMovementFilter\("all"\)/);
+  assert.match(source, /openProductMovements/);
+  assert.match(source, /<ProductMovementPanel[\s\S]*openSource=\{openSource\}/);
+  assert.match(source, /openSource\(movement\.documentId\)/);
 });
 
 test("product movement view derives the current document effect instead of selecting one audit movement", () => {

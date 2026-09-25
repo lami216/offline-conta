@@ -12,12 +12,6 @@ const correctionProductId = (document: DocumentRecord) => {
   return ids.length === 1 ? ids[0] : null;
 };
 
-const asBlockedPayload = (reason: unknown): OpeningCorrectionBlockedPayload | null => {
-  const payload = (reason as { payload?: unknown } | null)?.payload as Partial<OpeningCorrectionBlockedPayload> | undefined;
-  if (!payload || payload.code !== "OPENING_CORRECTION_BLOCKED" || !Array.isArray(payload.blockers) || !Array.isArray(payload.deficits)) return null;
-  return payload as OpeningCorrectionBlockedPayload;
-};
-
 function OpeningCorrectionEditor({ document, data, run, close }: { document: DocumentRecord; data: BootstrapData; run: RunCommand; close: () => void }) {
   const productId = correctionProductId(document);
   const product = data.products.find(item => item.id === productId);

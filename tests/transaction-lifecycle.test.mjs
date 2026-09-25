@@ -289,3 +289,94 @@ test("purchase reduction and void preserve identity and distinguish supplier-ret
   movements = await db.collection("stockMovements").find({ documentId }).sort({ occurredAt: 1 }).toArray();
   assert.deepEqual(movements.map(row => [row.type, row.quantityDelta]), [["purchase", 4], ["purchase-edit", -2], ["purchase-void", -2]]);
 });
+
+
+test("legacy party deletion writeoff settlement can be voided after later history was unwound", async () => {
+  await db.collection("parties").insertOne({ id: "legacy-supplier", name: "MM", phone: "", partyType: "supplier", receivable: 0, payable: 17000, net: -17000, isArchived: false });
+  const documentId = "settlement-writeoff";
+  await db.collection("documents").insertOne({
+    id: documentId, number: "WRITEOFF-DEL-TEST", kind: "settlement", status: "posted",
+    occurredAt: "2026-09-21T00:41:24.213Z", partyId: "legacy-supplier", partyName: "MM",
+    paymentMethod: null, title: "شطب الرصيد قبل حذف الطرف", total: 17000, dueTotal: 0, paidTotal: 0, lines: [],
+    partyBalanceBefore: 17000, partyBalanceDelta: -17000, partyBalanceAfter: 0,
+    settledReceivable: 17000, settledPayable: 0, partyDeletionSettlement: true, partyDeletionWriteOff: true,
+  });
+
+  await command({ type: "legacy-party-entry.void", documentId });
+
+  const party = await db.collection("parties").findOne({ id: "legacy-supplier" });
+  const document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([party.receivable, party.payable, party.net], [0, 0, 0]);
+  assert.deepEqual([document.status, document.legacyVoided, document.revision], ["voided", true, 1]);
+});
+
+test("legacy manual settlement without stored balance delta restores the settled side", async () => {
+  await insertCustomer(30);
+  const documentId = "legacy-settlement";
+  await db.collection("documents").insertOne({
+    id: documentId, number: "SET-OLD", kind: "settlement", status: "posted",
+    occurredAt: "2026-09-01T00:00:00.000Z", partyId: "c", partyName: "Customer",
+    paymentMethod: null, title: "الطرف دفع لنا", total: 20, dueTotal: 0, paidTotal: 20, lines: [],
+  });
+
+  await command({ type: "legacy-party-entry.void", documentId });
+
+  const party = await db.collection("parties").findOne({ id: "c" });
+  const document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([party.receivable, party.payable, party.net], [50, 0, 50]);
+  assert.equal(document.status, "voided");
+});
+
+test("legacy payment without partyCashDirection reverses both party balance and financial account", async () => {
+  await insertCustomer(60);
+  await db.collection("paymentAccounts").updateOne({ id: "cash" }, { $set: { balance: 140 } });
+  const documentId = "legacy-payment";
+  await db.collection("documents").insertOne({
+    id: documentId, number: "PAY-OLD", kind: "payment", status: "posted",
+    occurredAt: "2026-09-01T00:00:00.000Z", partyId: "c", partyName: "Customer",
+    paymentMethod: "cash", title: "الطرف دفع لنا", total: 40, dueTotal: 0, paidTotal: 40, cashAmount: 40, lines: [],
+  });
+  await db.collection("financialMovements").insertOne({
+    id: "legacy-payment-fin", paymentMethod: "cash", paymentCode: "cash", direction: "in", amount: 40,
+    documentId, documentNumber: "PAY-OLD", partyId: "c", partyName: "Customer", type: "party-receipt",
+    occurredAt: "2026-09-01T00:00:00.000Z", status: "posted", revision: 0,
+  });
+
+  await command({ type: "legacy-party-entry.void", documentId });
+
+  const party = await db.collection("parties").findOne({ id: "c" });
+  const account = await db.collection("paymentAccounts").findOne({ id: "cash" });
+  const document = await db.collection("documents").findOne({ id: documentId });
+  const movements = await db.collection("financialMovements").find({ documentId }).toArray();
+  assert.deepEqual([party.receivable, party.payable, party.net], [100, 0, 100]);
+  assert.equal(account.balance, 100);
+  assert.equal(document.status, "voided");
+  assert.equal(activeFinancial(movements).length, 0);
+  assert.ok(movements.some(row => row.status === "reversed"));
+  assert.ok(movements.some(row => row.isReversal === true));
+});
+
+test("legacy offset can be voided without inventing a net party balance change", async () => {
+  await insertCustomer(10);
+  const documentId = "legacy-offset";
+  await db.collection("documents").insertOne({
+    id: documentId, number: "OFF-OLD", kind: "offset", status: "posted",
+    occurredAt: "2026-09-01T00:00:00.000Z", partyId: "c", partyName: "Customer",
+    paymentMethod: null, title: "مقاصة", total: 20, dueTotal: 0, paidTotal: 20, lines: [],
+  });
+
+  await command({ type: "legacy-party-entry.void", documentId });
+
+  const party = await db.collection("parties").findOne({ id: "c" });
+  const document = await db.collection("documents").findOne({ id: documentId });
+  assert.deepEqual([party.receivable, party.payable, party.net], [10, 0, 10]);
+  assert.equal(document.status, "voided");
+});
+
+test("modern party cash document cannot be voided through the legacy compatibility command", async () => {
+  await insertCustomer(100);
+  const documentId = await command({ type: "party-cash.post", partyId: "c", direction: "receive", amount: 20, paymentMethod: "cash" });
+  await assert.rejects(command({ type: "legacy-party-entry.void", documentId }), /حركة طرف حديثة/);
+  assert.equal((await db.collection("documents").findOne({ id: documentId })).status, "posted");
+  assert.equal((await db.collection("parties").findOne({ id: "c" })).net, 80);
+});

@@ -423,13 +423,21 @@ test("initial opening deletion identifies the sale that consumed it and succeeds
   assert.deepEqual(deleteRows.map(row=>[row.warehouseId,row.quantityDelta]),[["wh-a",-10]]);
 });
 
-test("initial opening deletion removes opening stock from every warehouse when it was only transferred", async () => {
+test("initial opening deletion points to the transfer that relocated stock and succeeds after it is voided", async () => {
   const productId=await createOpened(10,50,"wh-a");
   const transferId=await command({type:"transfer.post",fromWarehouseId:"wh-a",toWarehouseId:"wh-b",lines:[{productId,quantity:4}]});
+
+  let blocked;
+  try { await command({type:"opening-stock-initial.void",productId}); } catch(error) { blocked=error; }
+  assert.equal(blocked?.details?.code,"OPENING_STOCK_BLOCKED");
+  assert.equal(blocked?.details?.reason,"relocated");
+  assert.equal(blocked?.details?.blockers?.some(row=>row.documentId===transferId),true);
+
+  await command({type:"transfer.void",documentId:transferId});
   await command({type:"opening-stock-initial.void",productId});
   const product=await db.collection("products").findOne({id:productId});
   const transfer=await db.collection("documents").findOne({id:transferId});
-  assert.deepEqual([product.openingStock,product.stocks["wh-a"],product.stocks["wh-b"],transfer.status],[0,0,0,"posted"]);
+  assert.deepEqual([product.openingStock,product.stocks["wh-a"],product.stocks["wh-b"],transfer.status],[0,0,0,"voided"]);
 });
 
 test("initial opening deletion requires active opening corrections to be unwound first", async () => {

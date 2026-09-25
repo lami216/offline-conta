@@ -17,7 +17,7 @@ type OpeningCorrectionBlocker = {
   warehouses: Array<{ warehouseId: string; warehouseName: string; quantityDelta: number }>;
 };
 type OpeningCorrectionBlockedPayload = {
-  code: "OPENING_CORRECTION_BLOCKED";
+  code: "OPENING_CORRECTION_BLOCKED" | "OPENING_STOCK_BLOCKED";
   productId: string;
   productName: string;
   deficits: Array<{ warehouseId: string; required: number; available: number; missing: number }>;
@@ -31,7 +31,7 @@ const correctionProductId = (document: DocumentRecord) => {
 
 const asBlockedPayload = (reason: unknown): OpeningCorrectionBlockedPayload | null => {
   const payload = (reason as { payload?: unknown } | null)?.payload as Partial<OpeningCorrectionBlockedPayload> | undefined;
-  if (!payload || payload.code !== "OPENING_CORRECTION_BLOCKED" || !Array.isArray(payload.blockers) || !Array.isArray(payload.deficits)) return null;
+  if (!payload || !["OPENING_CORRECTION_BLOCKED","OPENING_STOCK_BLOCKED"].includes(String(payload.code)) || !Array.isArray(payload.blockers) || !Array.isArray(payload.deficits)) return null;
   return payload as OpeningCorrectionBlockedPayload;
 };
 
@@ -73,7 +73,7 @@ function OpeningCorrectionEditor({ document, data, run, close }: { document: Doc
   </div>;
 }
 
-function OpeningCorrectionBlockers({ payload, data, openSource, close }: { payload: OpeningCorrectionBlockedPayload; data: BootstrapData; openSource: (id: string) => void; close: () => void }) {
+function OpeningCorrectionBlockers({ payload, data, openSource, openProductMovements, close }: { payload: OpeningCorrectionBlockedPayload; data: BootstrapData; openSource: (id: string) => void; openProductMovements: (productId: string) => void; close: () => void }) {
   const operationLabel = (blocker: OpeningCorrectionBlocker) => {
     const kind = blocker.kind as DocumentKind;
     return kindLabels[kind] ? tr(kindLabels[kind]) : blocker.title || blocker.movementTypes.join(" / ") || tr("عملية غير معروفة");
@@ -83,10 +83,12 @@ function OpeningCorrectionBlockers({ payload, data, openSource, close }: { paylo
     return `${warehouse}: ${tr("المتاح")} ${number(deficit.available)} / ${tr("المطلوب")} ${number(deficit.required)}`;
   }).join(" · ");
 
-  return <div className="modal-overlay opening-correction-blockers-overlay" role="dialog" aria-modal="true" aria-label={tr("تعذر حذف تصحيح رصيد البداية")}>
+  const initialOpening = payload.code === "OPENING_STOCK_BLOCKED";
+  const dialogTitle = initialOpening ? tr("تعذر حذف رصيد البداية") : tr("تعذر حذف تصحيح رصيد البداية");
+  return <div className="modal-overlay opening-correction-blockers-overlay" role="dialog" aria-modal="true" aria-label={dialogTitle}>
     <section className="modal-card opening-correction-blockers">
-      <div className="modal-heading"><h3>{tr("تعذر حذف تصحيح رصيد البداية")}</h3><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}>×</button></div>
-      <div className="opening-correction-blocker-copy"><strong>{payload.productName || tr("المنتج")}</strong><p>{tr("تم التصرف في جزء من مخزون هذا المنتج بعد التصحيح. راجع العمليات التالية ثم حاول الحذف مرة أخرى.")}</p>{deficitSummary && <small>{deficitSummary}</small>}</div>
+      <div className="modal-heading"><h3>{dialogTitle}</h3><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}>×</button></div>
+      <div className="opening-correction-blocker-copy"><strong>{payload.productName || tr("المنتج")}</strong><p>{initialOpening?tr("تم التصرف في جزء من رصيد البداية. افتح حركات المنتج لمعرفة العمليات التي استهلكت أو نقلت الكمية، ثم ألغِ العمليات اللازمة وأعد المحاولة."):tr("تم التصرف في جزء من مخزون هذا المنتج بعد التصحيح. راجع العمليات التالية ثم حاول الحذف مرة أخرى.")}</p>{deficitSummary && <small>{deficitSummary}</small>}<div className="opening-blocker-actions"><button type="button" className="primary" onClick={()=>{close();openProductMovements(payload.productId)}}>{tr("عرض حركات المنتج")}</button></div></div>
       <div className="erp-table-wrap opening-correction-blocker-table"><table className="erp-table">
         <thead><tr><th>{tr("التاريخ")}</th><th>{tr("العملية")}</th><th>{tr("المستند")}</th><th>{tr("المخزن")}</th><th>{tr("الأثر على المخزون")}</th><th>{tr("الحالة")}</th><th>{tr("إجراءات")}</th></tr></thead>
         <tbody>{payload.blockers.map(blocker => {
@@ -99,7 +101,7 @@ function OpeningCorrectionBlockers({ payload, data, openSource, close }: { paylo
   </div>;
 }
 
-export default function OpeningStockHistory({ data, docs, openDoc, openSource, openOpeningSource, run, canEdit, canDelete }: { data: BootstrapData; docs: DocumentRecord[]; openDoc: (id: string) => void; openSource: (id: string) => void; openOpeningSource: (productId: string) => void; run: RunCommand; canEdit: boolean; canDelete: boolean }) {
+export default function OpeningStockHistory({ data, docs, openDoc, openSource, openOpeningSource, openProductMovements, run, canEdit, canDelete }: { data: BootstrapData; docs: DocumentRecord[]; openDoc: (id: string) => void; openSource: (id: string) => void; openOpeningSource: (productId: string) => void; openProductMovements: (productId: string) => void; run: RunCommand; canEdit: boolean; canDelete: boolean }) {
   const confirmAction = useAppConfirm();
   const [editing, setEditing] = useState<DocumentRecord | null>(null);
   const [blocked, setBlocked] = useState<OpeningCorrectionBlockedPayload | null>(null);
@@ -115,6 +117,16 @@ export default function OpeningStockHistory({ data, docs, openDoc, openSource, o
     if (!approved) return;
     try {
       await run({ type: "opening-stock-correction.void", documentId: document.id }, tr("تم إلغاء تصحيح رصيد البداية"));
+    } catch (reason) {
+      const payload = asBlockedPayload(reason);
+      if (payload) setBlocked(payload);
+    }
+  };
+  const removeInitial = async (document: DocumentRecord) => {
+    const approved = await confirmAction({ message: tr("هل تريد حذف رصيد البداية الأصلي؟ سيتم إنقاصه من المخزون أينما بقيت كميته، ولن يسمح النظام بالحذف إذا تم التصرف في جزء منه."), confirmLabel: tr("حذف"), tone: "danger" });
+    if (!approved) return;
+    try {
+      await run({ type: "opening-stock-initial.void", documentId: document.id }, tr("تم حذف رصيد البداية"));
     } catch (reason) {
       const payload = asBlockedPayload(reason);
       if (payload) setBlocked(payload);
@@ -148,10 +160,10 @@ export default function OpeningStockHistory({ data, docs, openDoc, openSource, o
         const warehouse = to && to !== from ? `${from} → ${to}` : from;
         const manageable = Boolean(correction && document.status === "posted" && productId && latestCorrectionByProduct.get(productId) === document.id);
         const initialSource = Boolean(!correction && document.status === "posted" && productId);
-        return <tr key={document.id} onClick={() => openDoc(document.id)}><td className="num-cell">{number(index + 1)}</td><td>{formatDateTime(document.occurredAt)}</td><td dir="ltr">{displayDocumentNumber(document)}</td><td className="name-cell">{productNames}</td><td>{correction ? tr("تصحيح رصيد البداية") : tr("رصيد بداية")}</td><td className="num-cell">{delta > 0 ? "+" : ""}{number(delta)}</td><td className="num-cell">{stockBasis}</td><td className="num-cell">{cost}</td><td>{warehouse}</td><td>{document.status === "voided" ? tr("ملغى") : tr("معتمد")}</td><td className="action-cell">{manageable && (canEdit || canDelete) ? <div className="party-row-actions lifecycle-row-actions">{canEdit && <button type="button" className="soft" onClick={event => { event.stopPropagation(); setEditing(document); }}>{tr("تعديل")}</button>}{canDelete && <button type="button" className="danger compact-delete" onClick={event => { event.stopPropagation(); void remove(document); }}>{tr("حذف")}</button>}</div> : initialSource && productId ? <button type="button" className="soft" onClick={event => { event.stopPropagation(); openOpeningSource(productId); }}>{tr("الانتقال إلى المصدر")}</button> : "—"}</td></tr>;
+        return <tr key={document.id} onClick={() => openDoc(document.id)}><td className="num-cell">{number(index + 1)}</td><td>{formatDateTime(document.occurredAt)}</td><td dir="ltr">{displayDocumentNumber(document)}</td><td className="name-cell">{productNames}</td><td>{correction ? tr("تصحيح رصيد البداية") : tr("رصيد بداية")}</td><td className="num-cell">{delta > 0 ? "+" : ""}{number(delta)}</td><td className="num-cell">{stockBasis}</td><td className="num-cell">{cost}</td><td>{warehouse}</td><td>{document.status === "voided" ? tr("ملغى") : tr("معتمد")}</td><td className="action-cell">{manageable && (canEdit || canDelete) ? <div className="party-row-actions lifecycle-row-actions">{canEdit && <button type="button" className="soft" onClick={event => { event.stopPropagation(); setEditing(document); }}>{tr("تعديل")}</button>}{canDelete && <button type="button" className="danger compact-delete" onClick={event => { event.stopPropagation(); void remove(document); }}>{tr("حذف")}</button>}</div> : initialSource && productId ? <div className="party-row-actions lifecycle-row-actions"><button type="button" className="soft" onClick={event => { event.stopPropagation(); openOpeningSource(productId); }}>{tr("الانتقال إلى المصدر")}</button>{canDelete&&<button type="button" className="danger compact-delete" onClick={event=>{event.stopPropagation();void removeInitial(document)}}>{tr("حذف")}</button>}</div> : "—"}</td></tr>;
       })}{!rows.length && <tr><td colSpan={11}>{tr("لا توجد فواتير ضمن الفترة المحددة")}</td></tr>}</tbody>
     </table></div>
     {editing && <OpeningCorrectionEditor key={editing.id} document={editing} data={data} run={run} close={() => setEditing(null)} />}
-    {blocked && <OpeningCorrectionBlockers payload={blocked} data={data} openSource={openSource} close={() => setBlocked(null)} />}
+    {blocked && <OpeningCorrectionBlockers payload={blocked} data={data} openSource={openSource} openProductMovements={openProductMovements} close={() => setBlocked(null)} />}
   </section>;
 }

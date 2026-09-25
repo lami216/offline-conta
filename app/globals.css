@@ -2600,10 +2600,28 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 }
 
 
+
+.opening-correction-blockers-overlay{z-index:190}
+.opening-correction-blockers{width:min(980px,calc(100vw - 32px));max-height:min(80vh,760px);display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:10px;overflow:hidden}
+.opening-correction-blocker-copy{display:grid;gap:4px;padding:9px 10px;border:1px solid #e0b1a9;border-radius:7px;background:#fff5f3}
+.opening-correction-blocker-copy strong{color:#8d261b;font-size:13px}
+.opening-correction-blocker-copy p{margin:0;color:#5f302b;font-size:11px;font-weight:700}
+.opening-correction-blocker-copy small{color:#6b514d;font-size:10px;font-weight:700}
+.opening-correction-blocker-table{min-height:0;max-height:52vh}
+.opening-correction-blocker-table .erp-table{min-width:820px}
+.opening-correction-blocker-table .erp-table th:nth-child(1){width:15%}
+.opening-correction-blocker-table .erp-table th:nth-child(2){width:15%}
+.opening-correction-blocker-table .erp-table th:nth-child(3){width:13%}
+.opening-correction-blocker-table .erp-table th:nth-child(4){width:15%}
+.opening-correction-blocker-table .erp-table th:nth-child(5){width:19%}
+.opening-correction-blocker-table .erp-table th:nth-child(6){width:9%}
+.opening-correction-blocker-table .erp-table th:nth-child(7){width:14%}
+.opening-correction-blocker-table .action-cell button{white-space:nowrap}
+
 /* Keep stock-operation search focused and give histories a little more room. */
 @media (min-width: 1051px) {
   .stock-workspace {
-    grid-template-columns: minmax(0, 57fr) minmax(460px, 43fr);
+    grid-template-columns: minmax(410px, 44fr) minmax(0, 56fr);
   }
   .stock-operation-panel.searching {
     grid-template-rows: auto minmax(0, 1fr) auto auto;

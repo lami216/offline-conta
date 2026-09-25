@@ -327,6 +327,54 @@ async function partyCashVoid(db: Db, session: ClientSession, body: Input) {
   return documentId;
 }
 
+
+function finiteLegacyNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function legacyPartyBalanceDelta(document: Stored, activeMovement: Stored | null = null) {
+  if (document.kind === "offset") return 0;
+  const explicit = finiteLegacyNumber(document.partyBalanceDelta);
+  if (explicit !== null) return explicit;
+  const before = finiteLegacyNumber(document.partyBalanceBefore), after = finiteLegacyNumber(document.partyBalanceAfter);
+  if (before !== null && after !== null) return after - before;
+  const settledReceivable = finiteLegacyNumber(document.settledReceivable), settledPayable = finiteLegacyNumber(document.settledPayable);
+  if ((settledReceivable ?? 0) !== 0 || (settledPayable ?? 0) !== 0) return -(settledReceivable ?? 0) + (settledPayable ?? 0);
+  const amount = finiteLegacyNumber(document.cashAmount ?? document.paidTotal ?? document.total) ?? 0;
+  if (activeMovement) return activeMovement.direction === "out" ? amount : -amount;
+  const title = text(document.title);
+  if (/استلام|دفع لنا|الطرف دفع لنا/.test(title)) return -amount;
+  if (/دفع للطرف|دفع لل|نحن دفعنا|صرف/.test(title)) return amount;
+  throw new LifecycleCommandError("تعذر تحديد أثر الحركة القديمة على رصيد الطرف بأمان", 409);
+}
+
+async function legacyPartyDocumentVoid(db: Db, session: ClientSession, body: Input) {
+  const documentId = text(body.documentId);
+  const original = await db.collection("documents").findOne({ id: documentId, status: "posted" }, { session });
+  if (!original || !["payment", "settlement", "offset"].includes(String(original.kind ?? ""))) throw new LifecycleCommandError("الحركة القديمة غير موجودة أو ملغاة بالفعل", 404);
+  if (original.legacyKey) throw new LifecycleCommandError("السجلات المرحلة من نظام خارجي متاحة للعرض فقط", 409);
+  if (original.kind === "payment" && (original.partyCashDirection === "receive" || original.partyCashDirection === "pay")) throw new LifecycleCommandError("استخدم حذف الحركة المالية الحالية لهذا المستند", 409);
+
+  const movement = original.kind === "payment"
+    ? await findActiveFinancialMovement(db, session, { documentId, type: { $in: ["party-receipt", "party-payment"] } })
+    : null;
+  const delta = legacyPartyBalanceDelta(original, movement);
+  const partyId = text(original.partyId);
+  const party = partyId ? await db.collection("parties").findOne({ id: partyId }, { session }) : null;
+  if (party && delta) await applyPartyNetDelta(db, session, partyId, -delta, true);
+
+  if (movement) await reverseFinancialMovement(db, session, movement, "إلغاء حركة طرف قديمة");
+  const now = new Date();
+  const changed = await db.collection("documents").updateOne(
+    { id: documentId, status: "posted" },
+    { $set: { status: "voided", voidedAt: now, updatedAt: now, revision: Number(original.revision ?? 0) + 1, legacyVoid: true } },
+    { session },
+  );
+  if (!changed.matchedCount) throw new LifecycleCommandError("تم تغيير الحركة القديمة أثناء العملية، أعد المحاولة", 409);
+  return documentId;
+}
+
 async function accountAdjustmentPost(db: Db, session: ClientSession, body: Input) {
   const account = await paymentAccount(db, session, body.accountId), direction = text(body.direction), amount = positive(body.amount, "المبلغ");
   if (direction !== "deposit" && direction !== "withdrawal") throw new LifecycleCommandError("نوع العملية غير صالح");
@@ -415,6 +463,7 @@ export async function executeLifecycleCommand(db: Db, session: ClientSession, bo
     case "party-cash.post": return { handled: true, result: await partyCashPost(db, session, body) };
     case "party-cash.update": return { handled: true, result: await partyCashUpdate(db, session, body) };
     case "party-cash.void": return { handled: true, result: await partyCashVoid(db, session, body) };
+    case "legacy-party-document.void": return { handled: true, result: await legacyPartyDocumentVoid(db, session, body) };
     case "transfer.update": return { handled: true, result: await updateTransfer(db, session, body) };
     case "transfer.void": return { handled: true, result: await voidTransfer(db, session, body) };
     case "adjustment.update": return { handled: true, result: await updateAdjustment(db, session, body) };

@@ -46,9 +46,10 @@ export function isOpeningStockDocument(document: StockMovementDocumentHint | nul
 }
 
 export function classifyStockMovementType(type: unknown, document?: StockMovementDocumentHint | null) {
-  if (isOpeningStockCorrectionDocument(document)) return "opening-correction";
+  const current = asText(type);
+  if (isOpeningStockCorrectionDocument(document)) return current.startsWith("opening-correction-") ? current : "opening-correction";
   if (isOpeningStockInitialDocument(document)) return "opening";
-  return asText(type) || "unknown";
+  return current || "unknown";
 }
 
 /** Preserve the audit event while describing whether an invoice edit returned
@@ -120,7 +121,7 @@ export function stockMovementMatchesFilter(type: unknown, filter: string | null 
   if (filter === "sale") return current === "sale" || current.startsWith("sale-");
   if (filter === "purchase") return current === "purchase" || current.startsWith("purchase-");
   if (filter === "transfer") return current === "transfer" || current.startsWith("transfer-");
-  if (filter === "adjustment") return current === "adjustment" || current.startsWith("adjustment-") || current === "opening" || current === "opening-correction";
+  if (filter === "adjustment") return current === "adjustment" || current.startsWith("adjustment-") || current === "opening" || current === "opening-void" || current.startsWith("opening-correction");
   return current === filter;
 }
 

@@ -370,9 +370,13 @@ function ContaAppContent() {
     const currentParty=document.partyId?data.parties.find(item=>item.id===document.partyId):null;
     if(currentParty)return resolvePartyType(currentParty)==="supplier"?"suppliers.pay.delete":"customers.collect.delete";
     const related=document.partyId?data.documents.find(item=>item.partyId===document.partyId&&(item.kind==="purchase"||item.kind==="sale")):null;
-    return related?.kind==="purchase"?"suppliers.pay.delete":"customers.collect.delete";
+    return related?.kind==="purchase"?"suppliers.pay.delete":related?.kind==="sale"?"customers.collect.delete":null;
   };
-  const canVoidLegacyPartyDocument=(document:DocumentRecord)=>isNativeLegacyPartyDocument(document)&&can(legacyPartyDocumentDeleteCapability(document));
+  const canVoidLegacyPartyDocument=(document:DocumentRecord)=>{
+    if(!isNativeLegacyPartyDocument(document))return false;
+    const capability=legacyPartyDocumentDeleteCapability(document);
+    return capability?can(capability):can("customers.collect.delete")||can("suppliers.pay.delete");
+  };
   const voidLegacyPartyDocument=async(document:DocumentRecord)=>{
     if(!canVoidLegacyPartyDocument(document))return;
     if(!await confirmAction({message:tr("legacyParty.voidConfirm",{number:displayDocumentNumber(document)}),confirmLabel:tr("حذف"),tone:"danger"}))return;

@@ -327,6 +327,54 @@ async function partyCashVoid(db: Db, session: ClientSession, body: Input) {
   return documentId;
 }
 
+function legacyPartyEntryDelta(original: Stored) {
+  const explicit = Number(original.partyBalanceDelta);
+  if (Number.isFinite(explicit)) return explicit;
+  if (String(original.kind ?? "") === "offset") return 0;
+  const settledReceivable = Number(original.settledReceivable ?? 0), settledPayable = Number(original.settledPayable ?? 0);
+  if ((Number.isFinite(settledReceivable) && settledReceivable > 0) || (Number.isFinite(settledPayable) && settledPayable > 0)) {
+    return Math.max(0, Number.isFinite(settledPayable) ? settledPayable : 0) - Math.max(0, Number.isFinite(settledReceivable) ? settledReceivable : 0);
+  }
+  const amount = Number(original.cashAmount ?? original.total ?? 0), title = text(original.title);
+  if (!Number.isFinite(amount) || amount <= 0) throw new LifecycleCommandError("سجل التسوية القديم لا يحتوي أثرًا صالحًا يمكن عكسه بأمان", 409);
+  if (title === "الطرف دفع لنا" || title === "استلام من الطرف") return -amount;
+  if (title === "نحن دفعنا للطرف" || title === "دفع للطرف") return amount;
+  throw new LifecycleCommandError("تعذر تحديد اتجاه أثر التسوية القديمة بأمان", 409);
+}
+
+async function legacyPartyEntryVoid(db: Db, session: ClientSession, body: Input) {
+  const documentId = text(body.documentId);
+  const original = await db.collection("documents").findOne({ id: documentId, kind: { $in: ["payment", "settlement", "offset"] }, status: "posted" }, { session });
+  if (!original) throw new LifecycleCommandError("الحركة القديمة غير موجودة أو ملغاة", 404);
+  if (original.kind === "payment" && (original.partyCashDirection === "receive" || original.partyCashDirection === "pay")) {
+    throw new LifecycleCommandError("هذه حركة طرف حديثة؛ استخدم حذف الحركة العادي.", 409);
+  }
+
+  const partyId = text(original.partyId), party = partyId ? await db.collection("parties").findOne({ id: partyId }, { session }) : null;
+  const wasArchived = party?.isArchived === true, archivedAt = party?.archivedAt;
+  const delta = legacyPartyEntryDelta(original);
+  if (party && delta) await applyPartyNetDelta(db, session, partyId, -delta, true);
+
+  if (original.kind === "payment") {
+    const movements = await db.collection("financialMovements").find({ documentId }, { session }).toArray();
+    const active = movements.find(movement => movement.isReversal !== true && movement.status !== "reversed" && ["party-receipt", "party-payment"].includes(String(movement.type ?? "")));
+    if (active) await reverseFinancialMovement(db, session, active, "إلغاء حركة طرف قديمة");
+    else if (!movements.some(movement => movement.isReversal !== true && movement.status === "reversed" && ["party-receipt", "party-payment"].includes(String(movement.type ?? "")))) {
+      throw new LifecycleCommandError("تعذر العثور على الحركة المالية المرتبطة بالسجل القديم", 409);
+    }
+  }
+
+  const now = new Date();
+  const updated = await db.collection("documents").updateOne(
+    { id: documentId, status: "posted" },
+    { $set: { status: "voided", voidedAt: now, updatedAt: now, legacyVoided: true, revision: Number(original.revision ?? 0) + 1 } },
+    { session },
+  );
+  if (!updated.matchedCount) throw new LifecycleCommandError("تم تغيير الحركة أثناء العملية، أعد المحاولة", 409);
+  if (party) await preserveHistoricalPartyArchiveIfBalanced(db, session, partyId, wasArchived, archivedAt);
+  return documentId;
+}
+
 async function accountAdjustmentPost(db: Db, session: ClientSession, body: Input) {
   const account = await paymentAccount(db, session, body.accountId), direction = text(body.direction), amount = positive(body.amount, "المبلغ");
   if (direction !== "deposit" && direction !== "withdrawal") throw new LifecycleCommandError("نوع العملية غير صالح");
@@ -415,6 +463,7 @@ export async function executeLifecycleCommand(db: Db, session: ClientSession, bo
     case "party-cash.post": return { handled: true, result: await partyCashPost(db, session, body) };
     case "party-cash.update": return { handled: true, result: await partyCashUpdate(db, session, body) };
     case "party-cash.void": return { handled: true, result: await partyCashVoid(db, session, body) };
+    case "legacy-party-entry.void": return { handled: true, result: await legacyPartyEntryVoid(db, session, body) };
     case "transfer.update": return { handled: true, result: await updateTransfer(db, session, body) };
     case "transfer.void": return { handled: true, result: await voidTransfer(db, session, body) };
     case "adjustment.update": return { handled: true, result: await updateAdjustment(db, session, body) };

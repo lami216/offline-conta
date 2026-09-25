@@ -335,3 +335,95 @@ test("legacy additive opening correction becomes fully editable and gains missin
   assert.deepEqual([legacy.openingCorrection,legacy.title,legacy.openingStockBefore,legacy.openingStockAfter,legacy.openingCostBefore,legacy.openingCostAfter],[true,"تصحيح رصيد البداية",10,11,50,60]);
   assert.deepEqual(movements.map(row=>[row.type,row.quantityDelta]),[["opening",2],["opening-correction-edit",-1]]);
 });
+
+
+test("original opening stock has an explicit reversible delete lifecycle", async () => {
+  const productId = await createOpened(10, 50, "wh-a");
+  const opening = await db.collection("documents").findOne({ kind: "adjustment", title: "رصيد بداية", status: "posted" });
+  await command({ type: "opening-stock-initial.void", documentId: opening.id });
+
+  const product = await db.collection("products").findOne({ id: productId });
+  const document = await db.collection("documents").findOne({ id: opening.id });
+  const movements = await db.collection("stockMovements").find({ documentId: opening.id }).toArray();
+  const state = await deriveOpeningStockState(db, undefined, product);
+  assert.deepEqual([product.openingStock, product.openingCost, product.openingWarehouseId, product.stocks["wh-a"]], [0, null, null, 0]);
+  assert.equal(document.status, "voided");
+  assert.deepEqual(movements.map(row => [row.type, row.quantityDelta]), [["opening", 10], ["opening-void", -10]]);
+  assert.deepEqual([state.total, state.remaining, state.consumed], [0, 0, 0]);
+});
+
+test("opening delete reports the consuming operations and succeeds after they are voided", async () => {
+  const productId = await createOpened(10, 50, "wh-a");
+  const opening = await db.collection("documents").findOne({ kind: "adjustment", title: "رصيد بداية", status: "posted" });
+  const saleId = await command({ type: "sale.post", warehouseId: "wh-a", partyId: "customer", paymentMethod: "note", lines: [{ productId, quantity: 4, piecePrice: 100 }] });
+
+  let blocked;
+  try { await command({ type: "opening-stock-initial.void", documentId: opening.id }); } catch (error) { blocked = error; }
+  assert.equal(blocked?.details?.code, "OPENING_STOCK_BLOCKED");
+  assert.equal(blocked?.details?.productId, productId);
+  assert.equal(blocked?.details?.blockers?.some(row => row.documentId === saleId), true);
+  assert.equal((await db.collection("documents").findOne({ id: opening.id })).status, "posted");
+
+  await command({ type: "sale.void", documentId: saleId });
+  await command({ type: "opening-stock-initial.void", documentId: opening.id });
+  const product = await db.collection("products").findOne({ id: productId });
+  assert.deepEqual([product.openingStock, product.stocks["wh-a"]], [0, 0]);
+});
+
+test("voided warehouse transfers restore opening provenance instead of looking consumed", async () => {
+  const productId = await createOpened(10, 50, "wh-a");
+  const transferId = await command({ type: "transfer.post", fromWarehouseId: "wh-a", toWarehouseId: "wh-b", lines: [{ productId, quantity: 6 }] });
+  let product = await db.collection("products").findOne({ id: productId });
+  let state = await deriveOpeningStockState(db, undefined, product);
+  assert.deepEqual([state.remaining, state.consumed, state.allocations["wh-a"], state.allocations["wh-b"]], [10, 0, 4, 6]);
+
+  await command({ type: "transfer.void", documentId: transferId });
+  product = await db.collection("products").findOne({ id: productId });
+  state = await deriveOpeningStockState(db, undefined, product);
+  assert.deepEqual([state.remaining, state.consumed, state.allocations["wh-a"], state.allocations["wh-b"] ?? 0], [10, 0, 10, 0]);
+
+  const opening = await db.collection("documents").findOne({ kind: "adjustment", title: "رصيد بداية", status: "posted" });
+  await command({ type: "opening-stock-initial.void", documentId: opening.id });
+  product = await db.collection("products").findOne({ id: productId });
+  assert.deepEqual([product.stocks["wh-a"], product.stocks["wh-b"] ?? 0], [0, 0]);
+});
+
+test("editing a transfer moves opening provenance with the net transfer change", async () => {
+  const productId = await createOpened(10, 50, "wh-a");
+  const transferId = await command({ type: "transfer.post", fromWarehouseId: "wh-a", toWarehouseId: "wh-b", lines: [{ productId, quantity: 7 }] });
+  await command({ type: "transfer.update", documentId: transferId, fromWarehouseId: "wh-a", toWarehouseId: "wh-b", lines: [{ productId, quantity: 3 }] });
+  const product = await db.collection("products").findOne({ id: productId });
+  const state = await deriveOpeningStockState(db, undefined, product);
+  assert.deepEqual([state.remaining, state.consumed, state.allocations["wh-a"], state.allocations["wh-b"]], [10, 0, 7, 3]);
+});
+
+test("voided inventory corrections restore the exact opening provenance they changed", async () => {
+  const productId = await createOpened(10, 50, "wh-a");
+
+  const increaseId = await command({ type: "adjustment.post", warehouseId: "wh-a", reason: "count up", lines: [{ productId, actualQuantity: 15 }] });
+  let product = await db.collection("products").findOne({ id: productId });
+  let state = await deriveOpeningStockState(db, undefined, product);
+  assert.deepEqual([state.remaining, state.consumed], [10, 0]);
+  await command({ type: "adjustment.void", documentId: increaseId });
+  product = await db.collection("products").findOne({ id: productId });
+  state = await deriveOpeningStockState(db, undefined, product);
+  assert.deepEqual([state.remaining, state.consumed, product.stocks["wh-a"]], [10, 0, 10]);
+
+  const decreaseId = await command({ type: "adjustment.post", warehouseId: "wh-a", reason: "count down", lines: [{ productId, actualQuantity: 6 }] });
+  product = await db.collection("products").findOne({ id: productId });
+  state = await deriveOpeningStockState(db, undefined, product);
+  assert.deepEqual([state.remaining, state.consumed], [6, 4]);
+  await command({ type: "adjustment.void", documentId: decreaseId });
+  product = await db.collection("products").findOne({ id: productId });
+  state = await deriveOpeningStockState(db, undefined, product);
+  assert.deepEqual([state.remaining, state.consumed, product.stocks["wh-a"]], [10, 0, 10]);
+});
+
+test("adjustment edits reverse their own created stock before consuming opening stock", async () => {
+  const productId = await createOpened(10, 50, "wh-a");
+  const adjustmentId = await command({ type: "adjustment.post", warehouseId: "wh-a", reason: "count", lines: [{ productId, actualQuantity: 15 }] });
+  await command({ type: "adjustment.update", documentId: adjustmentId, reason: "corrected", lines: [{ productId, actualQuantity: 12 }] });
+  const product = await db.collection("products").findOne({ id: productId });
+  const state = await deriveOpeningStockState(db, undefined, product);
+  assert.deepEqual([state.remaining, state.consumed, product.stocks["wh-a"]], [10, 0, 12]);
+});

@@ -1,29 +1,12 @@
 "use client";
 import { useState } from "react";
-import { displayDocumentNumber, formatDateTime, kindLabels, money, number, type BootstrapData, type DocumentKind, type DocumentRecord } from "./domain";
+import { displayDocumentNumber, formatDateTime, money, number, type BootstrapData, type DocumentRecord } from "./domain";
 import { useAppConfirm } from "./app-confirm";
 import { tr } from "./i18n/messages";
 import { isOpeningStockCorrectionDocument, isOpeningStockDocument, optionalFiniteNumber } from "./stock-movement";
+import OpeningStockBlockers, { asOpeningStockBlockedPayload, type OpeningStockBlockedPayload } from "./opening-stock-blockers";
 
 type RunCommand = (body: Record<string, unknown>, message: string) => Promise<unknown>;
-type OpeningCorrectionBlocker = {
-  documentId: string;
-  documentNumber: string;
-  kind: string;
-  title: string;
-  status: string;
-  occurredAt: string;
-  movementTypes: string[];
-  warehouses: Array<{ warehouseId: string; warehouseName: string; quantityDelta: number }>;
-};
-type OpeningCorrectionBlockedPayload = {
-  code: "OPENING_CORRECTION_BLOCKED";
-  productId: string;
-  productName: string;
-  deficits: Array<{ warehouseId: string; required: number; available: number; missing: number }>;
-  blockers: OpeningCorrectionBlocker[];
-};
-
 const correctionProductId = (document: DocumentRecord) => {
   const ids = [...new Set(document.lines.map(line => line.productId).filter((value): value is string => Boolean(value)))];
   return ids.length === 1 ? ids[0] : null;
@@ -73,36 +56,10 @@ function OpeningCorrectionEditor({ document, data, run, close }: { document: Doc
   </div>;
 }
 
-function OpeningCorrectionBlockers({ payload, data, openSource, close }: { payload: OpeningCorrectionBlockedPayload; data: BootstrapData; openSource: (id: string) => void; close: () => void }) {
-  const operationLabel = (blocker: OpeningCorrectionBlocker) => {
-    const kind = blocker.kind as DocumentKind;
-    return kindLabels[kind] ? tr(kindLabels[kind]) : blocker.title || blocker.movementTypes.join(" / ") || tr("عملية غير معروفة");
-  };
-  const deficitSummary = payload.deficits.map(deficit => {
-    const warehouse = data.warehouses.find(item => item.id === deficit.warehouseId)?.name ?? deficit.warehouseId;
-    return `${warehouse}: ${tr("المتاح")} ${number(deficit.available)} / ${tr("المطلوب")} ${number(deficit.required)}`;
-  }).join(" · ");
-
-  return <div className="modal-overlay opening-correction-blockers-overlay" role="dialog" aria-modal="true" aria-label={tr("تعذر حذف تصحيح رصيد البداية")}>
-    <section className="modal-card opening-correction-blockers">
-      <div className="modal-heading"><h3>{tr("تعذر حذف تصحيح رصيد البداية")}</h3><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}>×</button></div>
-      <div className="opening-correction-blocker-copy"><strong>{payload.productName || tr("المنتج")}</strong><p>{tr("تم التصرف في جزء من مخزون هذا المنتج بعد التصحيح. راجع العمليات التالية ثم حاول الحذف مرة أخرى.")}</p>{deficitSummary && <small>{deficitSummary}</small>}</div>
-      <div className="erp-table-wrap opening-correction-blocker-table"><table className="erp-table">
-        <thead><tr><th>{tr("التاريخ")}</th><th>{tr("العملية")}</th><th>{tr("المستند")}</th><th>{tr("المخزن")}</th><th>{tr("الأثر على المخزون")}</th><th>{tr("الحالة")}</th><th>{tr("إجراءات")}</th></tr></thead>
-        <tbody>{payload.blockers.map(blocker => {
-          const warehouseEffect = blocker.warehouses.map(effect => `${effect.warehouseName}: ${effect.quantityDelta > 0 ? "+" : ""}${number(effect.quantityDelta)}`).join("، ");
-          return <tr key={blocker.documentId}><td>{blocker.occurredAt ? formatDateTime(blocker.occurredAt) : "—"}</td><td>{operationLabel(blocker)}</td><td dir="ltr">{blocker.documentNumber || "—"}</td><td>{blocker.warehouses.map(effect => effect.warehouseName).join("، ") || "—"}</td><td className="num-cell">{warehouseEffect || "—"}</td><td>{blocker.status === "voided" ? tr("ملغى") : blocker.status === "posted" ? tr("معتمد") : blocker.status || "—"}</td><td className="action-cell"><button type="button" className="soft" onClick={() => { close(); openSource(blocker.documentId); }}>{tr("الانتقال إلى المصدر")}</button></td></tr>;
-        })}{!payload.blockers.length && <tr><td colSpan={7}>{tr("لا توجد تفاصيل حركات متاحة. راجع حركة المنتج ثم حاول مرة أخرى.")}</td></tr>}</tbody>
-      </table></div>
-      <div className="dialog-actions"><button type="button" className="primary" onClick={close}>{tr("إغلاق")}</button></div>
-    </section>
-  </div>;
-}
-
-export default function OpeningStockHistory({ data, docs, openDoc, openSource, openOpeningSource, run, canEdit, canDelete }: { data: BootstrapData; docs: DocumentRecord[]; openDoc: (id: string) => void; openSource: (id: string) => void; openOpeningSource: (productId: string) => void; run: RunCommand; canEdit: boolean; canDelete: boolean }) {
+export default function OpeningStockHistory({ data, docs, openDoc, openSource, openOpeningSource, openMovements, run, canEdit, canDelete }: { data: BootstrapData; docs: DocumentRecord[]; openDoc: (id: string) => void; openSource: (id: string) => void; openOpeningSource: (productId: string) => void; openMovements: (productId: string) => void; run: RunCommand; canEdit: boolean; canDelete: boolean }) {
   const confirmAction = useAppConfirm();
   const [editing, setEditing] = useState<DocumentRecord | null>(null);
-  const [blocked, setBlocked] = useState<OpeningCorrectionBlockedPayload | null>(null);
+  const [blocked, setBlocked] = useState<OpeningStockBlockedPayload | null>(null);
   const rows = docs.filter(isOpeningStockDocument).slice().sort((a, b) => String(b.occurredAt).localeCompare(String(a.occurredAt)));
   const latestCorrectionByProduct = new Map<string, string>();
   for (const document of rows) {
@@ -116,7 +73,7 @@ export default function OpeningStockHistory({ data, docs, openDoc, openSource, o
     try {
       await run({ type: "opening-stock-correction.void", documentId: document.id }, tr("تم إلغاء تصحيح رصيد البداية"));
     } catch (reason) {
-      const payload = asBlockedPayload(reason);
+      const payload = asOpeningStockBlockedPayload(reason);
       if (payload) setBlocked(payload);
     }
   };
@@ -152,6 +109,6 @@ export default function OpeningStockHistory({ data, docs, openDoc, openSource, o
       })}{!rows.length && <tr><td colSpan={11}>{tr("لا توجد فواتير ضمن الفترة المحددة")}</td></tr>}</tbody>
     </table></div>
     {editing && <OpeningCorrectionEditor key={editing.id} document={editing} data={data} run={run} close={() => setEditing(null)} />}
-    {blocked && <OpeningCorrectionBlockers payload={blocked} data={data} openSource={openSource} close={() => setBlocked(null)} />}
+    {blocked && <OpeningStockBlockers payload={blocked} data={data} openSource={openSource} openMovements={openMovements} close={() => setBlocked(null)} />}
   </section>;
 }

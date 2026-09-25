@@ -14,9 +14,14 @@ export async function GET(request: Request) {
   const product = await db.collection("products").findOne({ id: productId });
   if (!product) return Response.json({ error: "المنتج غير موجود" }, { status: 404 });
   const state = await deriveOpeningStockState(db, undefined, product);
-  const [warehouse, initialOpening] = await Promise.all([
+  const [warehouse, openingDocuments] = await Promise.all([
     state.warehouseId ? db.collection("warehouses").findOne({ _id: state.warehouseId }) : Promise.resolve(null),
-    db.collection("documents").findOne({ kind: "adjustment", status: "posted", title: "رصيد بداية", "lines.productId": productId }),
+    db.collection("documents").find({ kind: "adjustment", status: "posted", "lines.productId": productId }).toArray(),
   ]);
+  const initialOpening = openingDocuments.find(document => {
+    const number = String(document.number ?? ""), title = String(document.title ?? "");
+    const correction = document.openingCorrection === true || number.startsWith("OPEN-COR") || title === "تصحيح رصيد البداية" || title === "إضافة رصيد افتتاحي";
+    return !correction && (title === "رصيد بداية" || (/^OPEN(?:-|$)/.test(number) && !number.startsWith("OPEN-COR")));
+  });
   return Response.json({ ...state, warehouseName: warehouse?.name ?? null, hasActiveInitialOpening: Boolean(initialOpening) });
 }

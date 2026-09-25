@@ -257,6 +257,13 @@ function isOpeningCorrectionRecord(document: Record<string, unknown> | null | un
     || title === "إضافة رصيد افتتاحي"
     || (Object.prototype.hasOwnProperty.call(document, "openingStockBefore") && Object.prototype.hasOwnProperty.call(document, "openingStockAfter"));
 }
+function isInitialOpeningRecord(document: Record<string, unknown> | null | undefined) {
+  if (!document || text(document.kind) !== "adjustment" || isOpeningCorrectionRecord(document)) return false;
+  const number = text(document.number), title = text(document.title);
+  return title === "رصيد بداية"
+    || (/^OPEN(?:-|$)/.test(number) && !number.startsWith("OPEN-COR"))
+    || (Object.prototype.hasOwnProperty.call(document, "openingStockAfter") && !Object.prototype.hasOwnProperty.call(document, "openingStockBefore"));
+}
 function isOpeningCorrectionMovementType(type: unknown) {
   const current = text(type);
   return current === "opening" || current.startsWith("opening-correction");
@@ -409,7 +416,7 @@ async function openingStockBlockingOperations(
 
 async function requireInitialOpeningDocument(db: Db, session: ClientSession, documentId: string) {
   const original = await db.collection("documents").findOne({ id: documentId, kind: "adjustment", status: "posted" }, { session });
-  if (!original || isOpeningCorrectionRecord(original) || text(original.title) !== "رصيد بداية") throw new CommandError("سجل رصيد البداية غير موجود أو ملغى", 404);
+  if (!original || !isInitialOpeningRecord(original)) throw new CommandError("سجل رصيد البداية غير موجود أو ملغى", 404);
   const productId = openingCorrectionProductId(original);
   if (!productId) throw new CommandError("سجل رصيد البداية لا يحتوي منتجًا صالحًا", 409);
   const product = await db.collection("products").findOne({ id: productId }, { session });

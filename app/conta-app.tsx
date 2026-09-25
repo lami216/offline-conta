@@ -1230,7 +1230,7 @@ function PartyPage({party,data,openDoc,run,editRequest,clearEditRequest,register
   // Archived parties intentionally switch their history view to all-time when opened.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(()=>{if(archived){setFrom("");setTo("")}},[party.id,archived]);
-  const canCreatePayment=!archived&&canUseCapability(data.principal,customer?"customers.collect":"suppliers.pay"),canEditPayment=!archived&&canUseCapability(data.principal,customer?"customers.collect.edit":"suppliers.pay.edit"),canDeletePayment=!archived&&canUseCapability(data.principal,customer?"customers.collect.delete":"suppliers.pay.delete"),canManageLegacyBalance=!archived&&canUseCapability(data.principal,customer?"customers.edit":"suppliers.edit");
+  const canCreatePayment=!archived&&canUseCapability(data.principal,customer?"customers.collect":"suppliers.pay"),canEditPayment=!archived&&canUseCapability(data.principal,customer?"customers.collect.edit":"suppliers.pay.edit"),canDeletePayment=!archived&&canUseCapability(data.principal,customer?"customers.collect.delete":"suppliers.pay.delete"),canManageLegacyBalance=canUseCapability(data.principal,customer?"customers.edit":"suppliers.edit");
   // Legacy records remain traceable inside an existing party audit view only.
   const kinds=customer?["sale","return","payment","settlement","offset"]:["purchase","payment","settlement","offset"];
   const docs=data.documents.filter(d=>d.partyId===party.id&&kinds.includes(d.kind)&&(!from||d.occurredAt.slice(0,10)>=from)&&(!to||d.occurredAt.slice(0,10)<=to));

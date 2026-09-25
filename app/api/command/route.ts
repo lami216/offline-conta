@@ -513,15 +513,47 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
         },
       );
     }
+    const initialMovements = await db.collection("stockMovements").find({ documentId: initial.id, productId }, { session }).toArray();
+    const requiredByWarehouse = new Map<string, number>();
+    for (const movement of initialMovements) {
+      if (String(movement.type ?? "") !== "opening") continue;
+      const warehouseId = String(movement.warehouseId ?? "");
+      if (!warehouseId) continue;
+      requiredByWarehouse.set(warehouseId, Number(requiredByWarehouse.get(warehouseId) ?? 0) + Number(movement.quantityDelta ?? 0));
+    }
+    const deficits = [...requiredByWarehouse.entries()]
+      .filter(([, required]) => required > 1e-9)
+      .map(([warehouseId, required]) => {
+        const available = Number(state.allocations[warehouseId] ?? 0);
+        return { warehouseId, required, available, missing: Math.max(0, required - available) };
+      })
+      .filter(item => item.missing > 1e-9);
+    if (deficits.length) {
+      const blockers = await openingCorrectionBlockingOperations(db, session, productId, String(initial.id));
+      throw new CommandError(
+        "لا يمكن حذف رصيد البداية لأن جزءًا منه نُقل أو أصبح في مخزن آخر.",
+        409,
+        {
+          code: "OPENING_STOCK_BLOCKED",
+          reason: "relocated",
+          productId,
+          productName: String(product.name ?? ""),
+          consumedOpening: state.consumed,
+          restoredOpening: 0,
+          deficits,
+          blockers,
+        },
+      );
+    }
     const revision = Number(initial.revision ?? 0) + 1, audit = { ...initial, revision, occurredAt: new Date().toISOString() };
-    for (const [warehouseId, quantity] of Object.entries(state.allocations)) {
+    for (const [warehouseId, quantity] of requiredByWarehouse) {
       if (quantity <= 1e-9) continue;
       const warehouse = await warehouses(db).findOne({ _id: warehouseId }, { session });
       if (!warehouse) throw new CommandError("تعذر تحديد مخزن مرتبط برصيد البداية", 409);
       try { await changeStock(db, session, product, warehouse, -quantity, audit, "opening-void"); }
       catch (error) {
         if (error instanceof CommandError && /المخزون غير كاف/.test(error.message)) {
-          const blockers = await openingConsumptionBlockingOperations(db, session, state);
+          const blockers = await openingCorrectionBlockingOperations(db, session, productId, String(initial.id));
           throw new CommandError(
             "لا يمكن حذف رصيد البداية لأن حركة المخزون الحالية لا تسمح بعكسه.",
             409,

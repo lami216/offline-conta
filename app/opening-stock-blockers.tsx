@@ -53,7 +53,9 @@ export default function OpeningStockBlockers({
   }).join(" · ");
   const explanation = payload.reason === "active-corrections"
     ? tr("يوجد تصحيح رصيد بداية نشط لهذا المنتج. ألغِ التصحيحات من الأحدث إلى الأقدم ثم أعد محاولة حذف رصيد البداية الأصلي.")
-    : tr("تم التصرف في جزء من رصيد البداية. افتح حركات المنتج لمعرفة أين استُخدمت الكمية، ويمكنك الانتقال مباشرة إلى مصدر كل حركة لإلغائها أو تعديلها.");
+    : payload.reason === "relocated"
+      ? tr("جزء من رصيد البداية موجود الآن في مخزن آخر بسبب حركات لاحقة. افتح حركات المنتج ثم ألغِ أو عدّل الحركات التي نقلت الكمية حتى تعود إلى مصدرها.")
+      : tr("تم التصرف في جزء من رصيد البداية. افتح حركات المنتج لمعرفة أين استُخدمت الكمية، ويمكنك الانتقال مباشرة إلى مصدر كل حركة لإلغائها أو تعديلها.");
 
   return <div className="modal-overlay opening-correction-blockers-overlay" role="dialog" aria-modal="true" aria-label={tr("تعذر تعديل رصيد البداية")}>
     <section className="modal-card opening-correction-blockers">

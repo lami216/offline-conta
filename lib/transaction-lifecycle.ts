@@ -375,6 +375,14 @@ async function legacyPartyEntryVoid(db: Db, session: ClientSession, body: Input)
   return documentId;
 }
 
+async function legacyAccountBalanceCorrectionVoid(db: Db, session: ClientSession, body: Input) {
+  const movementId = text(body.movementId ?? body.documentId);
+  const movement = await findActiveFinancialMovement(db, session, { id: movementId, type: "balance-correction" });
+  if (!movement) throw new LifecycleCommandError("تصحيح الرصيد القديم غير موجود أو ملغى", 404);
+  await reverseFinancialMovement(db, session, movement, "إلغاء تصحيح رصيد قديم");
+  return movementId;
+}
+
 async function accountAdjustmentPost(db: Db, session: ClientSession, body: Input) {
   const account = await paymentAccount(db, session, body.accountId), direction = text(body.direction), amount = positive(body.amount, "المبلغ");
   if (direction !== "deposit" && direction !== "withdrawal") throw new LifecycleCommandError("نوع العملية غير صالح");
@@ -468,6 +476,7 @@ export async function executeLifecycleCommand(db: Db, session: ClientSession, bo
     case "transfer.void": return { handled: true, result: await voidTransfer(db, session, body) };
     case "adjustment.update": return { handled: true, result: await updateAdjustment(db, session, body) };
     case "adjustment.void": return { handled: true, result: await voidAdjustment(db, session, body) };
+    case "legacy-account-balance-correction.void": return { handled: true, result: await legacyAccountBalanceCorrectionVoid(db, session, body) };
     case "account-adjustment.post": return { handled: true, result: await accountAdjustmentPost(db, session, body) };
     case "account-adjustment.update": return { handled: true, result: await accountAdjustmentUpdate(db, session, body) };
     case "account-adjustment.void": return { handled: true, result: await accountAdjustmentVoid(db, session, body) };

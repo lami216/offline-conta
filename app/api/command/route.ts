@@ -628,7 +628,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const deficits = [...netByWarehouse.entries()]
       .filter(([, net]) => net > 1e-9)
       .map(([warehouseId, required]) => {
-        const available = Number((context.product.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0);
+        const available = Number(context.state.allocations[warehouseId] ?? 0);
         return { warehouseId, required, available, missing: Math.max(0, required - available) };
       })
       .filter(item => item.missing > 1e-9);

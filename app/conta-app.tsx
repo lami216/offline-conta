@@ -235,6 +235,7 @@ function ContaAppContent() {
     [transferEditRequest, setTransferEditRequest] = useState<string | null>(null),
     [adjustmentEditRequest, setAdjustmentEditRequest] = useState<string | null>(null),
     [productSourceRequest, setProductSourceRequest] = useState<string | null>(null),
+    [inventoryProductSourceRequest, setInventoryProductSourceRequest] = useState<string | null>(null),
     [bankSourceRequest, setBankSourceRequest] = useState<BankSourceRequest | null>(null),
     [reportSourceRequest, setReportSourceRequest] = useState<{reportType:ReportType;period:CommittedPeriod}|null>(null),
     [autoPrintId, setAutoPrintId] = useState<string | null>(null),
@@ -340,7 +341,7 @@ function ContaAppContent() {
   async function run(body: Record<string, unknown>, message: string, afterSuccess?: () => void) {
     const fingerprint=JSON.stringify(body), existing=inFlightCommands.current.get(fingerprint);
     if(existing)return existing as ReturnType<RunCommand>;
-    const operation=(async()=>{setError("");const r=await fetch("/api/command",{method:"POST",headers:{"content-type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)}),j=await r.json();if(!r.ok){const apiMessage=String(j.error??"تعذر تنفيذ العملية");if(j.code!=="OPENING_CORRECTION_BLOCKED")setError(translateApiError(locale,apiMessage));throw Object.assign(new Error(apiMessage),{payload:j,status:r.status})}setNotice(message);await finishSuccessfulCommand(afterSuccess,()=>reload({blocking:false}));return j.disposition?j:j.id as string})();
+    const operation=(async()=>{setError("");const r=await fetch("/api/command",{method:"POST",headers:{"content-type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)}),j=await r.json();if(!r.ok){const apiMessage=String(j.error??"تعذر تنفيذ العملية");if(j.code!=="OPENING_CORRECTION_BLOCKED"&&j.code!=="OPENING_STOCK_BLOCKED")setError(translateApiError(locale,apiMessage));throw Object.assign(new Error(apiMessage),{payload:j,status:r.status})}setNotice(message);await finishSuccessfulCommand(afterSuccess,()=>reload({blocking:false}));return j.disposition?j:j.id as string})();
     inFlightCommands.current.set(fingerprint,operation);
     try{return await operation as Awaited<ReturnType<RunCommand>>}finally{inFlightCommands.current.delete(fingerprint)}
   }
@@ -402,6 +403,10 @@ function ContaAppContent() {
   const openOpeningStockSource = async (productId: string) => {
     if(!productId)return;
     if(await navigate("products"))setProductSourceRequest(productId);
+  };
+  const openProductMovementHistory = async (productId: string) => {
+    if(!productId)return;
+    if(await navigate("warehouses"))setInventoryProductSourceRequest(productId);
   };
   useEffect(() => {
     if (!autoPrintId || !data.documents.some(document => document.id === autoPrintId)) return;
@@ -487,13 +492,13 @@ function ContaAppContent() {
               )}{" "}
               {view === "products" && <Products data={data} run={run} sourceRequest={productSourceRequest} clearSourceRequest={()=>setProductSourceRequest(null)} />}{" "}
               {view === "warehouseAdmin" && <WarehouseAdmin data={data} run={run} canDelete={can("warehouses.delete")} />} {view === "warehouses" && (
-                <Warehouses data={data} run={run} openDoc={openDoc} />
+                <Warehouses data={data} run={run} openDoc={openDoc} sourceRequest={inventoryProductSourceRequest} clearSourceRequest={()=>setInventoryProductSourceRequest(null)} />
               )}{" "}
               {view === "transfers" && (
                 <Transfer data={data} run={run} openDoc={openDoc} editRequest={transferEditRequest} clearEditRequest={() => setTransferEditRequest(null)} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
               )}{" "}
               {view === "adjustments" && (
-                <Adjustment data={data} run={run} openDoc={openDoc} openSource={id=>void openDocumentSourceById(id)} openOpeningSource={id=>void openOpeningStockSource(id)} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} editRequest={adjustmentEditRequest} clearEditRequest={() => setAdjustmentEditRequest(null)} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
+                <Adjustment data={data} run={run} openDoc={openDoc} openSource={id=>void openDocumentSourceById(id)} openOpeningSource={id=>void openOpeningStockSource(id)} openProductMovements={id=>void openProductMovementHistory(id)} prefill={adjustmentPrefill} clearPrefill={() => setAdjustmentPrefill(null)} editRequest={adjustmentEditRequest} clearEditRequest={() => setAdjustmentEditRequest(null)} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
               )}{" "}
               {view === "records" && <Records data={data} openDoc={openDoc} />}{" "}
               {view === "reports" && (
@@ -1235,9 +1240,19 @@ function WarehouseAdmin({data,run,canDelete}:{data:BootstrapData;run:RunCommand;
   return <section className="workspace-page warehouse-admin">{canCreate&&<FramedSection title={tr("إضافة مخزن")}><div className="warehouse-admin-create"><input value={newName} onChange={e=>setNewName(e.target.value)} placeholder={tr("اسم المخزن الجديد")}/><button className="primary" disabled={!newName.trim()} onClick={async()=>{await run({type:"warehouse.create",name:newName},tr("تمت إضافة المخزن"));setNewName("")}}><Plus/>  {tr("إضافة مخزن")}</button></div></FramedSection>}<FramedSection title={tr("إدارة المخازن")} className="scroll-panel"><div className="erp-table-wrap"><table className="erp-table"><thead><tr><th>{tr("المخزن")}</th><th>{tr("الحالة")}</th><th>{tr("الاسم الجديد")}</th><th>{tr("إجراءات")}</th></tr></thead><tbody>{active.map(warehouse=><tr key={warehouse.id}><td className="name-cell">{warehouse.name}</td><td>{warehouse.isSalesDefault?tr("مخزن البيع"):tr("نشط")}</td><td><input disabled={!canEdit} value={names[warehouse.id]??""} onChange={e=>setNames(current=>({...current,[warehouse.id]:e.target.value}))} placeholder={warehouse.name}/></td><td className="action-cell">{canEdit&&<button className="soft" disabled={!names[warehouse.id]?.trim()} onClick={()=>void run({type:"warehouse.update",id:warehouse.id,name:names[warehouse.id]},tr("تم تعديل اسم المخزن"))}>{tr("حفظ الاسم")}</button>}{canEdit&&<button className="soft" disabled={warehouse.isSalesDefault} onClick={()=>void run({type:"warehouse.default",warehouseId:warehouse.id},tr("تم تعيين مخزن البيع"))}>{warehouse.isSalesDefault?tr("مخزن البيع"):tr("تعيين للبيع")}</button>}{canDelete&&<button className="danger compact-delete" onClick={async()=>{if(await confirmAction({message:tr("سيتم حذف المخزن الفارغ أو أرشفته عند وجود تاريخ مرتبط. هل تريد المتابعة؟"),confirmLabel:tr("حذف المخزن"),tone:"danger"}))void run({type:"warehouse.delete",id:warehouse.id},tr("تم حذف أو أرشفة المخزن"))}}>{tr("حذف")}</button>}</td></tr>)}</tbody></table></div></FramedSection></section>;
 }
 
-function Warehouses({ data, openDoc }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void }) {
+function Warehouses({ data, openDoc, sourceRequest, clearSourceRequest }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void; sourceRequest?: string | null; clearSourceRequest?: () => void }) {
   const availableWarehouses=activeWarehouses(data.warehouses), activeWarehouseIds=availableWarehouses.map(warehouse=>warehouse.id), [wh, setWh] = useState(ALL_WAREHOUSES), [q, setQ] = useState(""), [detailProduct, setDetailProduct] = useState<Product | null>(null), [movementFilter, setMovementFilter] = useState("all");
   const today=localBusinessDay(),[draftFrom,setDraftFrom]=useState(today),[draftTo,setDraftTo]=useState(today),[committedPeriod,setCommittedPeriod]=useState<CommittedPeriod>(null),[hasInventoryView,setHasInventoryView]=useState(false),[periodError,setPeriodError]=useState("");
+  useEffect(()=>{
+    if(!sourceRequest)return;
+    const timeout=window.setTimeout(()=>{
+      const product=data.products.find(item=>item.id===sourceRequest);
+      setWh(ALL_WAREHOUSES);setDraftFrom("");setDraftTo("");setCommittedPeriod(null);setHasInventoryView(true);setQ("");setMovementFilter("all");
+      if(product)setDetailProduct(product);
+      clearSourceRequest?.();
+    },0);
+    return()=>window.clearTimeout(timeout);
+  },[sourceRequest,data.products,clearSourceRequest]);
   const normalized = q.trim().toLocaleLowerCase(), allSelected=wh===ALL_WAREHOUSES, scopedWarehouseIds=allSelected?activeWarehouseIds:[wh], qty = (product: Product) => scopedWarehouseIds.reduce((sum,id)=>sum+Number(product.stocks[id]??0),0);
   const inventoryProducts = data.products.filter(p => qty(p) > 0), filteredProducts = inventoryProducts.filter(p => !normalized || `${p.name} ${p.sku} ${p.barcode}`.toLocaleLowerCase().includes(normalized));
   const {sort:inventorySort,sortedRows:products,toggle:toggleInventorySort}=useSortableRows(filteredProducts,[{key:"name",type:"text",get:p=>p.name},{key:"barcode",type:"text",get:p=>p.barcode},{key:"cost",type:"money",get:inventoryUnitCost},{key:"quantity",type:"number",get:qty},{key:"purchased",type:"number",get:p=>periodStockMovementQuantity(data.movements,p.id,scopedWarehouseIds,"purchase",committedPeriod?.from??"",committedPeriod?.to??"")},{key:"sold",type:"number",get:p=>periodStockMovementQuantity(data.movements,p.id,scopedWarehouseIds,"sale",committedPeriod?.from??"",committedPeriod?.to??"")},{key:"value",type:"money",get:p=>qty(p)*inventoryUnitCost(p)}]);
@@ -1496,7 +1511,7 @@ function Transfer(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) 
       <FramedSection title={tr("سجل التحويلات")} className="records transfer-history"><div className="erp-table-wrap transfer-list"><table className="erp-table" aria-label={tr("سجل التحويلات")}><colgroup><col style={{width:"16%"}}/><col style={{width:"18%"}}/><col style={{width:"17%"}}/><col style={{width:"17%"}}/><col style={{width:"12%"}}/><col style={{width:"20%"}}/></colgroup><thead><tr><SortableTableHeader column="date" label={tr("التاريخ")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="number" label={tr("المستند")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="from" label={tr("من")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="to" label={tr("إلى")} sort={transferSort} toggle={toggleTransferSort}/><SortableTableHeader column="quantity" label={tr("الكمية")} sort={transferSort} toggle={toggleTransferSort}/><th>{tr("إجراءات")}</th></tr></thead><tbody>{sortedTransfers.map(document => <tr key={document.id} onClick={() => p.openDoc(document.id)}><td>{formatDate(document.occurredAt)}</td><td dir="ltr">{displayDocumentNumber(document)}</td><td>{document.warehouseName ?? "—"}</td><td>{document.destinationWarehouseName ?? "—"}</td><td className="num-cell">{number(document.lines.reduce((sum, line) => sum + Number(line.quantity), 0))}</td><td className="action-cell"><LifecycleActions onEdit={canEdit?()=>void startEdit(document):undefined} onVoid={canDelete?()=>void remove(document):undefined}/></td></tr>)}{!transfers.length && <tr><td colSpan={6}>{tr("لا توجد تحويلات مسجلة")}</td></tr>}</tbody></table></div></FramedSection>
     </section>;
 }
-function Adjustment(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) => void;openSource: (id: string) => void;openOpeningSource: (productId: string) => void;prefill?: AdjustmentPrefill | null;clearPrefill?: () => void;editRequest?:string|null;clearEditRequest?:()=>void;registerEditorGuard:RegisterEditorGuard;prepareEditorReplacement:()=>Promise<boolean>;}) {
+function Adjustment(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string) => void;openSource: (id: string) => void;openOpeningSource: (productId: string) => void;openProductMovements: (productId: string) => void;prefill?: AdjustmentPrefill | null;clearPrefill?: () => void;editRequest?:string|null;clearEditRequest?:()=>void;registerEditorGuard:RegisterEditorGuard;prepareEditorReplacement:()=>Promise<boolean>;}) {
   const confirmAction=useAppConfirm(),[editing,setEditing]=useState<DocumentRecord|null>(null);
   const canEdit=canUseCapability(p.data.principal,"warehouses.adjust.edit"),canDelete=canUseCapability(p.data.principal,"warehouses.adjust.delete");
   const openingDocs = p.data.documents.filter(document => isOpeningStockDocument(document));
@@ -1508,7 +1523,7 @@ function Adjustment(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string
   return <section className="stock-workspace adjustment-workspace">
       <FramedSection title={editing?`${tr("تعديل")} · ${tr("تصحيح المخزون")}`:tr("تصحيح المخزون")} className="stock-workspace-main" allowOverflow><MultiStockForm key={editing?.id??"new-adjustment"} {...p} mode="adjust" editingDocument={editing} onCancelEdit={()=>setEditing(null)}/></FramedSection>
       <Recent title={tr("سجل التصحيحات")} docs={adjustmentDocs} openDoc={p.openDoc} actions={document=><LifecycleActions onEdit={canEdit?()=>void startEdit(document):undefined} onVoid={canDelete?()=>void remove(document):undefined}/>}/>
-      <OpeningStockHistory data={p.data} docs={openingDocs} openDoc={p.openDoc} openSource={p.openSource} openOpeningSource={p.openOpeningSource} run={p.run} canEdit={canEdit} canDelete={canDelete} />
+      <OpeningStockHistory data={p.data} docs={openingDocs} openDoc={p.openDoc} openSource={p.openSource} openOpeningSource={p.openOpeningSource} openProductMovements={p.openProductMovements} run={p.run} canEdit={canEdit} canDelete={canDelete} />
     </section>;
 }
 

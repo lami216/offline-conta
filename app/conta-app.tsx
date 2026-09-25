@@ -1277,11 +1277,11 @@ function Warehouses({ data, openDoc, openSource, sourceRequest, clearSourceReque
 
 function ProductMovementPanel({ product, selectedWarehouseId, data, filter, setFilter, close, openDoc, openSource, from, to }: { product: Product; selectedWarehouseId: string; data: BootstrapData; filter: string; setFilter: (value: string) => void; close: () => void; openDoc: (id: string) => void; openSource: (id: string) => void; from:string;to:string }) {
   const {locale}=useI18n();
-  const activeIds=new Set(activeWarehouses(data.warehouses).map(warehouse=>warehouse.id)),allSelected=selectedWarehouseId===ALL_WAREHOUSES;
-  const selectedQty = allSelected?[...activeIds].reduce((sum,id)=>sum+stockInWarehouse(product,id),0):stockInWarehouse(product, selectedWarehouseId), current = selectedQty;
+  const warehouseIds=new Set(data.warehouses.map(warehouse=>warehouse.id)),allSelected=selectedWarehouseId===ALL_WAREHOUSES;
+  const selectedQty = allSelected?[...warehouseIds].reduce((sum,id)=>sum+stockInWarehouse(product,id),0):stockInWarehouse(product, selectedWarehouseId), current = selectedQty;
   const selectedWarehouse = data.warehouses.find(warehouse => warehouse.id === selectedWarehouseId),scopeLabel=allSelected?tr("كل المخازن"):selectedWarehouse?.name??tr("المخزن");
   const movementLabel=useCallback((type:string,delta:number)=>{const presentation=stockMovementPresentationType(type,delta);return movementLabels[presentation]?tr(movementLabels[presentation]):presentation},[locale]);
-  const movements=data.movements.filter(movement=>movement.productId===product.id&&(allSelected?activeIds.has(movement.warehouseId):movement.warehouseId===selectedWarehouseId)&&(!from||movement.occurredAt.slice(0,10)>=from)&&(!to||movement.occurredAt.slice(0,10)<=to)&&(filter==="all"||stockMovementMatchesFilter(movement.type,filter)));
+  const movements=data.movements.filter(movement=>movement.productId===product.id&&(allSelected?true:movement.warehouseId===selectedWarehouseId)&&(!from||movement.occurredAt.slice(0,10)>=from)&&(!to||movement.occurredAt.slice(0,10)<=to)&&(filter==="all"||stockMovementMatchesFilter(movement.type,filter)));
   const documentsById=useMemo(()=>new Map(data.documents.map(document=>[document.id,document])),[data.documents]);
   const movementDocument=(movement:BootstrapData["movements"][number])=>documentsById.get(movement.documentId);
   const party=(document:DocumentRecord)=>(document.partyId?data.parties.find(p=>p.id===document.partyId)?.name:null)||document.partyName||(document.kind==="sale"?tr("بيع مباشر"):tr("شراء مباشر"));

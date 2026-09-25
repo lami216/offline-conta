@@ -390,6 +390,12 @@ function ContaAppContent() {
     if(document.kind==="expense"){const edit=can("expenses.edit")&&document.status==="posted"&&!document.legacyKey;if(!await navigate("expenses",{replaceEditor:edit}))return;if(edit)setExpenseEditRequest(document.id);return}
     if(document.kind==="payment"&&document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(!party)return;const customer=resolvePartyType(party)==="customer",edit=document.status==="posted"&&!party.isArchived&&can(customer?"customers.collect.edit":"suppliers.pay.edit");if(!await navigate(customer?"customers":"suppliers",{replaceEditor:edit}))return;setPartyDetail(party);if(edit)setPartyPaymentEditRequest(document.id);return}
     if(document.kind==="transfer"){const edit=can("warehouses.transfer.edit")&&document.status==="posted";if(!await navigate("transfers",{replaceEditor:edit}))return;if(edit)setTransferEditRequest(document.id);return}
+    if(document.kind==="adjustment"&&isOpeningStockDocument(document)){
+      const productId=[...new Set(document.lines.map(line=>line.productId).filter((value):value is string=>Boolean(value)))][0];
+      if(isOpeningStockCorrectionDocument(document)){await navigate("adjustments");return}
+      if(productId&&await navigate("products"))setProductSourceRequest(productId);
+      return;
+    }
     if(document.kind==="adjustment"){const edit=can("warehouses.adjust.edit")&&document.status==="posted";if(!await navigate("adjustments",{replaceEditor:edit}))return;if(edit)setAdjustmentEditRequest(document.id);return}
     if(document.kind==="account-transfer"){if(!can(bankTabCapability.transfers))return;const edit=can("banks.transfer.edit")&&document.status==="posted",replaceEditor=edit||effectiveBankTab!=="transfers";if(!await navigate("banks",{replaceEditor}))return;setBankTab("transfers");if(edit)setBankSourceRequest({kind:"transfer",documentId:document.id});return}
     if(document.kind==="account-adjustment"){if(!can(bankTabCapability.adjustment))return;const edit=can("banks.deposit_withdraw.edit")&&document.status==="posted",replaceEditor=edit||effectiveBankTab!=="adjustment";if(!await navigate("banks",{replaceEditor}))return;setBankTab("adjustment");if(edit)setBankSourceRequest({kind:"adjustment",documentId:document.id});return}

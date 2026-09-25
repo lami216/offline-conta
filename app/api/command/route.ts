@@ -341,17 +341,17 @@ async function currentOpeningCorrectionLines(db: Db, session: ClientSession, doc
   return lines.length ? lines : [{ id: id("line"), productId, description: `${productName} — تصحيح تكلفة رصيد البداية`, quantity: 0, unitPrice: openingCost ?? 0, lineTotal: 0 }];
 }
 
-async function openingCorrectionBlockingOperations(
+async function openingStockBlockingOperations(
   db: Db,
   session: ClientSession,
   productId: string,
-  correctionDocumentId: string,
+  sourceDocumentId: string,
 ) {
   const productMovements = await db.collection("stockMovements").find({ productId }, { session }).toArray();
   let firstCorrectionMovement = -1;
   for (let index = 0; index < productMovements.length; index++) {
     const movement = productMovements[index];
-    if (String(movement.documentId ?? "") === correctionDocumentId && isOpeningCorrectionMovementType(movement.type)) {
+    if (String(movement.documentId ?? "") === sourceDocumentId && isOpeningCorrectionMovementType(movement.type)) {
       firstCorrectionMovement = index;
       break;
     }
@@ -366,7 +366,7 @@ async function openingCorrectionBlockingOperations(
   }>();
   for (const movement of subsequent) {
     const documentId = String(movement.documentId ?? "");
-    if (!documentId || documentId === correctionDocumentId) continue;
+    if (!documentId || documentId === sourceDocumentId) continue;
     const warehouseId = String(movement.warehouseId ?? "");
     const quantityDelta = Number(movement.quantityDelta ?? 0);
     if (!warehouseId || !Number.isFinite(quantityDelta) || quantityDelta === 0) continue;
@@ -406,10 +406,86 @@ async function openingCorrectionBlockingOperations(
   });
 }
 
+
+async function requireInitialOpeningDocument(db: Db, session: ClientSession, documentId: string) {
+  const original = await db.collection("documents").findOne({ id: documentId, kind: "adjustment", status: "posted" }, { session });
+  if (!original || isOpeningCorrectionRecord(original) || text(original.title) !== "رصيد بداية") throw new CommandError("سجل رصيد البداية غير موجود أو ملغى", 404);
+  const productId = openingCorrectionProductId(original);
+  if (!productId) throw new CommandError("سجل رصيد البداية لا يحتوي منتجًا صالحًا", 409);
+  const product = await db.collection("products").findOne({ id: productId }, { session });
+  if (!product) throw new CommandError("المنتج المرتبط برصيد البداية غير موجود", 409);
+  const activeAdjustments = await db.collection("documents").find({ kind: "adjustment", status: "posted" }, { session }).sort({ occurredAt: -1, updatedAt: -1, id: -1 }).toArray();
+  const activeCorrection = activeAdjustments.find(document => isOpeningCorrectionRecord(document) && openingCorrectionProductId(document) === productId);
+  if (activeCorrection) throw new CommandError("احذف آخر تصحيح لرصيد البداية أولًا ثم أعد محاولة حذف رصيد البداية الأصلي.", 409, { code: "OPENING_INITIAL_HAS_CORRECTION", productId, correctionDocumentId: String(activeCorrection.id) });
+  const state = await deriveOpeningStockState(db, session, product);
+  return { original, product, productId, state };
+}
+
 export async function execute(db: Db, session: ClientSession, body: Input) {
   const type = text(body.type);
   const lifecycle = await executeLifecycleCommand(db, session, body);
   if (lifecycle.handled) return lifecycle.result;
+  if (type === "opening-stock-initial.void") {
+    const documentId = text(body.documentId), context = await requireInitialOpeningDocument(db, session, documentId);
+    const state = context.state;
+    if (state.total <= 0) throw new CommandError("رصيد البداية ملغى بالفعل", 409);
+    let plan;
+    try { plan = planOpeningStockCorrection(state, 0, state.warehouseId, false); }
+    catch (error) {
+      const blockers = await openingStockBlockingOperations(db, session, context.productId, documentId);
+      throw new CommandError(
+        error instanceof Error ? error.message : "لا يمكن حذف رصيد البداية لأن جزءًا من الكمية تم التصرف فيه.",
+        409,
+        {
+          code: "OPENING_STOCK_BLOCKED",
+          productId: context.productId,
+          productName: String(context.product.name ?? ""),
+          consumedOpening: state.consumed,
+          restoredOpening: 0,
+          deficits: [],
+          blockers,
+        },
+      );
+    }
+    const audit = { ...context.original, revision: Number(context.original.revision ?? 0) + 1, occurredAt: new Date().toISOString() };
+    for (const item of plan.deltas) {
+      if (!item.delta) continue;
+      const warehouse = await warehouses(db).findOne({ _id: item.warehouseId }, { session });
+      if (!warehouse) throw new CommandError("تعذر تحديد مخزن رصيد البداية", 409);
+      try { await changeStock(db, session, context.product, warehouse, item.delta, audit, "opening-void"); }
+      catch (error) {
+        if (error instanceof CommandError && /المخزون غير كاف/.test(error.message)) {
+          const blockers = await openingStockBlockingOperations(db, session, context.productId, documentId);
+          throw new CommandError("لا يمكن حذف رصيد البداية لأن جزءًا من الكمية تم التصرف فيه.", 409, {
+            code: "OPENING_STOCK_BLOCKED",
+            productId: context.productId,
+            productName: String(context.product.name ?? ""),
+            consumedOpening: state.consumed,
+            restoredOpening: 0,
+            deficits: [{ warehouseId: item.warehouseId, required: Math.abs(item.delta), available: Number((context.product.stocks as Record<string, number> | undefined)?.[item.warehouseId] ?? 0), missing: Math.max(0, Math.abs(item.delta) - Number((context.product.stocks as Record<string, number> | undefined)?.[item.warehouseId] ?? 0)) }],
+            blockers,
+          });
+        }
+        throw error;
+      }
+    }
+    await db.collection("products").updateOne(
+      { id: context.productId },
+      { $set: { openingStock: 0, openingCost: null, openingWarehouseId: null, updatedAt: new Date() } },
+      { session },
+    );
+    context.product.openingStock = 0;
+    context.product.openingCost = null;
+    context.product.openingWarehouseId = null;
+    await recomputePurchaseCosts(db, session, [context.productId]);
+    const now = new Date();
+    await db.collection("documents").updateOne(
+      { id: documentId, status: "posted" },
+      { $set: { status: "voided", voidedAt: now, updatedAt: now, revision: Number(context.original.revision ?? 0) + 1, openingStockAfter: Number(context.original.openingStockAfter ?? state.total), openingCostAfter: context.original.openingCostAfter ?? state.cost ?? null } },
+      { session },
+    );
+    return documentId;
+  }
   if (type === "product.delete") {
     const productId = text(body.id), product = await db.collection("products").findOne({ id: productId }, { session });
     if (!product) throw new CommandError("المنتج غير موجود", 404);
@@ -466,7 +542,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
       .filter(item => item.missing > 1e-9);
     const consumedBeyondOriginalOpening = context.state.consumed > desiredTotal + 1e-9;
     if (consumedBeyondOriginalOpening || deficits.length) {
-      const blockers = await openingCorrectionBlockingOperations(db, session, context.productId, documentId);
+      const blockers = await openingStockBlockingOperations(db, session, context.productId, documentId);
       throw new CommandError(
         "لا يمكن حذف تصحيح رصيد البداية لأن جزءًا من المخزون الناتج عنه تم التصرف فيه.",
         409,
@@ -812,7 +888,7 @@ export async function POST(request: Request) {const licenseDenied=await requireV
   let type = "unknown";
   try {
     const body = await request.json() as Input; type = text(body.type);
-    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
+    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
     let capability=map[type];
     if(["party-cash.post","party.update","party.delete","party.restore"].includes(type)){
       const party=await getDatabase().collection("parties").findOne({id:text(body.partyId??body.id)});

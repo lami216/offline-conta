@@ -118,3 +118,11 @@ test("obsolete bank balance correction rows expose a safe delete lifecycle", () 
   assert.match(source, /type:"legacy-account-balance-correction\.void"/);
   assert.match(source, /banks\.balance_correct\.delete/);
 });
+
+
+test("legacy party document detail can expose deletion even when the historical party row is unavailable", () => {
+  assert.match(source, /function canVoidLegacyPartyDocument/);
+  assert.match(source, /if\(!party\)return data\.principal\.principalType!=="user"/);
+  assert.match(source, /onVoid=\{canVoidLegacyPartyDocument\(doc\)/);
+  assert.match(source, /function DocumentDetail\(\{document,data,close,onEdit,onVoid/);
+});

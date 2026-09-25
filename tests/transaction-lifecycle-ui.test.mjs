@@ -9,6 +9,7 @@ const expectedCommands = [
   "party-cash.update",
   "party-cash.void",
   "legacy-party-entry.void",
+  "legacy-account-balance-correction.void",
   "transfer.update",
   "transfer.void",
   "adjustment.update",
@@ -109,4 +110,11 @@ test("obsolete settlement offset and legacy payment rows expose a delete action 
   assert.match(source, /document\.kind==="payment"&&!document\.partyCashDirection/);
   assert.match(source, /type:"legacy-party-entry\.void"/);
   assert.match(source, /Boolean\(document\.partyCashDirection\).*customers\.collect\.edit/);
+});
+
+
+test("obsolete bank balance correction rows expose a safe delete lifecycle", () => {
+  assert.match(source, /financialMovementKind\(m\.type\)==="balance-correction"/);
+  assert.match(source, /type:"legacy-account-balance-correction\.void"/);
+  assert.match(source, /banks\.balance_correct\.delete/);
 });

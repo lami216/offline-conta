@@ -8,6 +8,7 @@ const openingHistory = await readFile(new URL("../app/opening-stock-history.tsx"
 const expectedCommands = [
   "party-cash.update",
   "party-cash.void",
+  "legacy-party-document.void",
   "transfer.update",
   "transfer.void",
   "adjustment.update",
@@ -95,6 +96,18 @@ test("bank edit actions release the old fixed 124px action column and allow tran
   assert.match(css,/\.transfer-detail-row,\.adjustment-detail-row\{grid-template-columns:110px minmax\(0,1fr\)\}/);
   assert.match(css,/\.transfer-detail-row>\.party-row-actions,\.adjustment-detail-row>\.party-row-actions\{grid-column:1\/-1;justify-content:flex-end;flex-wrap:wrap;white-space:normal\}/);
   assert.doesNotMatch(css,/transfer-detail-row,\.adjustment-detail-row\{grid-template-columns:110px minmax\(0,1fr\) 124px\}/);
+});
+
+
+test("native legacy party records expose a safe delete lifecycle without re-enabling old creation flows", () => {
+  assert.match(source, /function isNativeLegacyPartyDocument/);
+  assert.match(source, /document\.kind === "settlement"/);
+  assert.match(source, /document\.kind === "offset"/);
+  assert.match(source, /document\.kind === "payment" && !document\.partyCashDirection/);
+  assert.match(source, /\["sale","return","payment","settlement","offset"\]/);
+  assert.match(source, /legacy-party-document\.void/);
+  assert.match(source, /legacyParty\.deleteOldTransaction/);
+  assert.match(source, /onVoid=\{canVoidLegacyPartyDocument\(doc\)/);
 });
 
 test("party payment buttons use complete translated labels instead of concatenating fragments", () => {

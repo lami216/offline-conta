@@ -55,6 +55,7 @@ test("opening-stock history has its own latest-correction edit and delete lifecy
   assert.match(source, /<OpeningStockHistory[\s\S]*run=\{p\.run\}[\s\S]*canEdit=\{canEdit\}[\s\S]*canDelete=\{canDelete\}/);
   assert.match(openingHistory, /"opening-stock-correction\.update"/);
   assert.match(openingHistory, /"opening-stock-correction\.void"/);
+  assert.match(openingHistory, /"opening-stock-initial\.void"/);
   assert.match(openingHistory, /latestCorrectionByProduct/);
   assert.doesNotMatch(openingHistory, /document\.openingCorrection === true/);
   assert.match(openingHistory, /isOpeningStockCorrectionDocument\(document\)/);
@@ -67,7 +68,12 @@ test("opening-stock history has its own latest-correction edit and delete lifecy
   assert.match(openingHistory, /function OpeningCorrectionBlockers/);
   assert.match(openingHistory, /الانتقال إلى المصدر/);
   assert.match(openingHistory, /openSource\(blocker\.documentId\)/);
+  assert.match(openingHistory, /عرض حركات المنتج/);
+  assert.match(openingHistory, /openProductMovements\(payload\.productId\)/);
+  assert.match(source, /inventoryProductSourceRequest/);
+  assert.match(source, /<Warehouses[\s\S]*sourceRequest=\{inventoryProductSourceRequest\}/);
   assert.match(source, /<OpeningStockHistory[\s\S]*openSource=\{p\.openSource\}/);
+  assert.match(source, /<OpeningStockHistory[\s\S]*openProductMovements=\{p\.openProductMovements\}/);
 });
 
 test("product movement view derives the current document effect instead of selecting one audit movement", () => {

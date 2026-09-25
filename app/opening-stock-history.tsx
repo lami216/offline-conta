@@ -35,7 +35,7 @@ const asBlockedPayload = (reason: unknown): OpeningCorrectionBlockedPayload | nu
   return payload as OpeningCorrectionBlockedPayload;
 };
 
-function OpeningCorrectionEditor({ document, data, run, close }: { document: DocumentRecord; data: BootstrapData; run: RunCommand; close: () => void }) {
+function OpeningCorrectionEditor({ document, data, run, close, onBlocked }: { document: DocumentRecord; data: BootstrapData; run: RunCommand; close: () => void; onBlocked: (payload: OpeningCorrectionBlockedPayload) => void }) {
   const productId = correctionProductId(document);
   const product = data.products.find(item => item.id === productId);
   const currentWarehouseId = product?.openingWarehouseId ?? document.destinationWarehouseId ?? document.warehouseId ?? "";
@@ -52,15 +52,20 @@ function OpeningCorrectionEditor({ document, data, run, close }: { document: Doc
     <form className="modal-card account-dialog opening-correction-editor" onSubmit={async event => {
       event.preventDefault();
       if (invalid) return;
-      await run({
-        type: "opening-stock-correction.update",
-        documentId: document.id,
-        newOpeningStock: quantityValue,
-        openingCost: quantityValue > 0 ? costValue : null,
-        openingWarehouseId: warehouseId || null,
-        relocateOpeningStock: Boolean(warehouseId && currentWarehouseId && warehouseId !== currentWarehouseId),
-      }, tr("تم تعديل تصحيح رصيد البداية"));
-      close();
+      try {
+        await run({
+          type: "opening-stock-correction.update",
+          documentId: document.id,
+          newOpeningStock: quantityValue,
+          openingCost: quantityValue > 0 ? costValue : null,
+          openingWarehouseId: warehouseId || null,
+          relocateOpeningStock: Boolean(warehouseId && currentWarehouseId && warehouseId !== currentWarehouseId),
+        }, tr("تم تعديل تصحيح رصيد البداية"));
+        close();
+      } catch (reason) {
+        const payload = asBlockedPayload(reason);
+        if (payload) { close(); onBlocked(payload); }
+      }
     }}>
       <div className="modal-heading"><h3>{tr("تعديل تصحيح رصيد البداية")}</h3><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}>×</button></div>
       <label>{tr("المنتج")}<input readOnly value={product?.name ?? document.lines[0]?.description ?? "—"} /></label>
@@ -163,7 +168,7 @@ export default function OpeningStockHistory({ data, docs, openDoc, openSource, o
         return <tr key={document.id} onClick={() => openDoc(document.id)}><td className="num-cell">{number(index + 1)}</td><td>{formatDateTime(document.occurredAt)}</td><td dir="ltr">{displayDocumentNumber(document)}</td><td className="name-cell">{productNames}</td><td>{correction ? tr("تصحيح رصيد البداية") : tr("رصيد بداية")}</td><td className="num-cell">{delta > 0 ? "+" : ""}{number(delta)}</td><td className="num-cell">{stockBasis}</td><td className="num-cell">{cost}</td><td>{warehouse}</td><td>{document.status === "voided" ? tr("ملغى") : tr("معتمد")}</td><td className="action-cell">{manageable && (canEdit || canDelete) ? <div className="party-row-actions lifecycle-row-actions">{canEdit && <button type="button" className="soft" onClick={event => { event.stopPropagation(); setEditing(document); }}>{tr("تعديل")}</button>}{canDelete && <button type="button" className="danger compact-delete" onClick={event => { event.stopPropagation(); void remove(document); }}>{tr("حذف")}</button>}</div> : initialSource && productId ? <div className="party-row-actions lifecycle-row-actions"><button type="button" className="soft" onClick={event => { event.stopPropagation(); openOpeningSource(productId); }}>{tr("الانتقال إلى المصدر")}</button>{canDelete&&<button type="button" className="danger compact-delete" onClick={event=>{event.stopPropagation();void removeInitial(document)}}>{tr("حذف")}</button>}</div> : "—"}</td></tr>;
       })}{!rows.length && <tr><td colSpan={11}>{tr("لا توجد فواتير ضمن الفترة المحددة")}</td></tr>}</tbody>
     </table></div>
-    {editing && <OpeningCorrectionEditor key={editing.id} document={editing} data={data} run={run} close={() => setEditing(null)} />}
+    {editing && <OpeningCorrectionEditor key={editing.id} document={editing} data={data} run={run} close={() => setEditing(null)} onBlocked={setBlocked} />}
     {blocked && <OpeningCorrectionBlockers payload={blocked} data={data} openSource={openSource} openProductMovements={openProductMovements} close={() => setBlocked(null)} />}
   </section>;
 }

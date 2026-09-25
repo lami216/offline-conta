@@ -241,7 +241,7 @@ test("blocked opening correction delete exposes related source operations and su
   catch (error) { blocked=error; }
   assert.ok(blocked);
   assert.match(blocked.message,/جزءًا من المخزون الناتج عنه تم التصرف فيه/);
-  assert.equal(blocked.details?.code,"OPENING_CORRECTION_BLOCKED");
+  assert.equal(blocked.details?.code,"OPENING_STOCK_BLOCKED");
   assert.deepEqual(blocked.details?.deficits,[{warehouseId:"wh-a",required:8,available:5,missing:3}]);
   assert.equal(blocked.details?.blockers?.length,1);
   assert.deepEqual(
@@ -273,7 +273,7 @@ test("later purchases do not hide opening stock that was already consumed from t
   let blocked;
   try { await command({type:"opening-stock-correction.void",documentId:correction.id}); }
   catch (error) { blocked=error; }
-  assert.equal(blocked?.details?.code,"OPENING_CORRECTION_BLOCKED");
+  assert.equal(blocked?.details?.code,"OPENING_STOCK_BLOCKED");
   assert.equal(blocked?.details?.consumedOpening,5);
   assert.equal(blocked?.details?.restoredOpening,2);
   assert.equal(blocked?.details?.blockers?.some(row=>row.documentId===saleId),true);
@@ -334,4 +334,117 @@ test("legacy additive opening correction becomes fully editable and gains missin
   assert.deepEqual([product.openingStock,product.openingCost,product.stocks["wh-a"]],[11,60,11]);
   assert.deepEqual([legacy.openingCorrection,legacy.title,legacy.openingStockBefore,legacy.openingStockAfter,legacy.openingCostBefore,legacy.openingCostAfter],[true,"تصحيح رصيد البداية",10,11,50,60]);
   assert.deepEqual(movements.map(row=>[row.type,row.quantityDelta]),[["opening",2],["opening-correction-edit",-1]]);
+});
+
+
+test("voiding a transfer restores opening provenance exactly", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  const transferId=await command({type:"transfer.post",fromWarehouseId:"wh-a",toWarehouseId:"wh-b",lines:[{productId,quantity:6}]});
+  let product=await db.collection("products").findOne({id:productId});
+  let state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([state.total,state.remaining,state.consumed,state.allocations["wh-a"],state.allocations["wh-b"]],[10,10,0,4,6]);
+
+  await command({type:"transfer.void",documentId:transferId});
+  product=await db.collection("products").findOne({id:productId});
+  state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([state.total,state.remaining,state.consumed,state.allocations["wh-a"],state.allocations["wh-b"]??0],[10,10,0,10,0]);
+});
+
+test("editing a transfer preserves the exact opening allocation and voiding it restores the source warehouse", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  const transferId=await command({type:"transfer.post",fromWarehouseId:"wh-a",toWarehouseId:"wh-b",lines:[{productId,quantity:6}]});
+  await command({type:"transfer.update",documentId:transferId,fromWarehouseId:"wh-a",toWarehouseId:"wh-b",lines:[{productId,quantity:3}]});
+  let product=await db.collection("products").findOne({id:productId});
+  let state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([state.total,state.remaining,state.consumed,state.allocations["wh-a"],state.allocations["wh-b"]],[10,10,0,7,3]);
+
+  await command({type:"transfer.void",documentId:transferId});
+  product=await db.collection("products").findOne({id:productId});
+  state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([state.remaining,state.consumed,state.allocations["wh-a"],state.allocations["wh-b"]??0],[10,0,10,0]);
+});
+
+test("positive inventory correction and its void never consume opening provenance", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  const adjustmentId=await command({type:"adjustment.post",warehouseId:"wh-a",reason:"count up",lines:[{productId,actualQuantity:15}]});
+  let product=await db.collection("products").findOne({id:productId});
+  let state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([product.stocks["wh-a"],state.remaining,state.consumed],[15,10,0]);
+
+  await command({type:"adjustment.void",documentId:adjustmentId});
+  product=await db.collection("products").findOne({id:productId});
+  state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([product.stocks["wh-a"],state.remaining,state.consumed],[10,10,0]);
+});
+
+test("negative inventory correction blocks opening deletion until that correction is voided", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  const adjustmentId=await command({type:"adjustment.post",warehouseId:"wh-a",reason:"count down",lines:[{productId,actualQuantity:6}]});
+  let product=await db.collection("products").findOne({id:productId});
+  let state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([state.remaining,state.consumed],[6,4]);
+
+  let blocked;
+  try { await command({type:"opening-stock-initial.void",productId}); } catch(error) { blocked=error; }
+  assert.equal(blocked?.details?.code,"OPENING_STOCK_BLOCKED");
+  assert.equal(blocked?.details?.reason,"consumed");
+  assert.equal(blocked?.details?.blockers?.some(row=>row.documentId===adjustmentId),true);
+
+  await command({type:"adjustment.void",documentId:adjustmentId});
+  product=await db.collection("products").findOne({id:productId});
+  state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([state.remaining,state.consumed],[10,0]);
+
+  await command({type:"opening-stock-initial.void",productId});
+  product=await db.collection("products").findOne({id:productId});
+  state=await deriveOpeningStockState(db,undefined,product);
+  assert.deepEqual([product.openingStock,product.openingCost,product.openingWarehouseId,product.stocks["wh-a"],state.total,state.remaining,state.consumed],[0,null,null,0,0,0,0]);
+});
+
+test("initial opening deletion identifies the sale that consumed it and succeeds after sale void", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  const opening=await db.collection("documents").findOne({kind:"adjustment",title:"رصيد بداية",status:"posted","lines.productId":productId});
+  const saleId=await command({type:"sale.post",warehouseId:"wh-a",partyId:"customer",paymentMethod:"note",lines:[{productId,quantity:3,piecePrice:100}]});
+
+  let blocked;
+  try { await command({type:"opening-stock-initial.void",productId}); } catch(error) { blocked=error; }
+  assert.equal(blocked?.details?.code,"OPENING_STOCK_BLOCKED");
+  assert.equal(blocked?.details?.reason,"consumed");
+  assert.equal(blocked?.details?.consumedOpening,3);
+  assert.deepEqual(blocked?.details?.blockers?.map(row=>[row.documentId,row.kind,row.status]),[[saleId,"sale","posted"]]);
+
+  await command({type:"sale.void",documentId:saleId});
+  await command({type:"opening-stock-initial.void",productId});
+  const product=await db.collection("products").findOne({id:productId});
+  const openingAfter=await db.collection("documents").findOne({id:opening.id});
+  const deleteRows=await db.collection("stockMovements").find({documentId:opening.id,type:"opening-void"}).toArray();
+  assert.deepEqual([product.openingStock,product.openingCost,product.openingWarehouseId,product.stocks["wh-a"]],[0,null,null,0]);
+  assert.equal(openingAfter.status,"voided");
+  assert.deepEqual(deleteRows.map(row=>[row.warehouseId,row.quantityDelta]),[["wh-a",-10]]);
+});
+
+test("initial opening deletion removes opening stock from every warehouse when it was only transferred", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  const transferId=await command({type:"transfer.post",fromWarehouseId:"wh-a",toWarehouseId:"wh-b",lines:[{productId,quantity:4}]});
+  await command({type:"opening-stock-initial.void",productId});
+  const product=await db.collection("products").findOne({id:productId});
+  const transfer=await db.collection("documents").findOne({id:transferId});
+  assert.deepEqual([product.openingStock,product.stocks["wh-a"],product.stocks["wh-b"],transfer.status],[0,0,0,"posted"]);
+});
+
+test("initial opening deletion requires active opening corrections to be unwound first", async () => {
+  const productId=await createOpened(10,50,"wh-a");
+  await updateOpening(productId,12,55,"wh-a");
+  const correction=await db.collection("documents").findOne({openingCorrection:true,status:"posted"});
+
+  let blocked;
+  try { await command({type:"opening-stock-initial.void",productId}); } catch(error) { blocked=error; }
+  assert.equal(blocked?.details?.code,"OPENING_STOCK_BLOCKED");
+  assert.equal(blocked?.details?.reason,"active-corrections");
+  assert.equal(blocked?.details?.blockers?.some(row=>row.documentId===correction.id),true);
+
+  await command({type:"opening-stock-correction.void",documentId:correction.id});
+  await command({type:"opening-stock-initial.void",productId});
+  const product=await db.collection("products").findOne({id:productId});
+  assert.deepEqual([product.openingStock,product.stocks["wh-a"]],[0,0]);
 });

@@ -2617,6 +2617,9 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 .opening-correction-blocker-table .erp-table th:nth-child(6){width:9%}
 .opening-correction-blocker-table .erp-table th:nth-child(7){width:14%}
 .opening-correction-blocker-table .action-cell button{white-space:nowrap}
+.opening-stock-state-line{display:flex;align-items:center;justify-content:space-between;gap:7px;flex-wrap:wrap}
+.opening-stock-state-line small{flex:1;min-width:220px}
+.opening-stock-state-line .soft{min-height:28px;height:28px;padding:3px 8px;white-space:nowrap}
 
 /* Keep stock-operation search focused and give histories a little more room. */
 @media (min-width: 1051px) {

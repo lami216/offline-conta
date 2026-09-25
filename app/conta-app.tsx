@@ -73,6 +73,7 @@ import { tr, type MessageKey } from "./i18n/messages";
 import ProductCategoryDialog from "./product-category-dialog";
 import { translateApiError } from "./i18n/api-errors";
 import OpeningStockHistory from "./opening-stock-history";
+import OpeningStockBlockers, { asOpeningStockBlockedPayload, type OpeningStockBlockedPayload } from "./opening-stock-blockers";
 import LowStockWarningDialog from "./low-stock-warning-dialog";
 import { isOpeningStockCorrectionDocument, isOpeningStockDocument, optionalFiniteNumber, periodStockMovementQuantity, stockMovementMatchesFilter, stockMovementPresentationType } from "./stock-movement";
 import { clearStockOperationDraft } from "./stock-operation-draft";
@@ -235,6 +236,7 @@ function ContaAppContent() {
     [transferEditRequest, setTransferEditRequest] = useState<string | null>(null),
     [adjustmentEditRequest, setAdjustmentEditRequest] = useState<string | null>(null),
     [productSourceRequest, setProductSourceRequest] = useState<string | null>(null),
+    [inventorySourceRequest, setInventorySourceRequest] = useState<string | null>(null),
     [bankSourceRequest, setBankSourceRequest] = useState<BankSourceRequest | null>(null),
     [reportSourceRequest, setReportSourceRequest] = useState<{reportType:ReportType;period:CommittedPeriod}|null>(null),
     [autoPrintId, setAutoPrintId] = useState<string | null>(null),
@@ -285,7 +287,7 @@ function ContaAppContent() {
     if (!canView(id)) return false;
     if ((id !== view || options.replaceEditor) && !await prepareEditorReplacement()) return false;
     if (id !== "adjustments") setAdjustmentPrefill(null);
-    setExpenseEditRequest(null); setPartyPaymentEditRequest(null); setTransferEditRequest(null); setAdjustmentEditRequest(null); setBankSourceRequest(null); setReportSourceRequest(null);
+    setExpenseEditRequest(null); setPartyPaymentEditRequest(null); setTransferEditRequest(null); setAdjustmentEditRequest(null); setInventorySourceRequest(null); setBankSourceRequest(null); setReportSourceRequest(null);
     setView(id); setDoc(null); setPartyDetail(null); setMenu(false); setWarehouseMenu(false); setInvoiceMenu(false); setReportMenu(false); setPartyMenu(false); setBankMenu(false); setSettingsMenu(false);
     return true;
   };
@@ -340,7 +342,7 @@ function ContaAppContent() {
   async function run(body: Record<string, unknown>, message: string, afterSuccess?: () => void) {
     const fingerprint=JSON.stringify(body), existing=inFlightCommands.current.get(fingerprint);
     if(existing)return existing as ReturnType<RunCommand>;
-    const operation=(async()=>{setError("");const r=await fetch("/api/command",{method:"POST",headers:{"content-type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)}),j=await r.json();if(!r.ok){const apiMessage=String(j.error??"تعذر تنفيذ العملية");if(j.code!=="OPENING_CORRECTION_BLOCKED")setError(translateApiError(locale,apiMessage));throw Object.assign(new Error(apiMessage),{payload:j,status:r.status})}setNotice(message);await finishSuccessfulCommand(afterSuccess,()=>reload({blocking:false}));return j.disposition?j:j.id as string})();
+    const operation=(async()=>{setError("");const r=await fetch("/api/command",{method:"POST",headers:{"content-type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)}),j=await r.json();if(!r.ok){const apiMessage=String(j.error??"تعذر تنفيذ العملية");if(j.code!=="OPENING_STOCK_BLOCKED")setError(translateApiError(locale,apiMessage));throw Object.assign(new Error(apiMessage),{payload:j,status:r.status})}setNotice(message);await finishSuccessfulCommand(afterSuccess,()=>reload({blocking:false}));return j.disposition?j:j.id as string})();
     inFlightCommands.current.set(fingerprint,operation);
     try{return await operation as Awaited<ReturnType<RunCommand>>}finally{inFlightCommands.current.delete(fingerprint)}
   }
@@ -402,6 +404,10 @@ function ContaAppContent() {
   const openOpeningStockSource = async (productId: string) => {
     if(!productId)return;
     if(await navigate("products"))setProductSourceRequest(productId);
+  };
+  const openProductMovements = async (productId: string) => {
+    if(!productId)return;
+    if(await navigate("warehouses"))setInventorySourceRequest(productId);
   };
   useEffect(() => {
     if (!autoPrintId || !data.documents.some(document => document.id === autoPrintId)) return;

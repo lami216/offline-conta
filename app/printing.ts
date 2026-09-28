@@ -1,3 +1,5 @@
+import { buildXlsx, bytesToBase64, downloadXlsx, exportRowsFromTarget } from "./print-export";
+
 export type PrintProfile = "a4" | "thermal80" | "thermal58";
 
 export type PrinterInfo = {
@@ -14,12 +16,16 @@ export type PrintSettings = {
 };
 
 export type PrintResult = { ok: true } | { ok: false; error: string };
+export type ExportResult = { ok: true; path?: string } | { ok: false; canceled?: boolean; error?: string };
+export type PrintOutputAction = "print" | "pdf" | "excel";
 
 type PrintingBridge = {
   list: () => Promise<PrinterInfo[]>;
   getSettings: () => Promise<PrintSettings>;
   saveSettings: (settings: PrintSettings) => Promise<PrintSettings>;
   print: (options: PrintSettings & { silent: boolean; paperHeightMicrons?: number }) => Promise<PrintResult>;
+  exportPdf: (options: { filename: string }) => Promise<ExportResult>;
+  saveExport: (options: { filename: string; base64: string }) => Promise<ExportResult>;
 };
 
 declare global {
@@ -154,6 +160,36 @@ async function browserPrintFallback() {
   });
 }
 
+async function exportPreparedTarget(action: Exclude<PrintOutputAction, "print">, modeClass: string, targetSelector: string, filename: string) {
+  const root = document.documentElement;
+  const previousProfile = root.dataset.printProfile;
+  root.dataset.printProfile = "a4";
+  root.classList.add(modeClass);
+  try {
+    await waitForPrintAssets(targetSelector);
+    const target = document.querySelector<HTMLElement>(targetSelector);
+    if (!target) throw new Error("print-target-not-ready");
+    if (action === "pdf") {
+      if (!window.alkarnaPrinting?.exportPdf) throw new Error("pdf-export-unavailable");
+      const result = await window.alkarnaPrinting.exportPdf({ filename });
+      if (!result.ok && !result.canceled) throw new Error(result.error || "pdf-export-failed");
+      return;
+    }
+    const bytes = buildXlsx(exportRowsFromTarget(target));
+    const safeName = filename.toLowerCase().endsWith(".xlsx") ? filename : `${filename}.xlsx`;
+    if (window.alkarnaPrinting?.saveExport) {
+      const result = await window.alkarnaPrinting.saveExport({ filename: safeName, base64: bytesToBase64(bytes) });
+      if (!result.ok && !result.canceled) throw new Error(result.error || "excel-export-failed");
+    } else {
+      downloadXlsx(bytes, safeName);
+    }
+  } finally {
+    root.classList.remove(modeClass);
+    if (previousProfile) root.dataset.printProfile = previousProfile;
+    else delete root.dataset.printProfile;
+  }
+}
+
 async function printPreparedTarget(settings: PrintSettings, silent: boolean, modeClass: string, targetSelector: string): Promise<void> {
   const normalized = normalizePrintSettings(settings);
   const root = document.documentElement;
@@ -200,4 +236,19 @@ export async function printPreparedWorkspace(): Promise<void> {
   const preferred = await loadPrintSettings();
   const settings: PrintSettings = { deviceName: preferred.profile === "a4" ? preferred.deviceName : null, profile: "a4" };
   await printPreparedTarget(settings, false, "print-workspace-mode", ".workspace-print-portal");
+}
+
+export async function outputPreparedDocument(action: PrintOutputAction, filename: string): Promise<void> {
+  if (action === "print") return printPreparedDocument(await loadPrintSettings(), false);
+  await exportPreparedTarget(action, "print-document-mode", ".document-print-portal", filename);
+}
+
+export async function outputPreparedReport(action: PrintOutputAction, filename: string): Promise<void> {
+  if (action === "print") return printPreparedReport();
+  await exportPreparedTarget(action, "print-report-mode", ".report-print-portal", filename);
+}
+
+export async function outputPreparedWorkspace(action: PrintOutputAction, filename: string): Promise<void> {
+  if (action === "print") return printPreparedWorkspace();
+  await exportPreparedTarget(action, "print-workspace-mode", ".workspace-print-portal", filename);
 }

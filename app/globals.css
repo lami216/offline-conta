@@ -1938,7 +1938,6 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 .report-summary-area{display:grid;gap:3px;break-inside:avoid}.report-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:2px solid var(--grid-line);background:#fff}.report-kpi{display:grid;gap:0;min-height:44px;padding:3px 10px}.report-kpi+.report-kpi{border-inline-start:1px solid var(--grid-line)}.report-kpi small{color:var(--text-muted);font-size:11px;font-weight:900;white-space:normal}.report-kpi-value{display:flex;align-items:baseline;gap:6px}.report-kpi b{direction:ltr;color:#334155;font-size:18px;font-weight:900;font-variant-numeric:tabular-nums}.report-kpi em{color:var(--text-muted);font-size:9px;font-style:normal;font-weight:900}.report-kpi b.summary-positive{color:#0a9f47}.report-kpi b.summary-negative{color:#c62828}.report-kpi b.summary-neutral{color:#334155}.report-summary-warning{margin:0;padding:3px 8px;border-inline-start:3px solid #b7791f;color:#744210;background:#fff8e1;font-size:10px;font-weight:800}
 .report-body{position:relative;display:grid;grid-template-rows:minmax(0,1fr);min-height:0;overflow:hidden;padding-block-end:7px}.report-body>.erp-table-wrap{height:100%}.report-table{min-width:900px}.report-table .serial{width:44px}.report-table .date-cell{overflow:visible;text-overflow:clip}.report-table tbody tr:has(td):hover{cursor:pointer}.report-loading{position:absolute;inset:0;z-index:4;display:grid;place-items:center;background:#ffffffcc;font-weight:800}.report-error{margin:0}.report-print-portal{display:none}
 @media print{
- @page{size:A4 portrait;margin:10mm 12mm}
  html,body,.app-shell,.app-shell>main,.content,.content>section{height:auto!important;overflow:visible!important}
  .sidebar,.page-bar,.no-print,.toast,.report-loading{display:none!important}
  .app-shell{display:block}
@@ -2046,7 +2045,7 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 .official-record-meta{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;padding:15px 0}.official-record-meta span{display:flex;justify-content:space-between;gap:10px;padding:7px 2px;border-bottom:1px dotted #aaa}.official-record-meta small{color:#555}.official-record-table-wrap{overflow-x:auto}.official-record-table{width:100%;border-collapse:collapse}.official-record-table th,.official-record-table td{padding:8px;border:1px solid #888;text-align:center}.official-record-table td:nth-child(2){text-align:start}.official-record-table th{background:#f3f4f5}
 .official-record-totals{display:grid;justify-content:end;min-width:250px;margin:20px 0;break-inside:avoid}.official-record-totals span{display:flex;justify-content:space-between;gap:50px;padding:7px;border-bottom:1px solid #888}.official-record-totals.positive strong{color:#087443}.official-record-totals.negative strong{color:#a11b1b}.official-record-sheet footer{margin-top:30px;padding-top:8px;border-top:1px solid #aaa;color:#666;font-size:10px;text-align:center}
 .official-document-scroll>.panel{width:min(800px,100%);margin:10px auto;background:#fff}.branding-settings{display:grid;gap:8px}.branding-fields{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.branding-fields label{display:grid;gap:3px}.branding-preview{display:grid;justify-items:center;gap:4px;padding:12px;border:1px solid #aaa;background:#fff}.branding-preview strong{line-height:1.2}.branding-settings>.primary{justify-self:start}
-@page invoice{size:A4 portrait;margin:10mm 12mm}@page report{size:A4 portrait;margin:10mm 12mm}.reports-workspace{page:report}.report-print-portal{page:report}
+@page invoice{size:A4 portrait;margin:10mm 12mm}@page report{size:A4 portrait;margin:10mm 12mm}@page workspace{size:A4 portrait;margin:10mm 12mm}.reports-workspace{page:report}.report-print-portal{page:report}.warehouse-workspace,.product-movement-panel{page:workspace}
 @media(max-width:650px){.official-document-scroll{padding:6px}.official-record-sheet{padding:18px 12px}.official-record-meta,.branding-fields{grid-template-columns:1fr}}
 @media print{
  html.print-document-mode body>*{display:none!important}
@@ -2124,7 +2123,6 @@ input, select, .combobox-trigger { border-color: #9faab8; }
   .overview-workspace .print-only { display: block; }
   .overview-workspace .bank-detail { max-height: none; overflow: visible; }
   body:has(.overview-workspace) { width: auto; }
-  @page { size: A4 portrait; margin: 10mm 12mm; }
 }
 
 /* Focused density: party account workspace. */

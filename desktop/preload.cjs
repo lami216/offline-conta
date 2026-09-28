@@ -6,4 +6,6 @@ contextBridge.exposeInMainWorld('alkarnaPrinting', {
   getSettings: () => ipcRenderer.invoke('alkarna:printing:get-settings'),
   saveSettings: settings => ipcRenderer.invoke('alkarna:printing:set-settings', settings),
   print: options => ipcRenderer.invoke('alkarna:printing:print', options),
+  exportPdf: options => ipcRenderer.invoke('alkarna:printing:export-pdf', options),
+  saveExport: options => ipcRenderer.invoke('alkarna:printing:save-export', options),
 });

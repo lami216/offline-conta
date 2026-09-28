@@ -14,9 +14,9 @@ test("A4 thumbnail is top-anchored and readable while invoice header supports lo
 
 test("report printing is portrait, isolated from pagination, and never prints the loading overlay",()=>{
   assert.match(main,/pageSize:'A4',landscape:false/);
-  assert.match(css,/@page report\{size:A4 portrait;margin:10mm 12mm\}/);
-  assert.match(css,/html\.print-report-mode body>\.report-print-portal\{display:block!important\}/);
-  assert.match(css,/\.sidebar,\.page-bar,\.no-print,\.toast,\.report-loading\{display:none!important\}/);
+  assert.match(globals,/@page report\{size:A4 portrait;margin:10mm 12mm\}/);
+  assert.match(globals,/html\.print-report-mode body>\.report-print-portal\{display:block!important\}/);
+  assert.match(globals,/\.sidebar,\.page-bar,\.no-print,\.toast,\.report-loading\{display:none!important\}/);
   assert.match(app,/const printable=await fetchReport\(committedPeriod,1,sortState,true\);setPrintResult\(printable\);await printPreparedReport\(\)/);
   assert.match(app,/printResult&&createPortal\(<div className="report-print-portal"/);
   assert.doesNotMatch(app,/setResult\(printable\)[\s\S]{0,220}window\.print\(\)/);

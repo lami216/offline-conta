@@ -11,3 +11,20 @@ test("print profile thumbnails show whole sheets and open a large preview",()=>{
 test("thermal jobs use real roll widths with measured height and safe fallback",()=>{assert.match(printing,/thermalPaperHeightMicrons/);assert.match(printing,/paperHeightMicrons/);assert.match(main,/thermal80:80000/);assert.match(main,/thermal58:58000/);assert.match(main,/pageSize:\{width:thermalWidth,height:thermalHeight\}/);assert.match(main,/retry print profile=/)});
 
 test("A4 thumbnail is top-anchored and readable while invoice header supports logo plus phones",()=>{assert.match(css,/profile-a4[\s\S]*top:6px!important[\s\S]*scale\(\.165\)/);assert.match(css,/profile-a4[\s\S]*transform-origin:top center!important/);assert.match(app,/official-record-logo/);assert.match(app,/official-brand-phone/);assert.match(app,/storeLogoDataUrl/);assert.match(app,/أرقام الهواتف/)});
+
+test("report printing is portrait, isolated from pagination, and never prints the loading overlay",()=>{
+  assert.match(main,/pageSize:'A4',landscape:false/);
+  assert.match(css,/@page report\{size:A4 portrait;margin:10mm 12mm\}/);
+  assert.match(css,/html\.print-report-mode body>\.report-print-portal\{display:block!important\}/);
+  assert.match(css,/\.sidebar,\.page-bar,\.no-print,\.toast,\.report-loading\{display:none!important\}/);
+  assert.match(app,/const printable=await fetchReport\(committedPeriod,1,sortState,true\);setPrintResult\(printable\);await printPreparedReport\(\)/);
+  assert.match(app,/printResult&&createPortal\(<div className="report-print-portal"/);
+  assert.doesNotMatch(app,/setResult\(printable\)[\s\S]{0,220}window\.print\(\)/);
+});
+
+test("inventory and movement printing use the shared A4 lifecycle",()=>{
+  assert.match(printing,/export async function printCurrentPageA4\(\)/);
+  assert.match(app,/طباعة الجرد[\s\S]{0,220}printCurrentPageA4|printCurrentPageA4\(\)[\s\S]{0,220}طباعة الجرد/);
+  assert.equal((app.match(/printCurrentPageA4\(\)/g)??[]).length>=3,true);
+});
+

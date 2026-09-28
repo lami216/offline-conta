@@ -1,7 +1,7 @@
 import test from "node:test";import assert from "node:assert/strict";import {readFileSync} from "node:fs";
-const app=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),printing=readFileSync(new URL("../app/printing.ts",import.meta.url),"utf8"),css=readFileSync(new URL("../app/printing.css",import.meta.url),"utf8"),globals=readFileSync(new URL("../app/globals.css",import.meta.url),"utf8"),main=readFileSync(new URL("../desktop/main.cjs",import.meta.url),"utf8"),preload=readFileSync(new URL("../desktop/preload.cjs",import.meta.url),"utf8"),pkg=JSON.parse(readFileSync(new URL("../package.json",import.meta.url),"utf8"));
+const app=readFileSync(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),printing=readFileSync(new URL("../app/printing.ts",import.meta.url),"utf8"),exporter=readFileSync(new URL("../app/print-export.ts",import.meta.url),"utf8"),css=readFileSync(new URL("../app/printing.css",import.meta.url),"utf8"),globals=readFileSync(new URL("../app/globals.css",import.meta.url),"utf8"),main=readFileSync(new URL("../desktop/main.cjs",import.meta.url),"utf8"),preload=readFileSync(new URL("../desktop/preload.cjs",import.meta.url),"utf8"),pkg=JSON.parse(readFileSync(new URL("../package.json",import.meta.url),"utf8"));
 test("printing supports one invoice source with three profiles",()=>{for(const profile of ["a4","thermal80","thermal58"])assert.match(printing,new RegExp(`\\"${profile}\\"`));assert.match(app,/function OfficialRecordSheet/);assert.match(app,/data-label=\{presentation\.columns/);assert.match(css,/data-print-profile="thermal80"/);assert.match(css,/data-print-profile="thermal58"/);assert.match(css,/data-print-profile="a4"/)});
-test("desktop printing bridge is narrow and packaged",()=>{for(const channel of ["alkarna:printing:list","alkarna:printing:get-settings","alkarna:printing:set-settings","alkarna:printing:print"]){assert.ok(main.includes(channel));assert.ok(preload.includes(channel))}assert.match(main,/getPrintersAsync/);assert.match(main,/event\.sender\.print/);assert.match(main,/silent,printBackground:true/);assert.equal(pkg.build.files.includes("desktop/preload.cjs"),true);assert.doesNotMatch(preload,/require\(['\"](?:node:fs|child_process|node:child_process)/)});
+test("desktop printing bridge is narrow and packaged",()=>{for(const channel of ["alkarna:printing:list","alkarna:printing:get-settings","alkarna:printing:set-settings","alkarna:printing:print","alkarna:printing:export-pdf","alkarna:printing:save-export"]){assert.ok(main.includes(channel));assert.ok(preload.includes(channel))}assert.match(main,/getPrintersAsync/);assert.match(main,/event\.sender\.print/);assert.match(main,/event\.sender\.printToPDF/);assert.match(main,/preferCSSPageSize:true/);assert.match(main,/silent,printBackground:true/);assert.equal(pkg.build.files.includes("desktop/preload.cjs"),true);assert.doesNotMatch(preload,/require\(['\"](?:node:fs|child_process|node:child_process)/)});
 test("automatic printing no longer removes print mode immediately",()=>{assert.match(app,/printPreparedDocument\(await loadPrintSettings\(\), true\)/);assert.doesNotMatch(app,/window\.print\(\); root\.classList\.remove\("print-document-mode"\)/);assert.match(printing,/document\.fonts\?\.ready/);assert.match(printing,/afterprint/)});
 test("general settings exposes printer, three previews and test print",()=>{assert.match(app,/function PrintSettingsPanel/);assert.match(app,/PRINT_PROFILES\.map/);assert.match(app,/PrintSettingsPanel branding=\{branding\}/);assert.match(app,/print-profile-preview/);assert.match(app,/printPreparedDocument\(settings,false\)/)});
 test("printer choice is device local and defaults to A4 Windows printer",()=>{assert.match(main,/printing-settings\.json/);assert.match(main,/DEFAULT_PRINT_SETTINGS=\{deviceName:null,profile:'a4'\}/);assert.match(printing,/DEFAULT_PRINT_SETTINGS: PrintSettings = \{ deviceName: null, profile: "a4" \}/)});
@@ -17,7 +17,7 @@ test("report printing is portrait, isolated from pagination, and never prints th
   assert.match(globals,/@page report\{size:A4 portrait;margin:10mm 12mm\}/);
   assert.match(globals,/html\.print-report-mode body>\.report-print-portal\{display:block!important\}/);
   assert.match(globals,/\.sidebar,\.page-bar,\.no-print,\.toast,\.report-loading\{display:none!important\}/);
-  assert.match(app,/const printable=await fetchReport\(committedPeriod,1,sortState,true\);setPrintResult\(printable\);await printPreparedReport\(\)/);
+  assert.match(app,/const printable=await fetchReport\(committedPeriod,1,sortState,true\);setPrintResult\(printable\);await outputPreparedReport\(action,filename\)/);
   assert.match(app,/printResult&&createPortal\(<div className="report-print-portal"/);
   assert.doesNotMatch(app,/setResult\(printable\)[\s\S]{0,220}window\.print\(\)/);
 });
@@ -29,9 +29,31 @@ test("inventory, movement, and overview printing use dedicated A4 portals",()=>{
   assert.match(app,/className="workspace-print-portal inventory-print-portal"/);
   assert.match(app,/className="workspace-print-portal movement-print-portal"/);
   assert.match(app,/className="workspace-print-portal overview-print-portal"/);
-  assert.equal((app.match(/await printPreparedWorkspace\(\)/g)??[]).length>=3,true);
+  assert.equal((app.match(/await outputPreparedWorkspace\(action,/g)??[]).length>=3,true);
   assert.match(globals,/html\.print-workspace-mode body>\.workspace-print-portal\{display:block!important\}/);
   assert.match(globals,/\.workspace-print-table thead\{display:table-header-group!important\}/);
   assert.match(globals,/\.inventory-print-table\{font-size:6\.65pt!important/);
 });
 
+
+test("print buttons open printer PDF Excel choices while automatic invoice printing stays direct",()=>{
+  assert.match(app,/function PrintOutputMenu/);
+  assert.match(app,/choose\("print"\)/);
+  assert.match(app,/choose\("pdf"\)/);
+  assert.match(app,/choose\("excel"\)/);
+  assert.match(app,/outputPreparedDocument\(action,/);
+  assert.match(app,/outputPreparedReport\(action,/);
+  assert.match(app,/outputPreparedWorkspace\(action,/);
+  assert.match(app,/printPreparedDocument\(await loadPrintSettings\(\), true\)/);
+  assert.doesNotMatch(app,/function printDocument\(\)/);
+});
+
+test("PDF export bypasses printers and XLSX is generated by the app",()=>{
+  assert.match(printing,/exportPdf\(\{ filename \}\)/);
+  assert.match(printing,/buildXlsx\(exportRowsFromTarget\(target\)\)/);
+  assert.match(exporter,/application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
+  assert.match(exporter,/xl\/worksheets\/sheet1\.xml/);
+  assert.match(exporter,/rightToLeft="1"/);
+  assert.match(main,/showSaveDialog/);
+  assert.match(main,/Buffer\.from\(base64,'base64'\)/);
+});

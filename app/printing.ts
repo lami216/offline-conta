@@ -59,9 +59,15 @@ export async function savePrintSettings(settings: PrintSettings): Promise<PrintS
 
 const nextFrame = () => new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()));
 
-async function waitForPrintAssets() {
+async function waitForPrintAssets(targetSelector: string) {
+  // React portals are committed asynchronously. Give the target two layout frames
+  // before resolving fonts/images so Chromium snapshots the final printable DOM.
+  await nextFrame();
+  await nextFrame();
+  const target = document.querySelector<HTMLElement>(targetSelector);
+  if (!target) throw new Error("print-target-not-ready");
   try { await document.fonts?.ready; } catch {}
-  const images = [...document.querySelectorAll<HTMLImageElement>(".document-print-portal img")];
+  const images = [...target.querySelectorAll<HTMLImageElement>("img")];
   await Promise.all(images.map(image => image.complete ? Promise.resolve() : new Promise<void>(resolve => {
     const done = () => resolve();
     image.addEventListener("load", done, { once: true });
@@ -148,29 +154,50 @@ async function browserPrintFallback() {
   });
 }
 
-/**
- * Prints the already-rendered `.document-print-portal` using one shared lifecycle.
- * Automatic printing may be silent in Electron; browser fallback always uses the
- * browser/system dialog. Callers must save business data before invoking this.
- */
-export async function printPreparedDocument(settings: PrintSettings, silent: boolean): Promise<void> {
+async function printPreparedTarget(settings: PrintSettings, silent: boolean, modeClass: string, targetSelector: string): Promise<void> {
   const normalized = normalizePrintSettings(settings);
   const root = document.documentElement;
   const previousProfile = root.dataset.printProfile;
   root.dataset.printProfile = normalized.profile;
-  root.classList.add("print-document-mode");
+  root.classList.add(modeClass);
   try {
-    await waitForPrintAssets();
+    await waitForPrintAssets(targetSelector);
     if (window.alkarnaPrinting) {
-      const paperHeightMicrons = thermalPaperHeightMicrons(normalized.profile);
+      const paperHeightMicrons = modeClass === "print-document-mode" ? thermalPaperHeightMicrons(normalized.profile) : undefined;
       const result = await window.alkarnaPrinting.print({ ...normalized, silent, ...(paperHeightMicrons ? { paperHeightMicrons } : {}) });
       if (!result.ok) throw new Error(result.error || "print-failed");
     } else {
       await browserPrintFallback();
     }
   } finally {
-    root.classList.remove("print-document-mode");
+    root.classList.remove(modeClass);
     if (previousProfile) root.dataset.printProfile = previousProfile;
     else delete root.dataset.printProfile;
   }
+}
+
+/**
+ * Prints the already-rendered `.document-print-portal` using one shared lifecycle.
+ * Automatic printing may be silent in Electron; browser fallback always uses the
+ * browser/system dialog. Callers must save business data before invoking this.
+ */
+export async function printPreparedDocument(settings: PrintSettings, silent: boolean): Promise<void> {
+  await printPreparedTarget(settings, silent, "print-document-mode", ".document-print-portal");
+}
+
+/**
+ * Reports are always A4 portrait. Preserve an explicitly configured A4 printer,
+ * but do not route a report to a thermal printer merely because receipts use one.
+ */
+export async function printPreparedReport(): Promise<void> {
+  const preferred = await loadPrintSettings();
+  const settings: PrintSettings = { deviceName: preferred.profile === "a4" ? preferred.deviceName : null, profile: "a4" };
+  await printPreparedTarget(settings, false, "print-report-mode", ".report-print-portal");
+}
+
+/** Print an already-visible workspace (inventory, overview, movement details) as A4. */
+export async function printCurrentPageA4(): Promise<void> {
+  const preferred = await loadPrintSettings();
+  const settings: PrintSettings = { deviceName: preferred.profile === "a4" ? preferred.deviceName : null, profile: "a4" };
+  await printPreparedTarget(settings, false, "print-a4-page-mode", "body");
 }

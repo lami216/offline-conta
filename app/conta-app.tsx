@@ -75,7 +75,7 @@ import { translateApiError } from "./i18n/api-errors";
 import OpeningStockHistory from "./opening-stock-history";
 import { isOpeningStockCorrectionDocument, isOpeningStockDocument, optionalFiniteNumber, periodStockMovementQuantity, stockMovementMatchesFilter } from "./stock-movement";
 import { adjustmentActualQuantity, canUseCapability, documentProductQuantityEffect } from "./transaction-ui";
-import { DEFAULT_PRINT_SETTINGS, PRINT_PROFILES, desktopPrintingAvailable, listPrinters, loadPrintSettings, printPreparedDocument, savePrintSettings, type PrintProfile, type PrintSettings, type PrinterInfo } from "./printing";
+import { DEFAULT_PRINT_SETTINGS, PRINT_PROFILES, desktopPrintingAvailable, listPrinters, loadPrintSettings, printCurrentPageA4, printPreparedDocument, printPreparedReport, savePrintSettings, type PrintProfile, type PrintSettings, type PrinterInfo } from "./printing";
 
 type View =
   | "pos"

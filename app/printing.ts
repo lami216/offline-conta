@@ -195,9 +195,9 @@ export async function printPreparedReport(): Promise<void> {
   await printPreparedTarget(settings, false, "print-report-mode", ".report-print-portal");
 }
 
-/** Print an already-visible workspace (inventory, overview, movement details) as A4. */
-export async function printCurrentPageA4(): Promise<void> {
+/** Print a dedicated A4 workspace portal (inventory, movement details, overview). */
+export async function printPreparedWorkspace(): Promise<void> {
   const preferred = await loadPrintSettings();
   const settings: PrintSettings = { deviceName: preferred.profile === "a4" ? preferred.deviceName : null, profile: "a4" };
-  await printPreparedTarget(settings, false, "print-a4-page-mode", "body");
+  await printPreparedTarget(settings, false, "print-workspace-mode", ".workspace-print-portal");
 }

@@ -15,6 +15,8 @@ const normalizePrintSettings=value=>{const source=value&&typeof value==='object'
 const printingSettingsPath=()=>join(app.getPath('userData'),'printing-settings.json');
 async function getPrintingSettings(){try{return normalizePrintSettings(JSON.parse(await readFile(printingSettingsPath(),'utf8')))}catch{return{...DEFAULT_PRINT_SETTINGS}}}
 async function savePrintingSettings(value){const settings=normalizePrintSettings(value),path=printingSettingsPath();mkdirSync(app.getPath('userData'),{recursive:true});await writeFile(path,JSON.stringify(settings,null,2),'utf8');return settings}
+const safeExportName=(value,extension)=>{const raw=String(value??'').replace(/[<>:"/\\|?*\u0000-\u001f]/g,'-').replace(/\s+/g,' ').trim().slice(0,120)||`alkarna-export.${extension}`;return raw.toLowerCase().endsWith(`.${extension}`)?raw:`${raw}.${extension}`};
+const saveExportDialog=async(event,{filename,extension,label,bytes})=>{const owner=BrowserWindow.fromWebContents(event.sender)||window,suggested=safeExportName(filename,extension),choice=await dialog.showSaveDialog(owner,{title:`حفظ ${label}`,defaultPath:join(app.getPath('documents'),suggested),filters:[{name:label,extensions:[extension]}]});if(choice.canceled||!choice.filePath)return{ok:false,canceled:true};try{await writeFile(choice.filePath,bytes);return{ok:true,path:choice.filePath}}catch(error){stamp(`export ${extension} failed: ${error?.stack||error}`);return{ok:false,error:'save-failed'}}};
 let printingHandlersRegistered=false;
 function registerPrintingHandlers(){if(printingHandlersRegistered)return;printingHandlersRegistered=true;
  ipcMain.handle('alkarna:printing:list',async event=>(await event.sender.getPrintersAsync()).map(printer=>({name:printer.name,displayName:printer.displayName||printer.name,description:printer.description||'',status:printer.status,isDefault:Boolean(printer.isDefault)})));
@@ -31,6 +33,19 @@ function registerPrintingHandlers(){if(printingHandlersRegistered)return;printin
   if(result.ok||!thermalWidth||!thermalHeight||!/invalid printer settings/i.test(result.error))return result;
   stamp(`retry print profile=${settings.profile} with printer default page size`);
   return runPrint({...baseOptions,usePrinterDefaultPageSize:true});
+ });
+ ipcMain.handle('alkarna:printing:export-pdf',async(event,value)=>{
+  try{
+   const pdf=await event.sender.printToPDF({printBackground:true,pageSize:'A4',landscape:false,preferCSSPageSize:true});
+   return saveExportDialog(event,{filename:value?.filename,extension:'pdf',label:'PDF',bytes:pdf});
+  }catch(error){stamp(`pdf export failed: ${error?.stack||error}`);return{ok:false,error:'pdf-export-failed'}}
+ });
+ ipcMain.handle('alkarna:printing:save-export',async(event,value)=>{
+  try{
+   const base64=typeof value?.base64==='string'?value.base64:'';
+   if(!base64||base64.length>80*1024*1024)return{ok:false,error:'invalid-export-data'};
+   return saveExportDialog(event,{filename:value?.filename,extension:'xlsx',label:'Excel',bytes:Buffer.from(base64,'base64')});
+  }catch(error){stamp(`excel export failed: ${error?.stack||error}`);return{ok:false,error:'excel-export-failed'}}
  });
 }
 const stopServer=()=>new Promise(resolve=>{if(!server||server.exitCode!==null)return resolve();const timer=setTimeout(()=>{server?.kill('SIGKILL');resolve()},5000);server.once('exit',()=>{clearTimeout(timer);resolve()});server.kill()});

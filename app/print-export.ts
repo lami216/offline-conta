@@ -10,30 +10,32 @@ export function exportRowsFromTarget(target: HTMLElement) {
   };
   const title = target.querySelector<HTMLElement>(".workspace-print-header h1,.print-report-title h2,.official-record-header h1");
   const brand = target.querySelector<HTMLElement>(".workspace-print-header strong,.official-record-name-line strong");
-  if (brand) push([brand.innerText || brand.textContent || ""]);
-  if (title) push([title.innerText || title.textContent || ""]);
+  if (brand) push([brand.textContent || brand.innerText || ""]);
+  if (title) push([title.textContent || title.innerText || ""]);
+  const subtitle = target.querySelector<HTMLElement>(".print-report-title > span,.official-record-header > span:last-child");
+  if (subtitle) push([subtitle.textContent || subtitle.innerText || ""]);
   for (const node of target.querySelectorAll<HTMLElement>(".workspace-print-meta span,.official-record-meta span")) {
     const label = node.querySelector<HTMLElement>("small");
     const value = node.querySelector<HTMLElement>("b,strong");
-    push([label?.innerText || label?.textContent || "", value?.innerText || value?.textContent || ""]);
+    push([label?.textContent || label?.innerText || "", value?.textContent || value?.innerText || ""]);
   }
   if (rows.length) rows.push([]);
   for (const table of target.querySelectorAll<HTMLTableElement>("table")) {
     const section = table.closest<HTMLElement>(".workspace-print-section,fieldset");
     const heading = section?.querySelector<HTMLElement>(":scope > h2,:scope > legend");
-    if (heading) push([heading.innerText || heading.textContent || ""]);
+    if (heading) push([heading.textContent || heading.innerText || ""]);
     for (const row of table.querySelectorAll<HTMLTableRowElement>("tr")) {
-      push([...row.querySelectorAll<HTMLElement>("th,td")].map(cell => cell.innerText || cell.textContent || ""));
+      push([...row.querySelectorAll<HTMLElement>("th,td")].map(cell => cell.textContent || cell.innerText || ""));
     }
     rows.push([]);
   }
   for (const node of target.querySelectorAll<HTMLElement>(".workspace-print-kpis>span,.official-record-totals>span,.report-kpi")) {
     const label = node.querySelector<HTMLElement>("small");
     const value = node.querySelector<HTMLElement>("b,strong,.report-kpi-value");
-    push([label?.innerText || label?.textContent || "", value?.innerText || value?.textContent || ""]);
+    push([label?.textContent || label?.innerText || "", value?.textContent || value?.innerText || ""]);
   }
   while (rows.length && rows.at(-1)?.every(value => !value)) rows.pop();
-  return rows.length ? rows : [[cleanExportText(target.innerText || target.textContent || "")]];
+  return rows.length ? rows : [[cleanExportText(target.textContent || target.innerText || "")]];
 }
 
 const xmlEscape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

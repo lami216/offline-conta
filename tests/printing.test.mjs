@@ -22,9 +22,16 @@ test("report printing is portrait, isolated from pagination, and never prints th
   assert.doesNotMatch(app,/setResult\(printable\)[\s\S]{0,220}window\.print\(\)/);
 });
 
-test("inventory and movement printing use the shared A4 lifecycle",()=>{
-  assert.match(printing,/export async function printCurrentPageA4\(\)/);
-  assert.match(app,/طباعة الجرد[\s\S]{0,220}printCurrentPageA4|printCurrentPageA4\(\)[\s\S]{0,220}طباعة الجرد/);
-  assert.equal((app.match(/printCurrentPageA4\(\)/g)??[]).length>=3,true);
+test("inventory, movement, and overview printing use dedicated A4 portals",()=>{
+  assert.match(printing,/export async function printPreparedWorkspace\(\)/);
+  assert.match(printing,/printPreparedTarget\(settings, false, "print-workspace-mode", "\.workspace-print-portal"\)/);
+  assert.doesNotMatch(app,/printCurrentPageA4/);
+  assert.match(app,/className="workspace-print-portal inventory-print-portal"/);
+  assert.match(app,/className="workspace-print-portal movement-print-portal"/);
+  assert.match(app,/className="workspace-print-portal overview-print-portal"/);
+  assert.equal((app.match(/await printPreparedWorkspace\(\)/g)??[]).length>=3,true);
+  assert.match(globals,/html\.print-workspace-mode body>\.workspace-print-portal\{display:block!important\}/);
+  assert.match(globals,/\.workspace-print-table thead\{display:table-header-group!important\}/);
+  assert.match(globals,/\.inventory-print-table\{font-size:6\.65pt!important/);
 });
 

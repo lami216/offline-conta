@@ -1518,9 +1518,31 @@ input, select, .combobox-trigger { border-color: var(--border); }
   .movement-summary { grid-template-columns: repeat(2, 1fr); }
 }
 @media print {
-  .warehouse-head, .inventory-toolbar button, .inventory-panel > .search, .movement-modal { display: none !important; }
-  .warehouse-workspace, .inventory-panel { display: block !important; height: auto !important; }
-  .inventory-body { overflow: visible !important; }
+  .warehouse-head, .inventory-toolbar button, .inventory-panel > .search, .inventory-list-panel > .search, .movement-modal,
+  .product-movement-panel .movement-product-head button, .product-movement-panel .movement-filters { display: none !important; }
+  .warehouse-workspace, .inventory-panel, .inventory-browser, .inventory-list-panel,
+  .warehouse-scroll, .inventory-body, .product-movement-modal, .product-movement-panel, .movement-timeline {
+    display: block !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .inventory-grid, .movement-timeline .erp-table { width: 100% !important; min-width: 0 !important; table-layout: fixed; font-size: 8px; }
+  .inventory-grid th, .inventory-grid td, .movement-timeline .erp-table th, .movement-timeline .erp-table td {
+    padding: 3px 2px !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+  html.print-a4-page-mode body:has(.product-movement-modal) > *:not(.modal-overlay) { display: none !important; }
+  html.print-a4-page-mode body:has(.product-movement-modal) > .modal-overlay:not(:has(.product-movement-modal)) { display: none !important; }
+  html.print-a4-page-mode body:has(.product-movement-modal) > .modal-overlay:has(.product-movement-modal) {
+    position: static !important;
+    display: block !important;
+    inset: auto !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+  html.print-a4-page-mode .product-movement-modal { width: auto !important; padding: 0 !important; }
 }
 
 /* Authoritative viewport boundary (kept last to win the component cascade). */

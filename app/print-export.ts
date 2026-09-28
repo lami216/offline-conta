@@ -38,14 +38,21 @@ export function exportRowsFromTarget(target: HTMLElement) {
 
 const xmlEscape = (value: string) => value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-function xlsxCell(value: string) {
+function xlsxColumnName(index: number) {
+  let value = index + 1, result = "";
+  while (value > 0) { value--; result = String.fromCharCode(65 + (value % 26)) + result; value = Math.floor(value / 26); }
+  return result;
+}
+
+function xlsxCell(value: string, column: number, row: number) {
+  const ref = xlsxColumnName(column) + row;
   const trimmed = value.trim();
   const money = /(?:^|\s)-?[\d\s.,]+(?:\s*MRU)?$/i.test(trimmed) && /MRU/i.test(trimmed);
   const compact = trimmed.replace(/\s+/g, "").replace(/MRU/gi, "").replace(",", ".");
   if ((money || (/^-?\d+(?:\.\d+)?$/.test(compact) && compact.replace(/[-.]/g, "").length < 10)) && Number.isFinite(Number(compact))) {
-    return "<c><v>" + Number(compact) + "</v></c>";
+    return "<c r=\"" + ref + "\"><v>" + Number(compact) + "</v></c>";
   }
-  return "<c t=\"inlineStr\"><is><t xml:space=\"preserve\">" + xmlEscape(value) + "</t></is></c>";
+  return "<c r=\"" + ref + "\" t=\"inlineStr\"><is><t xml:space=\"preserve\">" + xmlEscape(value) + "</t></is></c>";
 }
 
 const u16 = (value: number) => new Uint8Array([value & 255, (value >>> 8) & 255]);
@@ -95,7 +102,7 @@ function zipStored(files: Array<{ name: string; content: string }>) {
 
 export function buildXlsx(rows: string[][]) {
   const maxColumns = Math.max(1, ...rows.map(row => row.length));
-  const sheetRows = rows.map((row, index) => "<row r=\"" + (index + 1) + "\">" + row.map(xlsxCell).join("") + "</row>").join("");
+  const sheetRows = rows.map((row, index) => "<row r=\"" + (index + 1) + "\">" + row.map((value, column) => xlsxCell(value, column, index + 1)).join("") + "</row>").join("");
   const sheet = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetViews><sheetView workbookViewId=\"0\" rightToLeft=\"1\"/></sheetViews><cols><col min=\"1\" max=\"" + maxColumns + "\" width=\"18\" customWidth=\"1\"/></cols><sheetData>" + sheetRows + "</sheetData></worksheet>";
   const workbook = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"البيانات\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>";
   const rels = "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?><Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>";

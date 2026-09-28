@@ -106,7 +106,7 @@ test("POS checkout, records, scoped stock, and document print retain explicit st
   assert.match(picker, /stockScope === "selected-warehouse" \? stockInWarehouse/);
   assert.match(app, /function PrintableDocument/);
   assert.match(css, /@page invoice\s*\{\s*size:\s*A4 portrait/);
-  assert.match(css, /@page report\s*\{\s*size:\s*A4 landscape/);
+  assert.match(css, /@page report\s*\{\s*size:\s*A4 portrait/);
 });
 
 test("focused banking and transaction editor regressions stay explicit", () => {

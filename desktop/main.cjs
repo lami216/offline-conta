@@ -38,7 +38,7 @@ function registerPrintingHandlers(){if(printingHandlersRegistered)return;printin
   const settings=normalizePrintSettings(value),thermalWidth=THERMAL_PAPER_WIDTH_MICRONS[settings.profile],rawHeight=Number(value?.paperHeightMicrons),thermalHeight=Number.isFinite(rawHeight)?Math.max(50000,Math.min(1000000,Math.round(rawHeight))):null;
   const filePath=await chooseExportPath(BrowserWindow.fromWebContents(event.sender),value?.suggestedName||'export','.pdf','PDF');
   if(!filePath)return{ok:false,canceled:true};
-  const options=settings.profile==='a4'?{pageSize:'A4',landscape:false,printBackground:true,preferCSSPageSize:true}:thermalWidth&&thermalHeight?{pageSize:{width:thermalWidth/1000,height:thermalHeight/1000},landscape:false,printBackground:true,preferCSSPageSize:true}:{pageSize:'A4',landscape:false,printBackground:true,preferCSSPageSize:true};
+  const options=settings.profile==='a4'?{pageSize:'A4',landscape:false,printBackground:true,preferCSSPageSize:true}:thermalWidth&&thermalHeight?{pageSize:{width:thermalWidth/25400,height:thermalHeight/25400},landscape:false,printBackground:true,preferCSSPageSize:false}:{pageSize:'A4',landscape:false,printBackground:true,preferCSSPageSize:true};
   try{const pdf=await event.sender.printToPDF(options);await writeFile(filePath,pdf);stamp(`pdf export path=${filePath}`);return{ok:true,filePath}}catch(error){stamp(`pdf export failed: ${error?.stack||error}`);return{ok:false,error:error instanceof Error?error.message:'pdf-export-failed'}}
  });
  ipcMain.handle('alkarna:export:save',async(event,value)=>{

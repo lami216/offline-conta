@@ -99,6 +99,6 @@ test("UI and permission wiring use delete authority, explicit confirmation, lega
   assert.match(app,/type:"product\.stock-zero",id:product\.id/);
   assert.match(route,/تصفير المخزون المرتبط بأرشفة المنتج/);
   assert.match(app,/product\.isArchived[\s\S]{0,500}تصفير المخزون/);
-  assert.match(app,/productArchiveStockClearance/);
+  assert.match(app,/isProductArchiveStockClearanceDocument/);
   assert.match(lifecycle,/productArchiveStockClearance/);
 });

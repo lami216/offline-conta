@@ -2798,3 +2798,20 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
     overflow: auto;
   }
 }
+
+/* Unified manual output chooser: printer, direct PDF, or Excel. */
+.output-choice-overlay{z-index:240}
+.output-choice-dialog{width:min(520px,92vw);display:grid;gap:12px;padding:16px}
+.output-choice-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.output-choice-head small{display:block;color:var(--muted);font-size:10px;font-weight:800;margin-bottom:2px}
+.output-choice-head h2{margin:0;font-size:17px}
+.output-choice-grid{display:grid;gap:8px}
+.output-choice-card{display:grid;grid-template-columns:44px minmax(0,1fr);align-items:center;gap:10px;min-height:62px;border:1px solid #cfd8df;border-radius:8px;background:#fff;padding:9px 11px;text-align:start;cursor:pointer}
+.output-choice-card:hover{background:#f7fafb;border-color:#98a8b3}
+.output-choice-card.primary-choice{border-color:#7aa994;background:#f5fbf8}
+.output-choice-card>svg{width:24px;height:24px;justify-self:center}
+.output-choice-card>span:last-child{display:grid;gap:3px}
+.output-choice-card strong{font-size:12px}
+.output-choice-card small{font-size:9px;color:var(--muted);font-weight:700}
+.output-choice-file-icon{display:grid;place-items:center;width:40px;height:32px;border:1px solid #aebac2;border-radius:5px;font-size:9px;font-weight:900;letter-spacing:.25px;color:#32434e;background:#f8fafb}
+.output-choice-busy{padding:7px 9px;border-radius:6px;background:#f2f5f7;color:#44515a;font-size:10px;font-weight:800;text-align:center}

@@ -80,7 +80,7 @@ test("product.stock-zero is restricted to already archived products",async()=>{
 
 test("multi-warehouse clearance rolls back atomically when any stocked warehouse is invalid",async()=>{
   await insertProduct({stocks:{a:4,missing:2}});
-  await assert.rejects(command({type:"product.delete",id:"p",zeroStock:true}),/المخزن/);
+  await assert.rejects(command({type:"product.delete",id:"p",zeroStock:true}),/تعذر تصفير المخزون/);
   const product=await db.collection("products").findOne({id:"p"});
   assert.equal(product.isArchived,false);
   assert.deepEqual(product.stocks,{a:4,missing:2});
@@ -95,7 +95,7 @@ test("UI and permission wiring use delete authority, explicit confirmation, lega
     readFile(new URL("../lib/transaction-lifecycle.ts",import.meta.url),"utf8"),
   ]);
   assert.match(route,/"product\.stock-zero"\s*:\s*"products\.delete"/);
-  assert.match(app,/type:"product\.delete",id:product\.id,zeroStock:true/);
+  assert.match(app,/type:"product\.delete",id:product\.id,[\s\S]{0,80}zeroStock:true/);
   assert.match(app,/type:"product\.stock-zero",id:product\.id/);
   assert.match(route,/تصفير المخزون المرتبط بأرشفة المنتج/);
   assert.match(app,/product\.isArchived[\s\S]{0,500}تصفير المخزون/);

@@ -97,7 +97,7 @@ test("UI and permission wiring use delete authority, explicit confirmation, lega
   assert.match(route,/"product\.stock-zero"\s*:\s*"products\.delete"/);
   assert.match(app,/type:"product\.delete",id:product\.id,zeroStock:true/);
   assert.match(app,/type:"product\.stock-zero",id:product\.id/);
-  assert.match(app,/تصفير المخزون المرتبط بأرشفة المنتج/);
+  assert.match(route,/تصفير المخزون المرتبط بأرشفة المنتج/);
   assert.match(app,/product\.isArchived[\s\S]{0,500}تصفير المخزون/);
   assert.match(app,/productArchiveStockClearance/);
   assert.match(lifecycle,/productArchiveStockClearance/);

@@ -77,7 +77,8 @@ import LowStockWarningDialog from "./low-stock-warning-dialog";
 import { isOpeningStockCorrectionDocument, isOpeningStockDocument, optionalFiniteNumber, periodStockMovementQuantity, stockMovementMatchesFilter, stockMovementPresentationType } from "./stock-movement";
 import { clearStockOperationDraft } from "./stock-operation-draft";
 import { adjustmentActualQuantity, canUseCapability, documentProductQuantityEffect } from "./transaction-ui";
-import { DEFAULT_PRINT_SETTINGS, PRINT_PROFILES, desktopPrintingAvailable, listPrinters, loadPrintSettings, printPreparedDocument, printPreparedReport, printPreparedWorkspace, savePrintSettings, type PrintProfile, type PrintSettings, type PrinterInfo } from "./printing";
+import { createXlsx, type ExcelSheet } from "./xlsx-export";
+import { DEFAULT_PRINT_SETTINGS, PRINT_PROFILES, desktopPrintingAvailable, listPrinters, loadPrintSettings, printPreparedDocument, printPreparedReport, printPreparedWorkspace, saveExcelFile, savePreparedDocumentPdf, savePreparedReportPdf, savePreparedWorkspacePdf, savePrintSettings, type PrintProfile, type PrintSettings, type PrinterInfo } from "./printing";
 
 type View =
   | "pos"
@@ -1107,6 +1108,12 @@ function handleModalKeyboard(event:ReactKeyboardEvent<HTMLDivElement>,close:()=>
   if(!controls.length)return;
   const first=controls[0],last=controls.at(-1);
   if((event.shiftKey&&document.activeElement===first)||(!event.shiftKey&&document.activeElement===last)){event.preventDefault();(event.shiftKey?last:first)?.focus()}
+}
+type OutputChoice="printer"|"pdf"|"excel";
+function exportFileBase(title:string){return `${title.replace(/[<>:"/\\|?*]/g," ").replace(/\s+/g," ").trim()||"export"}-${localBusinessDay()}`}
+function presentationExcelSheets(presentation:OfficialPresentation,branding:InvoiceBrandingSettings):ExcelSheet[]{const rows:Array<Array<string|number>>=[[branding.storeName],[presentation.title],[],[tr("البيان"),tr("القيمة")],...presentation.meta.map(([label,value])=>[label,value])];if(presentation.columns?.length){rows.push([],presentation.columns,...(presentation.rows??[]))}if(presentation.totals?.length)rows.push([],[tr("المجموع"),""],...presentation.totals.map(([label,value])=>[label,value]));return[{name:presentation.title,rows}]}
+function OutputChoiceDialog({title,busy,close,onChoose}:{title:string;busy:boolean;close:()=>void;onChoose:(choice:OutputChoice)=>void|Promise<void>}){
+  return createPortal(<div className="modal-overlay output-choice-overlay" role="dialog" aria-modal="true" aria-label={tr("خيارات الإخراج")} onKeyDown={event=>handleModalKeyboard(event,close)}><div className="modal-card output-choice-dialog"><div className="output-choice-head"><div><small>{tr("خيارات الإخراج")}</small><h2>{title}</h2></div><button type="button" className="icon" disabled={busy} aria-label={tr("إغلاق")} onClick={close}><X/></button></div><div className="output-choice-grid"><button type="button" className="output-choice-card primary-choice" disabled={busy} autoFocus onClick={()=>void onChoose("printer")}><Printer/><span><strong>{tr("الطباعة بالطابعة")}</strong><small>{tr("استخدام الطابعة وإعدادات الطباعة الحالية")}</small></span></button><button type="button" className="output-choice-card" disabled={busy} onClick={()=>void onChoose("pdf")}><span className="output-choice-file-icon">PDF</span><span><strong>{tr("حفظ PDF")}</strong><small>{tr("إنشاء ملف PDF مباشرة دون طابعة")}</small></span></button><button type="button" className="output-choice-card" disabled={busy} onClick={()=>void onChoose("excel")}><span className="output-choice-file-icon">XLSX</span><span><strong>{tr("تصدير Excel")}</strong><small>{tr("إنشاء ملف Excel قابل للفرز والتحليل")}</small></span></button></div>{busy&&<div className="output-choice-busy">{tr("جاري تجهيز الملف…")}</div>}</div></div>,document.body)
 }
 function SummaryBreakdownDialog({detail,close,openSource}:{detail:SummaryBreakdown;close:()=>void;openSource?:(target:SummarySourceTarget)=>void}){
   const tone=(value:number,override?:MoneyTone):MoneyTone=>override??detail.tone??(value>0?"positive":value<0?"negative":"neutral");

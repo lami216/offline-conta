@@ -13,13 +13,15 @@ export type PrintSettings = {
   profile: PrintProfile;
 };
 
-export type PrintResult = { ok: true } | { ok: false; error: string };
+export type PrintResult = { ok: true; filePath?: string } | { ok: false; error?: string; canceled?: boolean };
 
 type PrintingBridge = {
   list: () => Promise<PrinterInfo[]>;
   getSettings: () => Promise<PrintSettings>;
   saveSettings: (settings: PrintSettings) => Promise<PrintSettings>;
   print: (options: PrintSettings & { silent: boolean; paperHeightMicrons?: number }) => Promise<PrintResult>;
+  pdf: (options: PrintSettings & { suggestedName: string; paperHeightMicrons?: number }) => Promise<PrintResult>;
+  saveExport: (options: { format: "xlsx"; suggestedName: string; data: Uint8Array }) => Promise<PrintResult>;
 };
 
 declare global {
@@ -154,7 +156,7 @@ async function browserPrintFallback() {
   });
 }
 
-async function printPreparedTarget(settings: PrintSettings, silent: boolean, modeClass: string, targetSelector: string): Promise<void> {
+async function withPreparedTarget<T>(settings: PrintSettings, modeClass: string, targetSelector: string, action: (normalized: PrintSettings) => Promise<T>): Promise<T> {
   const normalized = normalizePrintSettings(settings);
   const root = document.documentElement;
   const previousProfile = root.dataset.printProfile;
@@ -162,6 +164,16 @@ async function printPreparedTarget(settings: PrintSettings, silent: boolean, mod
   root.classList.add(modeClass);
   try {
     await waitForPrintAssets(targetSelector);
+    return await action(normalized);
+  } finally {
+    root.classList.remove(modeClass);
+    if (previousProfile) root.dataset.printProfile = previousProfile;
+    else delete root.dataset.printProfile;
+  }
+}
+
+async function printPreparedTarget(settings: PrintSettings, silent: boolean, modeClass: string, targetSelector: string): Promise<void> {
+  await withPreparedTarget(settings, modeClass, targetSelector, async normalized => {
     if (window.alkarnaPrinting) {
       const paperHeightMicrons = modeClass === "print-document-mode" ? thermalPaperHeightMicrons(normalized.profile) : undefined;
       const result = await window.alkarnaPrinting.print({ ...normalized, silent, ...(paperHeightMicrons ? { paperHeightMicrons } : {}) });
@@ -169,11 +181,15 @@ async function printPreparedTarget(settings: PrintSettings, silent: boolean, mod
     } else {
       await browserPrintFallback();
     }
-  } finally {
-    root.classList.remove(modeClass);
-    if (previousProfile) root.dataset.printProfile = previousProfile;
-    else delete root.dataset.printProfile;
-  }
+  });
+}
+
+async function savePreparedTargetPdf(settings: PrintSettings, modeClass: string, targetSelector: string, suggestedName: string): Promise<PrintResult> {
+  return withPreparedTarget(settings, modeClass, targetSelector, async normalized => {
+    if (!window.alkarnaPrinting?.pdf) return { ok: false, error: "pdf-export-desktop-only" };
+    const paperHeightMicrons = modeClass === "print-document-mode" ? thermalPaperHeightMicrons(normalized.profile) : undefined;
+    return window.alkarnaPrinting.pdf({ ...normalized, suggestedName, ...(paperHeightMicrons ? { paperHeightMicrons } : {}) });
+  });
 }
 
 /**
@@ -200,4 +216,29 @@ export async function printPreparedWorkspace(): Promise<void> {
   const preferred = await loadPrintSettings();
   const settings: PrintSettings = { deviceName: preferred.profile === "a4" ? preferred.deviceName : null, profile: "a4" };
   await printPreparedTarget(settings, false, "print-workspace-mode", ".workspace-print-portal");
+}
+
+export async function savePreparedDocumentPdf(settings: PrintSettings, suggestedName: string): Promise<PrintResult> {
+  return savePreparedTargetPdf(settings, "print-document-mode", ".document-print-portal", suggestedName);
+}
+
+export async function savePreparedReportPdf(suggestedName: string): Promise<PrintResult> {
+  const preferred = await loadPrintSettings();
+  const settings: PrintSettings = { deviceName: preferred.profile === "a4" ? preferred.deviceName : null, profile: "a4" };
+  return savePreparedTargetPdf(settings, "print-report-mode", ".report-print-portal", suggestedName);
+}
+
+export async function savePreparedWorkspacePdf(suggestedName: string): Promise<PrintResult> {
+  const preferred = await loadPrintSettings();
+  const settings: PrintSettings = { deviceName: preferred.profile === "a4" ? preferred.deviceName : null, profile: "a4" };
+  return savePreparedTargetPdf(settings, "print-workspace-mode", ".workspace-print-portal", suggestedName);
+}
+
+export async function saveExcelFile(suggestedName: string, data: Uint8Array): Promise<PrintResult> {
+  if (window.alkarnaPrinting?.saveExport) return window.alkarnaPrinting.saveExport({ format: "xlsx", suggestedName, data });
+  const blob = new Blob([data as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob), anchor = document.createElement("a");
+  anchor.href = url; anchor.download = suggestedName.toLowerCase().endsWith(".xlsx") ? suggestedName : `${suggestedName}.xlsx`; anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return { ok: true };
 }

@@ -239,6 +239,45 @@ async function changeStock(db: Db, session: ClientSession, product: Record<strin
   return { before, after };
 }
 
+const PRODUCT_ARCHIVE_STOCK_ZERO_REASON = "تصفير المخزون المرتبط بأرشفة المنتج";
+function productStockEntries(product: Record<string, unknown>) {
+  const entries: Array<[string, number]> = [];
+  for (const [warehouseId, rawQuantity] of Object.entries((product.stocks ?? {}) as Record<string, unknown>)) {
+    const quantity = Number(rawQuantity);
+    if (!Number.isFinite(quantity)) throw new CommandError("مخزون المنتج يحتوي قيمة غير صالحة", 409);
+    if (Math.abs(quantity) > 1e-9) entries.push([warehouseId, quantity]);
+  }
+  return entries;
+}
+function productStockUnitCost(product: Record<string, unknown>) {
+  for (const value of [product.lastPurchaseCost, product.openingCost, product.legacyOpeningCost, product.pieceCost]) {
+    const cost = Number(value);
+    if (Number.isFinite(cost) && cost >= 0) return cost;
+  }
+  return 0;
+}
+async function zeroProductStockForArchive(db: Db, session: ClientSession, product: Record<string, unknown>) {
+  const entries = productStockEntries(product);
+  for (const [warehouseId, before] of entries) {
+    const warehouse = await warehouses(db).findOne({ _id: warehouseId }, { session });
+    if (!warehouse) throw new CommandError("تعذر تصفير المخزون لأن أحد المخازن المرتبطة بالمنتج غير موجود", 409);
+    const doc = {
+      ...baseDocument("adjustment", "ADJ"), revision: 0, productArchiveStockClearance: true,
+      partyId: null, partyName: null, warehouseId, warehouseName: warehouse.name,
+      destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null,
+      paymentMethod: null, title: PRODUCT_ARCHIVE_STOCK_ZERO_REASON,
+      total: 0, dueTotal: 0, paidTotal: 0, lines: [] as Record<string, unknown>[],
+    };
+    await changeStock(db, session, product, warehouse, -before, doc, "adjustment");
+    doc.lines.push({
+      id: id("line"), productId: String(product.id), description: `${String(product.name)} — ${PRODUCT_ARCHIVE_STOCK_ZERO_REASON} (قبل ${before}، بعد 0)`,
+      quantity: -before, unitPrice: productStockUnitCost(product), lineTotal: 0, balanceBefore: before, balanceAfter: 0,
+    });
+    await db.collection("documents").insertOne(doc, { session });
+  }
+  return entries.length;
+}
+
 function openingCorrectionProductId(document: Record<string, unknown>) {
   const documentLines = Array.isArray(document.lines) ? document.lines as Record<string, unknown>[] : [];
   return text(documentLines[0]?.productId);
@@ -496,7 +535,19 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   if (type === "product.delete") {
     const productId = text(body.id), product = await db.collection("products").findOne({ id: productId }, { session });
     if (!product) throw new CommandError("المنتج غير موجود", 404);
-    await db.collection("products").updateOne({ id: productId }, { $set: { isArchived: true, archivedAt: new Date() } }, { session });
+    if (product.isArchived === true) throw new CommandError("المنتج مؤرشف بالفعل", 409);
+    const stocked = productStockEntries(product);
+    if (stocked.length && body.zeroStock !== true) throw new CommandError("المنتج يحتوي مخزونًا. أكد تصفير المخزون قبل الأرشفة.", 409, { code: "PRODUCT_ARCHIVE_STOCK_CONFIRMATION_REQUIRED", stock: stocked.map(([warehouseId, quantity]) => ({ warehouseId, quantity })) });
+    if (stocked.length) await zeroProductStockForArchive(db, session, product);
+    const archived = await db.collection("products").updateOne({ id: productId, isArchived: { $ne: true } }, { $set: { isArchived: true, archivedAt: new Date(), updatedAt: new Date() } }, { session });
+    if (!archived.matchedCount) throw new CommandError("تغير المنتج أثناء العملية، أعد المحاولة", 409);
+    return productId;
+  }
+  if (type === "product.stock-zero") {
+    const productId = text(body.id), product = await db.collection("products").findOne({ id: productId }, { session });
+    if (!product) throw new CommandError("المنتج غير موجود", 404);
+    if (product.isArchived !== true) throw new CommandError("تصفير المخزون بهذه العملية متاح للمنتج المؤرشف فقط", 409);
+    await zeroProductStockForArchive(db, session, product);
     return productId;
   }
   if (type === "product.restore") {
@@ -910,7 +961,7 @@ export async function POST(request: Request) {const licenseDenied=await requireV
   let type = "unknown";
   try {
     const body = await request.json() as Input; type = text(body.type);
-    const map:Record<string,Capability>={"product.delete":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","legacy-party-document.void":"customers.collect.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
+    const map:Record<string,Capability>={"product.delete":"products.delete","product.stock-zero":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","legacy-party-document.void":"customers.collect.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
     let capability=map[type];
     if(["party-cash.post","party.update","party.delete","party.restore"].includes(type)){
       const party=await getDatabase().collection("parties").findOne({id:text(body.partyId??body.id)});

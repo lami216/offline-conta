@@ -1275,7 +1275,7 @@ function WarehouseAdmin({data,run,canDelete}:{data:BootstrapData;run:RunCommand;
 function Warehouses({ data, openDoc, sourceRequest, clearSourceRequest }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void; sourceRequest?: string | null; clearSourceRequest?: () => void }) {
   const {locale}=useI18n();
   const availableWarehouses=activeWarehouses(data.warehouses), activeWarehouseIds=availableWarehouses.map(warehouse=>warehouse.id), [wh, setWh] = useState(ALL_WAREHOUSES), [q, setQ] = useState(""), [detailProduct, setDetailProduct] = useState<Product | null>(null), [movementFilter, setMovementFilter] = useState("all");
-  const today=localBusinessDay(),[draftFrom,setDraftFrom]=useState(today),[draftTo,setDraftTo]=useState(today),[committedPeriod,setCommittedPeriod]=useState<CommittedPeriod>(null),[hasInventoryView,setHasInventoryView]=useState(false),[periodError,setPeriodError]=useState(""),[printingInventory,setPrintingInventory]=useState(false);
+  const today=localBusinessDay(),[draftFrom,setDraftFrom]=useState(today),[draftTo,setDraftTo]=useState(today),[committedPeriod,setCommittedPeriod]=useState<CommittedPeriod>(null),[hasInventoryView,setHasInventoryView]=useState(false),[periodError,setPeriodError]=useState(""),[printingInventory,setPrintingInventory]=useState(false),[inventoryOutputOpen,setInventoryOutputOpen]=useState(false);
   useEffect(()=>{
     if(!sourceRequest)return;
     const timeout=window.setTimeout(()=>{

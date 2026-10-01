@@ -1018,6 +1018,7 @@ export const arMessages = {
   "إنهاء الاستيراد": "إنهاء الاستيراد",
   "الحسابات والبنوك": "الحسابات والبنوك",
   "الحركات المالية": "الحركات المالية",
+  "تعذر تحميل رصيد البداية": "تعذر تحميل رصيد البداية",
 } as const;
 
 export type MessageKey = keyof typeof arMessages;
@@ -2043,6 +2044,7 @@ export const frMessages: Record<MessageKey, string> = {
   "إنهاء الاستيراد": "Finalisation de l’importation",
   "الحسابات والبنوك": "Comptes et banques",
   "الحركات المالية": "Mouvements financiers",
+  "تعذر تحميل رصيد البداية": "Impossible de charger le solde initial",
 };
 export const messages = { ar: arMessages, fr: frMessages } as const;
 export function translate(locale: "ar" | "fr", key: MessageKey, params: TranslationParams = {}) { let value: string = messages[locale][key]; for (const [name,replacement] of Object.entries(params)) value=value.replaceAll(`{${name}}`,String(replacement)); return value; }

@@ -15,7 +15,8 @@ test("legacy direct-sale and direct-purchase identities localize at presentation
   assert.match(app, /document\.partyId == null && document\.kind === "purchase"\) return tr\("شراء مباشر"\)/);
   assert.match(app, /const customer = invoicePartyName\(document\) \|\| tr\("بيع مباشر"\)/);
   assert.match(app, /tr\("مدفوعة"\)/);
-  assert.match(app, /partyName=invoicePartyName\(record\)/);
+  assert.match(app, /partySnapshot=record\.partyName\?\.trim\(\)\|\|\(record\.partyId\?data\.parties\.find/);
+  assert.match(app, /partyName=record\.partyId==null&&record\.kind==="sale"\?tr\("بيع مباشر"\)/);
 });
 
 test("financial audit and reports use semantic identity instead of translating arbitrary user names", () => {

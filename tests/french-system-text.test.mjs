@@ -28,6 +28,12 @@ test("financial audit and reports use semantic identity instead of translating a
   assert.match(app, /if\(!partyId&&type==="purchases"\)return tr\("شراء مباشر"\)/);
 });
 
+test("missing historical products use an explicit system flag instead of translating user product names", () => {
+  assert.match(reports, /productMissing/);
+  assert.match(app, /key==="product"&&row\?\.productMissing===true/);
+  assert.equal(translate("fr", "منتج غير متاح"), "Produit non disponible");
+});
+
 test("party-ledger labels carry stable semantic codes for localized presentation", () => {
   assert.match(reports, /movementCode=\(document:Document\)=>/);
   assert.match(reports, /movementCode:movementCode\(document\)/);

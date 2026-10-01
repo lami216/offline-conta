@@ -121,8 +121,8 @@ type DraftLine = {
   actualQuantity: string;
 };
 export function invoicePartyName(document: DocumentRecord) {
-  if (document.partyId === null && document.kind === "sale") return tr("بيع مباشر");
-  if (document.partyId === null && document.kind === "purchase") return tr("شراء مباشر");
+  if (document.partyId == null && document.kind === "sale") return tr("بيع مباشر");
+  if (document.partyId == null && document.kind === "purchase") return tr("شراء مباشر");
   return document.partyName?.trim() || null;
 }
 function financialMovementPartyName(movement:BootstrapData["financialMovements"][number]) {
@@ -1144,7 +1144,7 @@ function Banks({ data, run, openDoc, openSource, tab, sourceRequest, clearSource
   const [adjustmentAccount,setAdjustmentAccount]=useState(""),[adjustmentDirection,setAdjustmentDirection]=useState<"deposit"|"withdrawal">("deposit"),[adjustmentAmount,setAdjustmentAmount]=useState(""),[adjustmentNote,setAdjustmentNote]=useState(""),[adjustmentFilter,setAdjustmentFilter]=useState(""),[adjustmentType,setAdjustmentType]=useState(""),adjustmentScope=useBankScope();
   const active=useMemo(()=>activePaymentAccounts(data.paymentAccounts),[data.paymentAccounts]),visibleAccounts=useMemo(()=>data.paymentAccounts.filter(account=>account.isArchived!==true),[data.paymentAccounts]),archived=useMemo(()=>data.paymentAccounts.filter(account=>account.isArchived===true),[data.paymentAccounts]),name=useCallback((id:string)=>data.paymentAccounts.find(account=>account.id===id||account.code===id)?.name??id,[data.paymentAccounts]);
   const movementLabels=useMemo<Record<string,string>>(()=>({sale:tr("بيع"),purchase:tr("شراء"),expense:tr("مصروف"),"party-receipt":tr("استلام من طرف"),"party-payment":tr("دفع لطرف"),"transfer-in":tr("تحويل داخل"),"transfer-out":tr("تحويل خارج"),"manual-deposit":tr("إيداع"),"manual-withdrawal":tr("سحب"),"opening-balance":tr("رصيد بداية"),"opening-balance-correction":tr("تصحيح رصيد البداية"),"balance-correction":tr("تصحيح رصيد سابق")}),[locale]);
-  const summaryMovementLabels=useMemo<Record<string,string>>(()=>({...movementLabels,"party-receipt:customer":tr("دفع لنا العميل"),"party-receipt:supplier":tr("دفع لنا المورد"),"party-payment:customer":tr("دفعنا للعميل"),"party-payment:supplier":tr("دفعنا للمورد"),"party-receipt:unknown":tr("استلام من طرف"),"party-payment:unknown":tr("دفع لطرف")}),[movementLabels,locale]);
+  const summaryMovementLabels=useMemo<Record<string,string>>(()=>({...Object.fromEntries(Object.entries(movementLabels).map(([key,label])=>[key,tr(label)])),"party-receipt:customer":tr("دفع لنا العميل"),"party-receipt:supplier":tr("دفع لنا المورد"),"party-payment:customer":tr("دفعنا للعميل"),"party-payment:supplier":tr("دفعنا للمورد"),"party-receipt:unknown":tr("استلام من طرف"),"party-payment:unknown":tr("دفع لطرف")}),[locale]);
   const resetMovementFilters=()=>{movementScope.all();setAccountFilter("");setTypeFilter("")},resetTransferFilters=()=>{transferScope.all();setTransferFromFilter("");setTransferToFilter("")},resetAdjustmentFilters=()=>{adjustmentScope.all();setAdjustmentFilter("");setAdjustmentType("")};
   const operationalMovements=useMemo(()=>tab==="movements"||tab==="adjustment"?data.financialMovements.filter(m=>!["opening-balance","opening-balance-correction"].includes(m.type)):[],[data.financialMovements,tab]);
   const movements=useMemo(()=>tab==="movements"?filterFinancialMovements(operationalMovements,movementScope.period,accountFilter,typeFilter):[],[tab,operationalMovements,movementScope.period,accountFilter,typeFilter]);
@@ -1450,7 +1450,7 @@ function ProductDetails({product,warehouses,categories,canEdit,close,edit}:{prod
 
 type ProductOpeningView = { total:number; remaining:number; consumed:number; allocations:Record<string,number>; warehouseId:string|null; warehouseName?:string|null; cost:number|null; hasNativeOpening:boolean; hasStockHistory:boolean; legacySnapshot:boolean };
 function ProductForm({ run, close, product, warehouses, categories, canAdjustOpening, openProductMovements }: { run: RunCommand; close: () => void; product: Product | null; warehouses: BootstrapData["warehouses"]; categories: BootstrapData["categories"]; canAdjustOpening:boolean; openProductMovements: (productId: string) => void }) {
-  const confirmAction=useAppConfirm();
+  const {locale}=useI18n(),confirmAction=useAppConfirm();
   const defaultWarehouseId=warehouses.find(warehouse=>warehouse.isSalesDefault)?.id??"";
   const [name,setName]=useState(product?.name??""),[cost,setCost]=useState(String(product?.pieceCost??"")),[price,setPrice]=useState(String(product?.piecePrice??"")),[wholesalePrice,setWholesalePrice]=useState(String(product?.wholesalePrice??"")),
     [openingStock,setOpeningStock]=useState(product?String(product.openingStock??""):""),[openingCost,setOpeningCost]=useState(String(product?.openingCost??"")),[openingWarehouseId,setOpeningWarehouseId]=useState(product?.openingWarehouseId??defaultWarehouseId),
@@ -1604,7 +1604,7 @@ function Adjustment(p: {data: BootstrapData;run: RunCommand;openDoc: (id: string
 
 function Records({ data, openDoc }: { data: BootstrapData; openDoc: (id: string) => void }) {
   type Resource="documents"|"stockMovements"|"financialMovements";
-  const today=localBusinessDay(),[resource,setResource]=useState<Resource>("documents"),[kind,setKind]=useState("sale"),[q,setQ]=useState(""),[from,setFrom]=useState(today),[to,setTo]=useState(today),[allTime,setAllTime]=useState(false),[page,setPage]=useState(1),[totalPages,setTotalPages]=useState(1),[total,setTotal]=useState(0),[docs,setDocs]=useState<DocumentRecord[]>([]),[stockRows,setStockRows]=useState<BootstrapData["movements"]>([]),[financialRows,setFinancialRows]=useState<BootstrapData["financialMovements"]>([]),[busy,setBusy]=useState(false),[failure,setFailure]=useState("");
+  const {locale}=useI18n(),today=localBusinessDay(),[resource,setResource]=useState<Resource>("documents"),[kind,setKind]=useState("sale"),[q,setQ]=useState(""),[from,setFrom]=useState(today),[to,setTo]=useState(today),[allTime,setAllTime]=useState(false),[page,setPage]=useState(1),[totalPages,setTotalPages]=useState(1),[total,setTotal]=useState(0),[docs,setDocs]=useState<DocumentRecord[]>([]),[stockRows,setStockRows]=useState<BootstrapData["movements"]>([]),[financialRows,setFinancialRows]=useState<BootstrapData["financialMovements"]>([]),[busy,setBusy]=useState(false),[failure,setFailure]=useState("");
   const accountName=(id:string)=>data.paymentAccounts.find(account=>account.id===id||account.code===id)?.name??id;
   const financialAuditLabel=(row:BootstrapData["financialMovements"][number])=>{const raw=String(row.type??""),reversal=row.isReversal===true||raw.endsWith(":reversal"),baseRaw=reversal?raw.slice(0,-":reversal".length):raw,kind=financialMovementKind(baseRaw),base=movementLabels[kind]?tr(movementLabels[kind]):kind;return reversal?`${tr("عكس الحركة")}: ${base}`:row.status==="reversed"?`${base} · ${tr("تم عكسها")}`:base};
   useEffect(()=>{

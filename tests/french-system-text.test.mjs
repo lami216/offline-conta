@@ -11,8 +11,8 @@ test("legacy direct-sale and direct-purchase identities localize at presentation
   assert.equal(translate("fr", "بيع مباشر"), "Vente directe");
   assert.equal(translate("fr", "شراء مباشر"), "Achat direct");
   assert.equal(translate("fr", "مدفوعة"), "Payé");
-  assert.match(app, /document\.partyId === null && document\.kind === "sale"\) return tr\("بيع مباشر"\)/);
-  assert.match(app, /document\.partyId === null && document\.kind === "purchase"\) return tr\("شراء مباشر"\)/);
+  assert.match(app, /document\.partyId == null && document\.kind === "sale"\) return tr\("بيع مباشر"\)/);
+  assert.match(app, /document\.partyId == null && document\.kind === "purchase"\) return tr\("شراء مباشر"\)/);
   assert.match(app, /const customer = invoicePartyName\(document\) \|\| tr\("بيع مباشر"\)/);
   assert.match(app, /tr\("مدفوعة"\)/);
   assert.match(app, /partyName=invoicePartyName\(record\)/);
@@ -44,6 +44,7 @@ test("bank operation presentation no longer depends on Arabic display words", ()
   assert.doesNotMatch(financialBlock, /\/إيداع\/\.test\(detail\.type\)/);
   assert.doesNotMatch(financialBlock, /\/سحب\/\.test\(detail\.type\)/);
   assert.match(app, /tr\(label\)/);
+  assert.match(app, /Object\.entries\(movementLabels\)\.map\(\(\[key,label\]\)=>\[key,tr\(label\)\]\)/);
 });
 
 test("specific system confirmations and official document metadata are localized", () => {

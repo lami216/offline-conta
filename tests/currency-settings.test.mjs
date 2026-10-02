@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+import { formatMoney as formatDomainMoney } from "../app/domain.ts";
+import { formatMoney as formatLocalizedMoney } from "../app/i18n/formatting.ts";
+import { DEFAULT_CURRENCY_CODE, defaultCurrencySettings, normalizeCurrencyCode, normalizeCurrencySettings, setDisplayCurrencyCode } from "../lib/currency-core.ts";
+
+test("currency defaults to MRU and accepts exactly three Latin letters", () => {
+  assert.equal(DEFAULT_CURRENCY_CODE, "MRU");
+  assert.deepEqual(defaultCurrencySettings(), {code:"MRU",availableCodes:["MRU"]});
+  assert.equal(normalizeCurrencyCode(" eur "), "EUR");
+  assert.equal(normalizeCurrencyCode("EU"), null);
+  assert.equal(normalizeCurrencyCode("€UR"), null);
+});
+
+test("all shared money formatters read the same active currency source", () => {
+  try {
+    setDisplayCurrencyCode("EUR");
+    assert.equal(formatDomainMoney(1250), "1 250 EUR");
+    assert.equal(formatLocalizedMoney("fr",1250), "1 250 EUR");
+    assert.match(formatLocalizedMoney("ar",1250), / EUR$/);
+  } finally {
+    setDisplayCurrencyCode(DEFAULT_CURRENCY_CODE);
+  }
+});
+
+test("legacy or incomplete currency settings safely normalize to MRU", () => {
+  assert.deepEqual(normalizeCurrencySettings(null), {code:"MRU",availableCodes:["MRU"]});
+  assert.deepEqual(normalizeCurrencySettings({code:"usd",availableCodes:["mru","eur"]}), {code:"USD",availableCodes:["MRU","EUR","USD"]});
+});
+
+test("MRU is a default setting, not a hard-coded formatter suffix", async () => {
+  const domain=await readFile(new URL("../app/domain.ts",import.meta.url),"utf8");
+  const localized=await readFile(new URL("../app/i18n/formatting.ts",import.meta.url),"utf8");
+  assert.doesNotMatch(domain,/\} MRU`| MRU"/);
+  assert.doesNotMatch(localized,/\} MRU`| MRU"/);
+  assert.match(domain,/getDisplayCurrencyCode\(\)/);
+  assert.match(localized,/getDisplayCurrencyCode\(\)/);
+});
+
+test("bootstrap and settings UI use persisted currency settings", async () => {
+  const bootstrap=await readFile(new URL("../app/api/bootstrap/route.ts",import.meta.url),"utf8");
+  const app=await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8");
+  const route=await readFile(new URL("../app/api/settings/currency/route.ts",import.meta.url),"utf8");
+  assert.match(bootstrap,/getCurrencySettings\(db\)/);
+  assert.match(bootstrap,/Response\.json\(\{ branding, currency,/);
+  assert.match(app,/setDisplayCurrencyCode\(j\.currency\?\.code\)/);
+  assert.match(app,/\/api\/settings\/currency/);
+  assert.match(app,/t\("العملة الافتراضية"\)/);
+  assert.match(route,/settings\.branding\.manage/);
+});

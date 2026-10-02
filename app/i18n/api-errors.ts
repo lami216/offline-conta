@@ -10,6 +10,9 @@ const exactFrench: Record<string, string> = {
   "اسم الفئة طويل جدًا": "Le nom de la catégorie est trop long",
   "هذه الفئة موجودة بالفعل": "Cette catégorie existe déjà",
   "الفئة غير موجودة": "Catégorie introuvable",
+  "رمز العملة يجب أن يتكون من 3 أحرف إنجليزية": "Le code de devise doit contenir exactement 3 lettres anglaises",
+  "قائمة العملات غير صالحة": "La liste des devises n’est pas valide",
+  "عدد العملات المحفوظة كبير جدًا": "Trop de devises enregistrées",
 };
 
 export function translateApiError(locale: Locale, message: string): string {

@@ -6,7 +6,7 @@ import { formatMoney, formatQuantity } from "../app/domain.ts";
 const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
 const openingHistorySource = await readFile(new URL("../app/opening-stock-history.tsx", import.meta.url), "utf8");
 
-test("money carries MRU while quantities remain unitless", () => {
+test("money uses the default currency while quantities remain unitless", () => {
   assert.equal(formatMoney(7), "7 MRU");
   assert.equal(formatQuantity(7), "7");
 });

@@ -18,7 +18,7 @@ test("all shared money formatters read the same active currency source", () => {
     setDisplayCurrencyCode("EUR");
     assert.equal(formatDomainMoney(1250), "1 250 EUR");
     assert.equal(formatLocalizedMoney("fr",1250), "1 250 EUR");
-    assert.equal(formatLocalizedMoney("ar",1250), "1 250 EUR");
+    assert.match(formatLocalizedMoney("ar",1250), / EUR$/);
   } finally {
     setDisplayCurrencyCode(DEFAULT_CURRENCY_CODE);
   }

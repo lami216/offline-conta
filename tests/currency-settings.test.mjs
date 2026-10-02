@@ -49,3 +49,14 @@ test("bootstrap and settings UI use persisted currency settings", async () => {
   assert.match(app,/t\("العملة الافتراضية"\)/);
   assert.match(route,/settings\.branding\.manage/);
 });
+
+
+test("currency settings has its own grid area and cannot overlap document branding", async () => {
+  const app=await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8");
+  const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
+  assert.match(app, /title=\{t\("العملة"\)\} className="currency-settings"/);
+  assert.match(app, /title=\{t\("هوية المستندات"\)\} className="branding-settings"/);
+  assert.match(css, /grid-template-areas:"business currency" "branding document" "privacy privacy"/);
+  assert.match(css, /\.currency-settings\{grid-area:currency\}/);
+  assert.match(css, /grid-template-areas:"business" "currency" "branding" "document" "privacy" "actions" "feedback"/);
+});

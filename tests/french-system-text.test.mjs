@@ -61,8 +61,10 @@ test("specific system confirmations and official document metadata are localized
   assert.match(app, /tr\("party\.movementDeleteConfirm"/);
   assert.match(app, /tr\("stock\.transferDeleteConfirm"/);
   assert.match(app, /tr\("stock\.adjustmentDeleteConfirm"/);
-  assert.match(app, /tr\("رقم السجل التجاري"\)/);
-  assert.match(app, /tr\("الرقم الضريبي"\)/);
+  assert.match(app, /registrationLine=\[branding\.registrationNumber&&\`\$\{t\("رقم السجل التجاري"\)\}/);
+  assert.match(app, /branding\.taxNumber&&\`\$\{t\("الرقم الضريبي"\)\}/);
+  assert.equal(translate("fr", "رقم السجل التجاري"), "Numéro d'enregistrement commercial");
+  assert.equal(translate("fr", "الرقم الضريبي"), "Numéro fiscal");
   assert.match(app, /record\.partyCashDirection\?\(receive\?tr\("استلام من الطرف"\):tr\("دفع للطرف"\)\)/);
 });
 
@@ -72,4 +74,14 @@ test("French import progress uses semantic phase keys while unknown source label
   assert.match(app, /importGroupLabels\[g\.key\]\?tr\(importGroupLabels\[g\.key\]\):g\.label/);
   assert.equal(translate("fr", "فحص الملف"), "Analyse du fichier");
   assert.equal(translate("fr", "أرصدة المخزون"), "Soldes de stock");
+});
+
+
+test("business identity settings use the LocaleProvider translator for system labels", () => {
+  const settings = app.slice(app.indexOf("function GeneralSettings("), app.indexOf("function PrintSettingsPanel("));
+  assert.match(settings, /const \{locale,t\}=useI18n\(\)/);
+  for (const key of ["بيانات النشاط","اسم المحل","العنوان","رقم السجل التجاري","الرقم الضريبي","هوية المستندات","معلومات المستند","ملاحظة التذييل"]) {
+    assert.match(settings, new RegExp('t\\("'+key+'"\\)'));
+    assert.doesNotMatch(translate("fr", key), /[\u0600-\u06FF]/);
+  }
 });

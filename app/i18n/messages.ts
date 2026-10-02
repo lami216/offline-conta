@@ -1019,6 +1019,13 @@ export const arMessages = {
   "الحسابات والبنوك": "الحسابات والبنوك",
   "الحركات المالية": "الحركات المالية",
   "تعذر تحميل رصيد البداية": "تعذر تحميل رصيد البداية",
+  "العملة": "العملة",
+  "العملة الافتراضية": "العملة الافتراضية",
+  "إضافة عملة جديدة": "إضافة عملة جديدة",
+  "رمز العملة": "رمز العملة",
+  "إضافة واختيار": "إضافة واختيار",
+  "رمز العملة يجب أن يتكون من 3 أحرف إنجليزية": "رمز العملة يجب أن يتكون من 3 أحرف إنجليزية",
+  "currency.displayOnlyHint": "تغيير العملة يغيّر رمز العرض في جميع أجزاء النظام ولا يحوّل القيم أو الأرصدة السابقة.",
 } as const;
 
 export type MessageKey = keyof typeof arMessages;
@@ -2045,6 +2052,13 @@ export const frMessages: Record<MessageKey, string> = {
   "الحسابات والبنوك": "Comptes et banques",
   "الحركات المالية": "Mouvements financiers",
   "تعذر تحميل رصيد البداية": "Impossible de charger le solde initial",
+  "العملة": "Devise",
+  "العملة الافتراضية": "Devise par défaut",
+  "إضافة عملة جديدة": "Ajouter une devise",
+  "رمز العملة": "Code de devise",
+  "إضافة واختيار": "Ajouter et sélectionner",
+  "رمز العملة يجب أن يتكون من 3 أحرف إنجليزية": "Le code de devise doit contenir exactement 3 lettres anglaises",
+  "currency.displayOnlyHint": "Changer la devise modifie le code affiché dans tout le système sans convertir les valeurs ni les soldes existants.",
 };
 export const messages = { ar: arMessages, fr: frMessages } as const;
 export function translate(locale: "ar" | "fr", key: MessageKey, params: TranslationParams = {}) { let value: string = messages[locale][key]; for (const [name,replacement] of Object.entries(params)) value=value.replaceAll(`{${name}}`,String(replacement)); return value; }

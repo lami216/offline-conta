@@ -46,7 +46,8 @@ test("currency selection persists immediately instead of waiting for the general
   assert.match(app,/if\(await persistCurrency\(next\)\)setNewCurrencyCode\(""\)/);
   assert.match(app,/setDisplayCurrencyCode\(response\.currency\.code\)/);
   assert.match(app,/reload\(\{blocking:false\}\)/);
-  const generalSave=app.slice(app.indexOf("const save=async()=>"),app.indexOf("return <div className=\"general-settings\">"));
+  const generalSettings=app.slice(app.indexOf("function GeneralSettings("),app.indexOf("function PrintSettingsPanel("));
+  const generalSave=generalSettings.slice(generalSettings.indexOf("const save=async()=>"),generalSettings.indexOf('return <div className="general-settings">'));
   assert.doesNotMatch(generalSave,/\/api\/settings\/currency/);
 });
 

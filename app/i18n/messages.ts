@@ -1026,6 +1026,8 @@ export const arMessages = {
   "إضافة واختيار": "إضافة واختيار",
   "رمز العملة يجب أن يتكون من 3 أحرف إنجليزية": "رمز العملة يجب أن يتكون من 3 أحرف إنجليزية",
   "currency.displayOnlyHint": "تغيير العملة يغيّر رمز العرض في جميع أجزاء النظام ولا يحوّل القيم أو الأرصدة السابقة.",
+  "تم حفظ العملة": "تم حفظ العملة",
+  "تعذر حفظ العملة": "تعذر حفظ العملة",
 } as const;
 
 export type MessageKey = keyof typeof arMessages;
@@ -2059,6 +2061,8 @@ export const frMessages: Record<MessageKey, string> = {
   "إضافة واختيار": "Ajouter et sélectionner",
   "رمز العملة يجب أن يتكون من 3 أحرف إنجليزية": "Le code de devise doit contenir exactement 3 lettres anglaises",
   "currency.displayOnlyHint": "Changer la devise modifie le code affiché dans tout le système sans convertir les valeurs ni les soldes existants.",
+  "تم حفظ العملة": "Devise enregistrée",
+  "تعذر حفظ العملة": "Impossible d’enregistrer la devise",
 };
 export const messages = { ar: arMessages, fr: frMessages } as const;
 export function translate(locale: "ar" | "fr", key: MessageKey, params: TranslationParams = {}) { let value: string = messages[locale][key]; for (const [name,replacement] of Object.entries(params)) value=value.replaceAll(`{${name}}`,String(replacement)); return value; }

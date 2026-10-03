@@ -38,6 +38,18 @@ test("MRU is a default setting, not a hard-coded formatter suffix", async () => 
   assert.match(localized,/getDisplayCurrencyCode\(\)/);
 });
 
+test("currency selection persists immediately instead of waiting for the general settings save button", async () => {
+  const app=await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8");
+  assert.match(app,/const persistCurrency=async\(next:BootstrapData\["currency"\]\)=>/);
+  assert.match(app,/fetch\("\/api\/settings\/currency"/);
+  assert.match(app,/onChange=\{event=>void persistCurrency\(\{\.\.\.currency,code:event\.target\.value\}\)\}/);
+  assert.match(app,/if\(await persistCurrency\(next\)\)setNewCurrencyCode\(""\)/);
+  assert.match(app,/setDisplayCurrencyCode\(response\.currency\.code\)/);
+  assert.match(app,/reload\(\{blocking:false\}\)/);
+  const generalSave=app.slice(app.indexOf("const save=async()=>"),app.indexOf("return <div className=\"general-settings\">"));
+  assert.doesNotMatch(generalSave,/\/api\/settings\/currency/);
+});
+
 test("bootstrap and settings UI use persisted currency settings", async () => {
   const bootstrap=await readFile(new URL("../app/api/bootstrap/route.ts",import.meta.url),"utf8");
   const app=await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8");
@@ -56,7 +68,9 @@ test("currency settings has its own grid area and cannot overlap document brandi
   const css=await readFile(new URL("../app/globals.css",import.meta.url),"utf8");
   assert.match(app, /title=\{t\("العملة"\)\} className="currency-settings"/);
   assert.match(app, /title=\{t\("هوية المستندات"\)\} className="branding-settings"/);
-  assert.match(css, /grid-template-areas:"business currency" "branding document" "privacy privacy"/);
+  assert.match(css, /grid-template-areas:"business branding" "currency document" "print print"/);
   assert.match(css, /\.currency-settings\{grid-area:currency\}/);
-  assert.match(css, /grid-template-areas:"business" "currency" "branding" "document" "privacy" "actions" "feedback"/);
+  assert.match(css, /\.branding-settings\{grid-area:branding\}/);
+  assert.match(css, /\.print-settings-panel\{grid-area:print\}/);
+  assert.match(css, /grid-template-areas:"business" "branding" "currency" "document" "print" "actions" "feedback"/);
 });

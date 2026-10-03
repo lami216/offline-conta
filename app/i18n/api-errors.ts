@@ -13,6 +13,7 @@ const exactFrench: Record<string, string> = {
   "رمز العملة يجب أن يتكون من 3 أحرف إنجليزية": "Le code de devise doit contenir exactement 3 lettres anglaises",
   "قائمة العملات غير صالحة": "La liste des devises n’est pas valide",
   "عدد العملات المحفوظة كبير جدًا": "Trop de devises enregistrées",
+  "تعذر حفظ العملة": "Impossible d’enregistrer la devise",
 };
 
 export function translateApiError(locale: Locale, message: string): string {

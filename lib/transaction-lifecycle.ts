@@ -230,8 +230,12 @@ export async function restoreProductArchiveStockClearance(
     const revision = Number(document.revision ?? 0) + 1;
     const audit = stockAuditDocument(document, revision);
     for (const line of lines) {
-      const delta = -Number(line.quantity ?? 0);
+      const delta = -Number(line.quantity ?? 0), expectedAfter = Number(line.balanceAfter ?? 0);
       if (!Number.isFinite(delta) || delta <= 0) throw new LifecycleCommandError("كمية تصفير المخزون القديمة غير صالحة للاستعادة", 409);
+      const current = Number((product.stocks as Record<string, number> | undefined)?.[String(warehouse._id)] ?? 0);
+      if (!Number.isFinite(expectedAfter) || Math.abs(current - expectedAfter) > 1e-9) {
+        throw new LifecycleCommandError("لا يمكن استعادة تصفير الأرشفة لأن مخزون أحد المخازن تغير بعد عملية التصفير.", 409);
+      }
       await changeStock(db, session, product, warehouse, delta, audit, "adjustment-void");
     }
     await db.collection("documents").updateOne(

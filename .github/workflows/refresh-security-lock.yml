@@ -1,0 +1,30 @@
+# Temporary lockfile regeneration in a GitHub runner with npm registry access.
+# Remove this workflow from the branch once the lockfile is generated and verified.
+name: Refresh security lockfile
+on:
+  push:
+    branches:
+      - fix/security-production-deps-20261009
+permissions:
+  contents: write
+jobs:
+  refresh:
+    if: github.ref == 'refs/heads/fix/security-production-deps-20261009'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+      - name: Regenerate lockfile using npm registry
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Verify patched production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Commit lockfile to security-fix branch
+        run: |
+          git add package-lock.json
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Regenerate package-lock with patched runtime dependencies'
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi

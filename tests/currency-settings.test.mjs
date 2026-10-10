@@ -75,3 +75,9 @@ test("currency settings has its own grid area and cannot overlap document brandi
   assert.match(css, /\.print-settings-panel\{grid-area:print\}/);
   assert.match(css, /grid-template-areas:"business" "branding" "currency" "document" "print" "actions" "feedback"/);
 });
+
+test("successful currency changes are displayed with success rather than error styling", async () => {
+  const app = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
+  assert.match(app, /notice===t\("تم حفظ الإعدادات"\)\|\|notice===t\("تم حفظ العملة"\)/);
+  assert.match(app, /setNotice\(t\("تم حفظ العملة"\)\)/);
+});

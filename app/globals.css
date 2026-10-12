@@ -2815,3 +2815,25 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 .output-choice-card small{font-size:9px;color:var(--muted);font-weight:700}
 .output-choice-file-icon{display:grid;place-items:center;width:40px;height:32px;border:1px solid #aebac2;border-radius:5px;font-size:9px;font-weight:900;letter-spacing:.25px;color:#32434e;background:#f8fafb}
 .output-choice-busy{padding:7px 9px;border-radius:6px;background:#f2f5f7;color:#44515a;font-size:10px;font-weight:800;text-align:center}
+
+/* The original name remains accessible by mouse hover when a product column
+   is narrow. Keep the product label single-line only on screen; never truncate
+   or clip the text in printed invoices, exports or documents. */
+.product-name-hover {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+@media print {
+  .product-name-hover {
+    display: inline;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+}

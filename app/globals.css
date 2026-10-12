@@ -2429,3 +2429,25 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
 .summary-breakdown-compact .summary-breakdown-note{display:inline;margin:0;white-space:nowrap}
 .summary-breakdown-compact .summary-source-link{flex:0 0 auto;min-height:24px;margin:0;margin-inline-start:auto;padding:2px 7px;white-space:nowrap}
 @media(max-width:700px){.summary-breakdown-modal.summary-breakdown-compact{width:100%}.summary-breakdown-compact .summary-breakdown-label{gap:5px}.summary-breakdown-compact .summary-breakdown-note{white-space:normal}.summary-breakdown-compact .summary-source-link{white-space:normal}}
+
+/* The original name remains accessible by mouse hover when a product column
+   is narrow. Keep the product label single-line only on screen; never truncate
+   or clip the text in printed invoices, exports or documents. */
+.product-name-hover {
+  display: inline-block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+@media print {
+  .product-name-hover {
+    display: inline;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+}

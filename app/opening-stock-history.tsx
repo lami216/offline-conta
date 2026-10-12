@@ -25,7 +25,7 @@ export default function OpeningStockHistory({ data, docs, openDoc }: { data: Boo
         const productNames = [...new Set(document.lines.map(line => data.products.find(product => product.id === line.productId)?.name ?? line.description.split(" — ")[0]).filter(Boolean))].join("، ") || "—";
         const from = document.warehouseName || movements[0]?.warehouseName || "—", to = document.destinationWarehouseName;
         const warehouse = to && to !== from ? `${from} → ${to}` : from;
-        return <tr key={document.id} onClick={() => openDoc(document.id)}><td className="num-cell">{number(index + 1)}</td><td>{formatDateTime(document.occurredAt)}</td><td dir="ltr">{displayDocumentNumber(document)}</td><td className="name-cell">{productNames}</td><td>{correction ? tr("تصحيح رصيد البداية") : tr("رصيد بداية")}</td><td className="num-cell">{delta > 0 ? "+" : ""}{number(delta)}</td><td className="num-cell">{stockBasis}</td><td className="num-cell">{cost}</td><td>{warehouse}</td></tr>;
+        return <tr key={document.id} onClick={() => openDoc(document.id)}><td className="num-cell">{number(index + 1)}</td><td>{formatDateTime(document.occurredAt)}</td><td dir="ltr">{displayDocumentNumber(document)}</td><td className="name-cell" title={productNames}>{productNames}</td><td>{correction ? tr("تصحيح رصيد البداية") : tr("رصيد بداية")}</td><td className="num-cell">{delta > 0 ? "+" : ""}{number(delta)}</td><td className="num-cell">{stockBasis}</td><td className="num-cell">{cost}</td><td>{warehouse}</td></tr>;
       })}{!rows.length && <tr><td colSpan={9}>{tr("لا توجد فواتير ضمن الفترة المحددة")}</td></tr>}</tbody>
     </table></div>
   </section>;

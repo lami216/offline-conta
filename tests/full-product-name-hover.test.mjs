@@ -27,7 +27,7 @@ test("long product names are recoverable across the product catalog, warehouses 
     source("app/conta-app.tsx"), source("app/opening-stock-history.tsx"),
   ]);
   assert.match(app, /inventory-grid[\s\S]*?<ProductName name=\{product\.name\}/>/);
-  assert.match(app, /product\.isArchived&&<small[\s\S]*?<ProductName name=\{product\.name\}/>/);
+  assert.match(app, /<td className="name-cell"><ProductName name=\{product\.name\}\/>\{product\.isArchived&&/);
   assert.match(app, /<ProductName name=\{product\?\.name\?\?line\.productId\}/>/);
   assert.match(app, /movement-product-head[\s\S]*?<ProductName name=\{product\.name\}/>/);
   assert.match(app, /field\(tr\("اسم المنتج"\),<ProductName name=\{product\.name\}\/>\)/);

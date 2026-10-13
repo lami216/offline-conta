@@ -2828,6 +2828,12 @@ html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}
   white-space: nowrap;
   vertical-align: bottom;
 }
+/* Keep product-name cells aligned with the Arabic interface when the
+   hover label is an inline-block rather than a direct text node. */
+html[dir="rtl"] .name-cell:has(> .product-name-hover) {
+  direction: rtl;
+  unicode-bidi: normal;
+}
 @media print {
   .product-name-hover {
     display: inline;

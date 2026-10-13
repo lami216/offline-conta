@@ -42,3 +42,7 @@ test("product report filters, results, movement history and invoice previews pro
   assert.match(app, /key==="number"\|\|key==="product"\?String\(row\[key\]\?\?""\):undefined/);
   assert.match(app, /presentation\.columns\?\.\[j\]===tr\("المنتج"\)&&typeof v==="string"\?v:undefined/);
 });
+test("hovered product names follow RTL table alignment in Arabic without changing truncation", async () => {
+  const css = await source("app/globals.css");
+  assert.match(css, /html\[dir="rtl"\] \.name-cell:has\(> \.product-name-hover\) \{\s*direction: rtl;\s*unicode-bidi: normal;\s*\}/);
+});

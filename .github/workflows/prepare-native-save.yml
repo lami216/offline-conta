@@ -1,0 +1,77 @@
+name: Prepare native Windows backup integration
+on:
+  push:
+    branches: [repair/native-windows-backup]
+    paths: [.github/workflows/prepare-native-save.yml]
+permissions:
+  contents: write
+jobs:
+  integrate:
+    if: github.repository == 'lami216/offline-conta' && github.ref == 'refs/heads/repair/native-windows-backup'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 2}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with: {node-version: 22}
+      - name: Apply bounded integration to the original main files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          expected = {
+            'app/conta-app.tsx': 'ffb95f8f512c0c27476bdebdf3d57623cbcecf32',
+            'desktop/main.cjs': '97512e26790c9020764f344f08c216b1f3d6d4df',
+            'desktop/close-flow.cjs': '1b9bacd7ada9bd57c5c1e78a76255b07f7fe4306',
+            'desktop/preload.cjs': '55049bf1b54eb06b273e8071b500270765c76585',
+            'package.json': 'b19bfe8b3284c34108e95de4d6a0e7d9bffff0a4'
+          }
+          text = {}
+          for name, sha in expected.items():
+            actual = subprocess.check_output(['git','hash-object',name],text=True).strip()
+            if actual != sha: raise RuntimeError('Refusing changed source: '+name)
+            text[name] = Path(name).read_text(encoding='utf-8')
+          def replace(name, old, new, count=1):
+            if text[name].count(old)!=count: raise RuntimeError('Expected exact patch count: '+name+' / '+old[:70])
+            text[name] = text[name].replace(old,new)
+          name = 'app/conta-app.tsx'
+          replace(name,'import { readApiResponse } from "./api-response";', 'import { readApiResponse } from "./api-response";\nimport { exportNativeBackup } from "./backup-export";')
+          old = [line for line in text[name].splitlines() if line.startswith('  const download=async()=>{const response=await fetch("/api/settings/backup");')]
+          if len(old)!=1: raise RuntimeError('Expected original backup download')
+          replace(name,old[0],'  const download=()=>exportNativeBackup(locale);')
+          replace(name,'try{await download();await request("/api/settings/restore",selectedFile);','try{const safety=await download();if(safety.canceled)return;await request("/api/settings/restore",selectedFile);')
+          replace(name,'onClick={()=>{setBusy("backup");download().then(()=>setMessage(tr("تم إنشاء النسخة وتنزيلها")))','onClick={()=>{setBusy("backup");setMessage("");setFailure("");download().then(result=>{if(!result.canceled)setMessage(result.saved?tr("تم إنشاء النسخة وتنزيلها"):(locale==="fr"?"Téléchargement démarré ; vérifiez sa fin.":"بدأ التنزيل؛ تأكد من اكتمال حفظ الملف."))})')
+          name = 'desktop/main.cjs'
+          replace(name,"const {app,BrowserWindow,Menu,shell,dialog,session,ipcMain}=require('electron');", "const {app,BrowserWindow,Menu,shell,dialog,session,ipcMain}=require('electron');\nconst {createNativeBackupService,registerNativeBackupHandler}=require('./native-backup.cjs');")
+          replace(name,'logPath,closeFlow,serverUrl;','logPath,closeFlow,serverUrl,nativeBackup;')
+          replace(name,'void closeFlow.requestClose()','void requestDesktopClose()',2)
+          replace(name,'async function start(){', "async function requestDesktopClose(){try{await nativeBackup?.waitForIdle()}catch{/* reported by the save caller */}return closeFlow.requestClose()}\nasync function start(){")
+          replace(name,' registerPrintingHandlers();', " registerPrintingHandlers();\n nativeBackup=createNativeBackupService({dialog,getWindow:()=>window,homeDirectory:app.getPath('home'),getLocale:currentLocale,log:stamp});\n registerNativeBackupHandler({ipcMain,service:nativeBackup,getWindow:()=>window,getOrigin:()=>serverUrl,fetchResponse:fetch,isClosing:()=>quitting||Boolean(closeFlow?.isActive())});")
+          replace(name,'dialog,window:()=>window,fetchBackup:', "dialog,window:()=>window,saveBackup:()=>nativeBackup.save(signal=>fetch(`${serverUrl}/api/desktop/backup`,{signal,redirect:'error',headers:{'x-alkarna-desktop-token':desktopToken,'accept-encoding':'identity'}})),fetchBackup:")
+          replace(name,"stamp('health ready');", "stamp('health ready');stamp(`native-save electron=${process.versions.electron} chrome=${process.versions.chrome} platform=${process.platform}`);")
+          name = 'desktop/close-flow.cjs'
+          replace(name,"approveQuit,onFailure,getLocale=", "approveQuit,onFailure,saveBackup,getLocale=")
+          old = """   const saved=await dialog.showSaveDialog(windowValue(),{title:copy.saveTitle,defaultPath:backupFilename(),filters:[{name:copy.filterName,extensions:['conta.json','json']}]});
+             if(saved.canceled||!saved.filePath)return false;
+             try{const bytes=await fetchBackup();await writeBackup(saved.filePath,bytes)}catch(error){await onFailure(error);await dialog.showMessageBox(windowValue(),{type:'error',title:copy.title,message:copy.failure,buttons:[copy.ok],defaultId:0,cancelId:0,noLink:true});return false}"""
+          new = """   try{
+              if(saveBackup){const saved=await saveBackup();if(saved?.canceled)return false;if(!saved?.ok)throw Error('backup-save-failed')}
+              else{const saved=await dialog.showSaveDialog(windowValue(),{title:copy.saveTitle,defaultPath:backupFilename(),filters:[{name:copy.filterName,extensions:['conta.json','json']}]});if(saved.canceled||!saved.filePath)return false;const bytes=await fetchBackup();await writeBackup(saved.filePath,bytes)}
+             }catch(error){await onFailure(error);await dialog.showMessageBox(windowValue(),{type:'error',title:copy.title,message:copy.failure,buttons:[copy.ok],defaultId:0,cancelId:0,noLink:true});return false}"""
+          replace(name,old,new)
+          text['desktop/preload.cjs'] += "\ncontextBridge.exposeInMainWorld('alkarnaBackup', {\n  save: () => ipcRenderer.invoke('alkarna:backup:save'),\n});\n"
+          replace('package.json','      "desktop/close-flow.cjs",','      "desktop/close-flow.cjs",\n      "desktop/native-backup.cjs",')
+          for name, value in text.items(): Path(name).write_text(value,encoding='utf-8')
+          PY
+      - name: Test native save service, client acknowledgement and close integration
+        run: node --experimental-strip-types --test tests/native-backup*.test.mjs tests/desktop-close-backup.test.mjs
+      - name: Commit integration and remove this one-time workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/prepare-native-save.yml
+          git add app/conta-app.tsx desktop/main.cjs desktop/close-flow.cjs desktop/preload.cjs package.json
+          git diff --cached --stat
+          git commit -m 'Restore original UI and wire native Windows backup save lifecycle'
+          git push origin HEAD:refs/heads/repair/native-windows-backup

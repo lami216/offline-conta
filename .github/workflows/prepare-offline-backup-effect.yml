@@ -1,0 +1,38 @@
+name: Prepare deferred desktop backup state
+on:
+  push:
+    branches: [fix/offline-backup-no-shell-picker]
+    paths: [.github/workflows/prepare-offline-backup-effect.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.repository == 'lami216/offline-conta' && github.ref == 'refs/heads/fix/offline-backup-no-shell-picker'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Apply one exact guarded source replacement
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import subprocess
+          p = Path('app/conta-app.tsx')
+          actual = subprocess.check_output(['git', 'hash-object', str(p)], text=True).strip()
+          if actual != '7c123561767c3b6400868561132b69c5163b51c8':
+              raise RuntimeError('Source changed; refusing to overwrite: ' + actual)
+          text = p.read_text(encoding='utf-8')
+          old = '  useEffect(()=>{setDesktopBackup(desktopBackupAvailable())},[]);'
+          new = '  useEffect(()=>{const timer=window.setTimeout(()=>setDesktopBackup(desktopBackupAvailable()),0);return()=>window.clearTimeout(timer)},[]);'
+          if text.count(old) != 1:
+              raise RuntimeError('Expected exactly one deferred state patch site')
+          p.write_text(text.replace(old,new),encoding='utf-8')
+          PY
+      - name: Commit the source fix and remove this one-time workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/prepare-offline-backup-effect.yml
+          git add app/conta-app.tsx
+          git diff --cached --stat
+          git commit -m 'Defer desktop backup detection after hydration without synchronous effect state'
+          git push origin HEAD:refs/heads/fix/offline-backup-no-shell-picker

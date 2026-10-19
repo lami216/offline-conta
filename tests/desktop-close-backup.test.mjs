@@ -49,3 +49,24 @@ test("failed backup shows just one localized error and keeps the program open", 
   assert.equal(dialogs[1].type, "error");
   assert.match(dialogs[1].message, /Impossible de créer/);
 });
+
+
+test("direct backup on exit never invokes a native file picker and waits for the saved file",async()=>{
+ let release,quits=0;const dialogs=[];
+ const saved=new Promise(resolve=>{release=resolve});
+ const flow=createCloseFlow({dialog:{showMessageBox:async(_owner,options)=>{dialogs.push(options);return{response:0}},showSaveDialog:()=>{throw Error("must not invoke shell picker")}},window:()=>null,getLocale:async()=>"fr",backupDirectory:"C:/Users/Test/AlKarna Backups",saveBackup:()=>saved,approveQuit:async()=>{quits++},onFailure:async()=>{}});
+ const pending=flow.requestClose();await new Promise(resolve=>setTimeout(resolve,10));
+ assert.equal(quits,0);assert.equal(flow.isActive(),true);assert.equal(await flow.requestClose(),false);
+ release({ok:true,filePath:"backup.conta.json"});assert.equal(await pending,true);assert.equal(quits,1);
+ assert.match(dialogs[0].detail,/AlKarna Backups/);
+});
+test("direct backup failure on exit keeps the application open",async()=>{
+ let quits=0,failures=0;const flow=createCloseFlow({dialog:{showMessageBox:async()=>({response:0})},window:()=>null,saveBackup:async()=>{throw Error("disk-full")},approveQuit:async()=>{quits++},onFailure:async()=>{failures++}});
+ assert.equal(await flow.requestClose(),false);assert.equal(quits,0);assert.equal(failures,1);
+});
+test("settings uses acknowledged desktop backups and the helper is included in the Windows shell",async()=>{
+ const app=await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8"),main=await readFile(new URL("../desktop/main.cjs",import.meta.url),"utf8"),preload=await readFile(new URL("../desktop/preload.cjs",import.meta.url),"utf8"),pkg=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8"));
+ assert.match(app,/await exportNativeBackup\(locale\)/);assert.match(app,/result.saved/);
+ assert.match(main,/saveBackup:.*backupStore.save/);assert.match(main,/await backupStore\?\.waitForIdle\(\)/);
+ assert.match(preload,/exposeInMainWorld\('alkarnaBackup'/);assert.ok(pkg.build.files.includes("desktop/backup-store.cjs"));
+});

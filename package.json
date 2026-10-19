@@ -66,6 +66,7 @@
     "files": [
       "desktop/main.cjs",
       "desktop/close-flow.cjs",
+      "desktop/backup-store.cjs",
       "desktop/preload.cjs"
     ],
     "directories": {

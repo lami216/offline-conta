@@ -67,6 +67,10 @@
       "desktop/main.cjs",
       "desktop/close-flow.cjs",
       "desktop/backup-store.cjs",
+      "desktop/backup-picker.cjs",
+      "desktop/backup-picker-preload.cjs",
+      "desktop/backup-picker.html",
+      "desktop/backup-picker-ui.js",
       "desktop/preload.cjs"
     ],
     "directories": {

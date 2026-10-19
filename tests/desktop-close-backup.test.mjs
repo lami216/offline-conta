@@ -58,7 +58,7 @@ test("direct backup on exit never invokes a native file picker and waits for the
  const pending=flow.requestClose();await new Promise(resolve=>setTimeout(resolve,10));
  assert.equal(quits,0);assert.equal(flow.isActive(),true);assert.equal(await flow.requestClose(),false);
  release({ok:true,filePath:"backup.conta.json"});assert.equal(await pending,true);assert.equal(quits,1);
- assert.match(dialogs[0].detail,/AlKarna Backups/);
+ assert.match(dialogs[0].detail,/choisirez/);
 });
 test("direct backup failure on exit keeps the application open",async()=>{
  let quits=0,failures=0;const flow=createCloseFlow({dialog:{showMessageBox:async()=>({response:0})},window:()=>null,saveBackup:async()=>{throw Error("disk-full")},approveQuit:async()=>{quits++},onFailure:async()=>{failures++}});

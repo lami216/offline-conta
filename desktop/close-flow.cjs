@@ -5,15 +5,15 @@ const CLOSE_COPY={
 function normalizeLocale(value){return value==='fr'?'fr':'ar'}
 function closeCopy(locale){return CLOSE_COPY[normalizeLocale(locale)]}
 function backupFilename(now=new Date()){const p=n=>String(n).padStart(2,'0');return `AlKarna-backup-${now.getFullYear()}-${p(now.getMonth()+1)}-${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}.conta.json`}
-function createCloseFlow({dialog,window:windowValue,fetchBackup,writeBackup,approveQuit,onFailure,saveBackup,backupDirectory,getLocale=async()=> 'ar'}){
+function createCloseFlow({dialog,window:windowValue,fetchBackup,writeBackup,approveQuit,onFailure,saveBackup,getLocale=async()=> 'ar'}){
  let active=false,approved=false;
  async function requestClose(){
   if(approved||active)return approved;active=true;
-  try{const locale=normalizeLocale(await getLocale()),copy=closeCopy(locale);const {response}=await dialog.showMessageBox(windowValue(),{type:'question',title:copy.title,message:copy.message,detail:saveBackup?(locale==='fr'?`La sauvegarde sera enregistrée sans sélecteur de fichiers dans :\n${backupDirectory}`:`ستُحفظ النسخة دون نافذة استعراض المجلدات في:\n${backupDirectory}`):undefined,buttons:copy.buttons,defaultId:0,cancelId:2,noLink:true});
+  try{const locale=normalizeLocale(await getLocale()),copy=closeCopy(locale);const {response}=await dialog.showMessageBox(windowValue(),{type:'question',title:copy.title,message:copy.message,detail:saveBackup?(locale==='fr'?`Vous choisirez le dossier et le nom de la sauvegarde dans la fenêtre de l’application (disque local ou clé USB).`:`ستختار المجلد واسم النسخة في نافذة التطبيق، ويمكنك الحفظ على الفلاشة.`):undefined,buttons:copy.buttons,defaultId:0,cancelId:2,noLink:true});
    if(response===2)return false;
    if(response===1){approved=true;await approveQuit();return true}
    try{
-    if(saveBackup){await saveBackup()}
+    if(saveBackup){const saved=await saveBackup();if(saved?.canceled)return false;if(saved?.ok===false)throw Error('backup-save-failed')}
     else{
      const saved=await dialog.showSaveDialog(windowValue(),{title:copy.saveTitle,defaultPath:backupFilename(),filters:[{name:copy.filterName,extensions:['conta.json','json']}]});
      if(saved.canceled||!saved.filePath)return false;

@@ -1,7 +1,6 @@
-// Desktop backups are written by the main process, not Chromium's file picker.
-// Do not expose arbitrary paths, file bytes, URLs, or the desktop admin token.
-export type BackupSaveResult = { saved: boolean; filePath: string | null; bytes?: number };
-type DesktopBackupReply = { ok: boolean; filePath?: string; bytes?: number; error?: string; code?: string; status?: number | null };
+// Desktop saves return only after the selected destination has been written.
+export type BackupSaveResult = { saved: boolean; filePath: string | null; bytes?: number; canceled?: boolean };
+type DesktopBackupReply = { ok: boolean; filePath?: string; bytes?: number; canceled?: boolean; error?: string; code?: string; status?: number | null };
 declare global {
   interface Window {
     alkarnaBackup?: {
@@ -14,12 +13,15 @@ export const desktopBackupAvailable = () => typeof window !== 'undefined' && !!w
 export async function exportNativeBackup(locale: 'ar' | 'fr'): Promise<BackupSaveResult> {
   if (window.alkarnaBackup) {
     const reply = await window.alkarnaBackup.save();
+    if (reply.canceled) return { saved: false, filePath: null, canceled: true };
     if (!reply.ok || !reply.filePath) {
       const message = reply.status === 401 || reply.status === 403
         ? (locale === 'ar' ? 'لا تملك صلاحية إنشاء النسخة الاحتياطية أو انتهت الجلسة.' : 'Permission de sauvegarde absente ou session expirée.')
         : reply.code === 'ENOSPC'
           ? (locale === 'ar' ? 'لا توجد مساحة كافية لحفظ النسخة الاحتياطية.' : 'Espace disque insuffisant pour la sauvegarde.')
-          : (locale === 'ar' ? 'تعذر حفظ النسخة الاحتياطية. لم تتغير البيانات. راجع سجل التشغيل.' : 'Sauvegarde impossible. Les données sont inchangées. Consultez le journal.');
+          : reply.code === 'EEXIST'
+            ? (locale === 'ar' ? 'يوجد ملف بهذا الاسم. اختر اسمًا آخر.' : 'Ce fichier existe déjà. Choisissez un autre nom.')
+            : (locale === 'ar' ? 'تعذر حفظ النسخة الاحتياطية. تحقق من المجلد أو اتصال الفلاشة. لم تتغير البيانات.' : 'Sauvegarde impossible. Vérifiez le dossier ou la connexion USB. Les données sont inchangées.');
       throw new Error(message);
     }
     return { saved: true, filePath: reply.filePath, bytes: reply.bytes };
@@ -33,7 +35,6 @@ export async function exportNativeBackup(locale: 'ar' | 'fr'): Promise<BackupSav
   document.body.appendChild(link);
   try { link.click(); } finally {
     link.remove();
-    // Browser fallback can only acknowledge starting a download, not disk persistence.
     window.setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
   return { saved: false, filePath: null };

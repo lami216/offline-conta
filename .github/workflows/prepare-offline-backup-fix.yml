@@ -1,0 +1,29 @@
+name: Prepare bounded offline backup fix
+on:
+  push:
+    branches: [fix/offline-backup-no-shell-picker]
+    paths: [.github/workflows/prepare-offline-backup-fix.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.repository == 'lami216/offline-conta' && github.ref == 'refs/heads/fix/offline-backup-no-shell-picker'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - name: Apply exact source patches
+        run: python scripts/.prepare-offline-backup-fix.py
+      - name: Test backup writer
+        run: node --test tests/desktop-backup-store.test.mjs tests/desktop-close-backup.test.mjs
+      - name: Commit source and remove one-time preparation files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/prepare-offline-backup-fix.yml scripts/.prepare-offline-backup-fix.py
+          git add app/conta-app.tsx desktop/main.cjs desktop/preload.cjs desktop/close-flow.cjs package.json tests/desktop-close-backup.test.mjs
+          git diff --cached --stat
+          git commit -m 'Wire dialog-free backup export into desktop and settings'
+          git push origin HEAD:refs/heads/fix/offline-backup-no-shell-picker

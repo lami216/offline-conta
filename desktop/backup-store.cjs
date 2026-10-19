@@ -56,7 +56,9 @@ function createBackupStore({ homeDirectory, chooseDestination, log = () => {}, t
       if (!bytes || (!encoded && declared !== null && /^\d+$/.test(declared) && bytes !== Number(declared))) throw new Error('incomplete-backup-response');
       try { await fs.link(temporaryPath, filePath); createdFinal = true; }
       catch (error) {
-        if (!['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV'].includes(error.code)) throw error;
+        if (!['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EXDEV', 'EISDIR'].includes(error.code)) throw error;
+        // Windows may map an unsupported exFAT hard link to EISDIR (node#65817).
+        // COPYFILE_EXCL also refuses real existing directories and files safely.
         // FAT32/exFAT USB media do not support hard links. Exclusively copy the
         // completed temporary file, then flush it before acknowledging success.
         await fs.copyFile(temporaryPath, filePath, constants.COPYFILE_EXCL);

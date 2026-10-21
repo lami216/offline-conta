@@ -1,6 +1,7 @@
 {
   "name": "alkarna-desktop",
   "version": "0.1.9",
+  "storeVersion": "1.0.0",
   "description": "Offline desktop accounting and inventory application.",
   "author": "lami216",
   "private": true,
@@ -22,6 +23,7 @@
     "desktop:build": "npm run build && npm run desktop:prepare",
     "desktop:dist": "npm run desktop:build && npm run desktop:rebuild-native && npm run desktop:test-native && electron-builder --publish never",
     "desktop:dist:win": "electron-builder --win --x64 --publish never",
+    "desktop:package:store": "node scripts/desktop-package-store.mjs",
     "desktop:test-server": "node scripts/desktop-test-server.mjs",
     "desktop:test-packaged": "node scripts/desktop-test-server.mjs --packaged"
   },
@@ -65,7 +67,9 @@
     ],
     "files": [
       "desktop/main.cjs",
+      "desktop/store-profile.cjs",
       "desktop/close-flow.cjs",
+      "desktop/native-backup.cjs",
       "desktop/preload.cjs"
     ],
     "directories": {

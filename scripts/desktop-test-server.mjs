@@ -10,11 +10,12 @@ const require = createRequire(import.meta.url);
 const {isPathInside} = require('./path-containment.cjs');
 const repositoryRoot = await realpath(process.cwd());
 const packaged = process.argv.includes('--packaged');
+const store = process.argv.includes('--store');
 const RUNTIME_DIRECTORY = 'alkarna-runtime';
 let relocatedPackageDirectory;
 
 async function packagedRuntime() {
-  const dist = join(repositoryRoot, 'dist');
+  const dist = join(repositoryRoot, 'dist', ...(store?['store']:[]));
   const trees = (await readdir(dist, {withFileTypes: true})).filter((item) => item.isDirectory() && item.name.endsWith('unpacked'));
   const preferred = trees.filter((item) => item.name.toLowerCase() === 'win-unpacked');
   if (preferred.length !== 1) throw new Error(`Expected electron-builder win-unpacked tree, found: ${trees.map((x) => x.name).join(', ') || 'none'}`);
@@ -25,8 +26,25 @@ async function packagedRuntime() {
   }
   const relocatedTree = join(relocatedPackageDirectory, preferred[0].name);
   await cp(tree, relocatedTree, {recursive: true, dereference: true});
-  const executable = (await readdir(relocatedTree)).find((file) => file === 'الكرنه.exe');
+  const executable = (await readdir(relocatedTree)).find((file) => file === (store?'AlKarnaOffline.exe':'الكرنه.exe'));
   if (!executable) throw new Error(`Packaged Electron executable missing from ${relocatedTree}`);
+  if(store) {
+    const probe=spawnSync(join(relocatedTree,executable),['-e',`
+      const path=require('node:path'),assert=require('node:assert/strict');
+      const metadata=require(path.join(process.argv[1],'package.json'));
+      assert.equal(metadata.alkarnaStore,true);
+      const {resolveStoreProfile}=require(path.join(process.argv[1],'desktop','store-profile.cjs'));
+      const profile=resolveStoreProfile({isPackaged:true,metadata,appData:process.argv[2]});
+      assert.equal(path.basename(profile.userData),'AlKarna-Store');
+      assert.equal(profile.licenseEnvironment.ALKARNA_LICENSE_DISABLE_REGISTRY,'1');
+      assert.equal(profile.licenseEnvironment.ALKARNA_LICENSE_STATE_PATH,path.join(profile.userData,'licensing','state-v2.json'));
+      const backup=require(path.join(process.argv[1],'desktop','native-backup.cjs'));
+      assert.equal(typeof backup.createNativeBackupService,'function');
+      console.log('PACKAGED Store data and manual license isolation: passed');
+    `,join(relocatedTree,'resources','app.asar'),relocatedPackageDirectory],{env:{...process.env,ELECTRON_RUN_AS_NODE:'1'},encoding:'utf8',windowsHide:true,timeout:30000});
+    if(probe.error||probe.status!==0)throw new Error(`Store shell probe failed: ${probe.error?.message||probe.stderr}`);
+    console.log(probe.stdout.trim());
+  }
   console.log(`PACKAGED relocated win-unpacked: ${relocatedTree}`);
   return {root: join(relocatedTree, 'resources', RUNTIME_DIRECTORY), electronExecutable: join(relocatedTree, executable)};
 }

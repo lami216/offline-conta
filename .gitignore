@@ -4,3 +4,4 @@ desktop-dist/
 dist/
 .dev-data/
 build/alkarna.ico
+build/appx/

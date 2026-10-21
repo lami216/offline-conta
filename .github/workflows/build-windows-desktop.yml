@@ -41,6 +41,17 @@ jobs:
       - run: npm run desktop:test-server
       - run: npm run desktop:dist:win
       - run: npm run desktop:test-packaged
+      - name: Build Microsoft Store MSIX
+        run: npm run desktop:package:store
+      - name: Check Store runtime and free manual activation gates
+        run: node scripts/desktop-test-server.mjs --packaged --store
+      - name: Verify MSIX identity and contents
+        shell: pwsh
+        run: |
+          $identity = Get-Content -LiteralPath build/store-identity.json -Raw | ConvertFrom-Json
+          $packages = @(Get-ChildItem -LiteralPath dist/store -Filter '*.msix')
+          if ($packages.Count -ne 1) { throw 'Expected exactly one Store MSIX' }
+          ./scripts/verify-store-msix.ps1 -PackagePath $packages[0].FullName -IdentityName $identity.identityName -Publisher $identity.publisher
       - name: Verify Windows artifacts
         shell: pwsh
         run: |
@@ -59,6 +70,16 @@ jobs:
           path: |
             dist/AlKarna-Setup-x64.exe
             dist/AlKarna-Setup-x64.exe.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AlKarna-Store-MSIX-${{ github.run_number }}
+          path: |
+            dist/store/*.msix
+            dist/store/*.sha256
+            dist/store/BUILD-INFO.json
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

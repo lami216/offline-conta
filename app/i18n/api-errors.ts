@@ -1,6 +1,10 @@
 import type { Locale } from "./locale";
 
 const exactFrench: Record<string, string> = {
+  "اسم فئة المصروف مطلوب ولا يتجاوز 80 حرفًا": "Le nom de la catégorie est requis (80 caractères maximum).",
+  "فئة المصروف موجودة بالفعل": "Cette catégorie de dépense existe déjà.",
+  "فئة المصروف غير صالحة": "Catégorie de dépense invalide.",
+  "فئة المصروف غير موجودة": "Catégorie de dépense introuvable.",
   "اسم المستخدم غير صحيح": "Nom d’utilisateur incorrect",
   "كلمة المرور غير صحيحة": "Mot de passe incorrect",
   "طلب غير صالح": "Requête invalide",

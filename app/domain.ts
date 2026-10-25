@@ -42,6 +42,7 @@ export interface ProductCategory {
   name: string;
   createdAt?: string;
 }
+export interface ExpenseCategory {id:string;name:string;createdAt?:string}
 export interface Product {
   id: string;
   name: string;
@@ -113,6 +114,8 @@ export interface DocumentRecord {
   toAccountId?: string | null;
   status: string;
   title: string | null;
+  expenseCategoryId?: string | null;
+  expenseCategoryName?: string | null;
   note?: string | null;
   /** Opening-stock audit metadata for initial balances and later corrections. */
   openingCorrection?: boolean;
@@ -170,6 +173,7 @@ export interface BootstrapData {
   warehouses: Warehouse[];
   products: Product[];
   categories: ProductCategory[];
+  expenseCategories?: ExpenseCategory[];
   documents: DocumentRecord[];
   movements: Movement[];
   financialMovements: FinancialMovement[];

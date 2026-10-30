@@ -1,5 +1,6 @@
 import {createExpenseCategory,expenseCategorySnapshot} from "../../../lib/expense-categories.ts";
 import { requireValidLicense } from "../../../lib/license.ts";
+import { serializeBusinessError } from "../../../lib/business-error.ts";
 import type { SqliteSession as ClientSession, SqliteDatabase as Db } from "../../../lib/sqlite.ts";
 import { getDatabase } from "../../../lib/sqlite.ts";
 import { log } from "../../../lib/log.ts";
@@ -9,7 +10,7 @@ import { normalizePartyNet, partyNet } from "../../party-balance.ts";
 import { nextDocumentSequence, type SequencedDocumentKind } from "../../../lib/document-sequences.ts";
 import { deriveOpeningStockState, planOpeningStockCorrection } from "../../../lib/opening-stock.ts";
 import { currentProductCost, resolveProductCost } from "../../../lib/product-cost.ts";
-import { executeLifecycleCommand, findActiveFinancialMovement, LifecycleCommandError, propagatePartyName, restoreProductArchiveStockClearance, reverseFinancialMovement } from "../../../lib/transaction-lifecycle.ts";
+import { executeLifecycleCommand, findActiveFinancialMovement, propagatePartyName, restoreProductArchiveStockClearance, reverseFinancialMovement } from "../../../lib/transaction-lifecycle.ts";
 
 type Input = Record<string, unknown>;
 type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; costAtSale?: number | null; grossProfit?: number | null };
@@ -1013,8 +1014,8 @@ export async function POST(request: Request) {const licenseDenied=await requireV
     catch(error){if((error as {code?:number}).code===11000){const duplicate=await receipts.findOne({_id:idempotencyKey as never});if(duplicate?.fingerprint!==fingerprint)return Response.json({error:"مفتاح العملية مستخدم لطلب مختلف"},{status:409});if(duplicate?.status==="committed")return Response.json(duplicate.result);return Response.json({error:"العملية قيد التنفيذ"},{status:409});}throw error;}
     log("info","api.command.completed",{commandType:type,entityId:result});return Response.json(response);
   }catch(error){
-    const known=error instanceof CommandError||error instanceof LifecycleCommandError,status=known?error.status:500;
+    const response=serializeBusinessError(error);
     log("error","api.command.failed",{commandType:type,error});
-    return Response.json({error:known?error.message:"تعذر تنفيذ العملية",...(error instanceof CommandError&&error.details?error.details:{})},{status});
+    return Response.json(response.body,{status:response.status});
   }
 }

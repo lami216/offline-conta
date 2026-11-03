@@ -69,6 +69,7 @@ import { applyPriceMode, clearPersistedSaleDraft, initialSaleUiState, sellingPri
 import { readApiResponse } from "./api-response";
 import { exportNativeBackup } from "./backup-export";
 import { finishSuccessfulCommand } from "./command-lifecycle";
+import { requestEditorReplacement } from "./editor-replacement";
 import { useHoverEnterActivation } from "./hover-enter";
 import { expenseAllTimeMode, expenseDateMode, expenseSearchMode, filterDocumentsByDate, localBusinessDay, rankExpenseDocuments, type ExpenseHistoryFilters } from "./history-filters";
 import { bankScopeBreakdown, bankScopeMetrics, financialMovementKind, filterFinancialMovements, filterTransfers, type CommittedPeriod } from "./bank-filters";
@@ -302,14 +303,12 @@ function ContaAppContent() {
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, []);
-  const prepareEditorReplacement = async () => {
-    if(inFlightCommands.current.size){setNotice(tr("command.waitForSave"));return false;}
-    const guard=activeEditorGuard.current;
-    if(!guard?.isEditing())return true;
-    if(guard.isDirty()&&!await confirmAction({message:tr("لديك تعديلات غير محفوظة. هل تريد تجاهلها والانتقال؟")}))return false;
-    guard.discard();
-    return true;
-  };
+  const prepareEditorReplacement = async () => requestEditorReplacement({
+    hasPendingCommands: () => inFlightCommands.current.size > 0,
+    getGuard: () => activeEditorGuard.current,
+    confirmDiscard: () => confirmAction({message:tr("لديك تعديلات غير محفوظة. هل تريد تجاهلها والانتقال؟")}),
+    onPending: () => setNotice(tr("command.waitForSave")),
+  });
   const navigate = async (id: View, options: { replaceEditor?: boolean } = {}) => {
     if (!canView(id)) return false;
     if ((id !== view || options.replaceEditor) && !await prepareEditorReplacement()) return false;
@@ -525,10 +524,10 @@ function ContaAppContent() {
           ) : (
             <>
               {view === "pos" && (
-                <Pos data={data} run={run} openDoc={openDoc} editRequest={saleEditRequest} clearEditRequest={() => setSaleEditRequest(null)} requestPrint={setAutoPrintId} openStockAdjustment={openStockAdjustment} registerEditorGuard={registerEditorGuard} />
+                <Pos data={data} run={run} openDoc={openDoc} editRequest={saleEditRequest} clearEditRequest={() => setSaleEditRequest(null)} requestPrint={setAutoPrintId} openStockAdjustment={openStockAdjustment} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
               )}{" "}
               {view === "purchases" && (
-                <Purchases data={data} run={run} openDoc={openDoc} editRequest={purchaseEditRequest} clearEditRequest={() => setPurchaseEditRequest(null)} requestPrint={setAutoPrintId} registerEditorGuard={registerEditorGuard} />
+                <Purchases data={data} run={run} openDoc={openDoc} editRequest={purchaseEditRequest} clearEditRequest={() => setPurchaseEditRequest(null)} requestPrint={setAutoPrintId} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
               )}{" "}
               {view === "expenses" && (
                 <Expenses data={data} run={run} openDoc={openDoc} editRequest={expenseEditRequest} clearEditRequest={() => setExpenseEditRequest(null)} registerEditorGuard={registerEditorGuard} canEdit={can("expenses.edit")} canDelete={can("expenses.delete")} />
@@ -883,6 +882,7 @@ function Pos({
   clearEditRequest,
   requestPrint,
   registerEditorGuard,
+  prepareEditorReplacement,
 }: {
   data: BootstrapData;
   run: RunCommand;
@@ -892,10 +892,12 @@ function Pos({
   requestPrint: (id: string) => void;
   openStockAdjustment: (prefill: AdjustmentPrefill) => void;
   registerEditorGuard: RegisterEditorGuard;
+  prepareEditorReplacement: () => Promise<boolean>;
 }) {
   const { locale } = useI18n();
   const confirmAction=useAppConfirm();
   const canCreateSale=canUseCapability(data.principal,"pos.create"),canEditSale=canUseCapability(data.principal,"pos.edit"),canDeleteSale=canUseCapability(data.principal,"pos.delete"),canCreateCustomer=canUseCapability(data.principal,"customers.create");
+  const historyDocuments=useMemo(()=>data.documents.filter(document => document.kind === "sale" && document.status === "posted"),[data.documents]);
   const [query, setQuery] = useState(""),
     [lines, setLines] = useSessionDraft<DraftLine[]>("sale-lines", []),
     [payment, setPayment] = useSessionDraft("sale-payment", ""),
@@ -931,7 +933,7 @@ function Pos({
   useEffect(() => { registerEditorGuard({ isEditing: () => Boolean(editingDocumentId) || dirty(), isDirty: dirty, discard: resetEditor }); return () => registerEditorGuard(null); });
   const loadDocument = async (document: DocumentRecord) => {
     if (!canEditSale || document.legacyKey || document.status !== "posted") { openDoc(document.id); return; }
-    if (editingDocumentId && document.id !== editingDocumentId && dirty() && !await confirmAction({message:tr("لديك تعديلات غير محفوظة على الفاتورة الحالية. هل تريد تجاهلها وفتح الفاتورة الأخرى؟")})) return;
+    if (!await prepareEditorReplacement()) return;
     const loadedLines = document.lines.map(line => ({ productId: String(line.productId), quantity: String(line.quantity), piecePrice: String(line.unitPrice), unitPrice: "", actualQuantity: "" }));
     const loadedPayment = document.paymentMethod ?? "note", loadedParty = document.partyId ?? "", loadedMode = document.pricingMode ?? "retail";
     setLines(loadedLines); setPayment(loadedPayment); setPartyId(loadedParty); setPriceMode(loadedMode); setEditingDocumentId(document.id); setSelectedLine(null); setQuery("");
@@ -1004,7 +1006,7 @@ function Pos({
   </FramedSection>;
   const customerSelect = <SearchableSelect triggerRef={customerRef} value={partyId} onChange={setPartyId} placeholder={payment === "note" ? tr("اختر العميل") : tr("بيع مباشر")} searchPlaceholder={tr("ابحث باسم أو هاتف")} floating allowEmpty={payment !== "note"} variant="pos-customer" ariaLabel={tr("العميل")} options={customerOptions} />;
   const checkout = <FramedSection title={tr("الدفع")} className="workspace-checkout"><div className="checkout-layout"><div className="checkout-body"><div className="invoice-meta-row" aria-label={tr("نوع الفاتورة")}><button data-hover-enter="select" className="meta-option selection-option" aria-pressed={payment !== "note"} onClick={() => setPayment("")}><Banknote /><span><small>{tr("طريقة التحصيل")}</small><b>{tr("دفع مباشر")}</b></span></button><button data-hover-enter="select" className="meta-option selection-option secondary" aria-pressed={payment === "note"} onClick={() => setPayment("note")}><PencilLine /><span><small>{tr("نوع البيع")}</small><b>{tr("ملاحظة")}</b></span></button></div><span className="payment-label">{payment === "note" ? tr("العميل") : tr("طريقة الدفع")}</span><div className={`pos-payment-row${payment === "note" ? " note" : ""}`}>{payment !== "note" && <CompactPaymentSelector selectRef={paymentRef} accounts={data.paymentAccounts} value={payment} onChange={setPayment} missing={lines.length>0&&payment!=="note"&&!payment} preserveSelected={Boolean(editingDocumentId)} />}<div className="pos-customer-compact" data-requirement-missing={lines.length>0&&payment==="note"&&!partyId?"true":undefined}>{customerSelect}</div>{canCreateCustomer&&<button ref={quickButton} type="button" className="pos-quick-customer-button" aria-label={tr("إضافة العميل")} title={tr("إضافة العميل")} onClick={() => setQuick(value => !value)}><Plus /></button>}</div>{quick&&canCreateCustomer && <QuickCustomer anchor={quickButton} run={run} cancel={() => setQuick(false)} onDone={id => { setPartyId(id); setQuick(false); }} />}<CheckoutInvoiceActions printAfterSave={printAfterSave} setPrintAfterSave={setPrintAfterSave} onDelete={voidSale} canDelete={!editingDocument||canDeleteSale} disabled={!editingDocument && !lines.length} /></div><div className="checkout-footer"><div className="total invoice-total"><span>{tr("الإجمالي")}</span><strong>{money(total)}</strong></div>{(editingDocumentId?canEditSale:canCreateSale)&&<BlockedAction reasons={lines.length?[...(!wh?[{id:"warehouse",label:tr("المخزن")}]:[]),...(payment==="note"&&!partyId?[{id:"customer",label:tr("العميل")}]:[]),...(payment!=="note"&&!payment?[{id:"payment",label:tr("وسيلة الدفع")}]:[])]:[]}><button className="primary wide" disabled={!lines.length || !wh || (payment === "note" ? !partyId : !payment)} onClick={() => void submit()}>{editingDocumentId ? tr("حفظ التعديلات") : tr("إتمام البيع")}</button></BlockedAction>}</div></div></FramedSection>;
-  return <section className="transaction-page"> {stockNotice && <div className="toast stock-toast">{stockNotice}</div>}<div className="transaction-workspace pos-workspace"><div className="workspace-discovery"><FramedSection title={tr("بحث المنتجات")} className="search-panel"><SearchProducts inputRef={productSearchRef} data={data} query={query} setQuery={setQuery} onPick={add} mode="sale" warehouseId={wh?.id} priceMode={priceMode} stockScope="selected-warehouse" collapseResultsWhenIdle /></FramedSection><InvoiceQuickBrowser title={tr("سجل الفواتير")} docs={data.documents.filter(d => d.kind === "sale" && d.status === "posted")} openDoc={id => { const document = data.documents.find(item => item.id === id); if (document) loadDocument(document); }} /></div>{invoice}{checkout}</div></section>;
+  return <section className="transaction-page"> {stockNotice && <div className="toast stock-toast">{stockNotice}</div>}<div className="transaction-workspace pos-workspace"><div className="workspace-discovery"><FramedSection title={tr("بحث المنتجات")} className="search-panel"><SearchProducts inputRef={productSearchRef} data={data} query={query} setQuery={setQuery} onPick={add} mode="sale" warehouseId={wh?.id} priceMode={priceMode} stockScope="selected-warehouse" collapseResultsWhenIdle /></FramedSection><InvoiceQuickBrowser title={tr("سجل الفواتير")} docs={historyDocuments} openDoc={id => { const document = data.documents.find(item => item.id === id); if (document) loadDocument(document); }} /></div>{invoice}{checkout}</div></section>;
 
 }
 
@@ -1038,9 +1040,10 @@ function QuickSupplier({ anchor, run, onDone, cancel }: { anchor: React.RefObjec
   const style: CSSProperties = rect ? { position: "fixed", zIndex: 1100, width: 250, top: rect.bottom + 5, left: Math.max(8, rect.right - 250) } : {};
   return createPortal(<form className="pos-quick-customer-popover" style={style} onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); cancel(); window.requestAnimationFrame(() => anchor.current?.focus()); } }} onSubmit={async event => { event.preventDefault(); const id = await run({ type: "party.create", partyType: "supplier", name, phone }, tr("تمت إضافة المورد")); onDone(id); }}><label>{tr("اسم المورد *")}<input autoFocus required value={name} onChange={e => setName(e.target.value)} /></label><label>{tr("رقم الهاتف")} <small>{tr("اختياري")}</small><input dir="ltr" value={phone} onChange={e => setPhone(e.target.value)} /></label><div><button className="primary">{tr("حفظ")}</button><button type="button" className="soft" onClick={cancel}>{tr("إلغاء")}</button></div></form>, document.body);
 }
-function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestPrint, registerEditorGuard }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void; editRequest: string | null; clearEditRequest: () => void; requestPrint: (id: string) => void; registerEditorGuard: RegisterEditorGuard }) {
+function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestPrint, registerEditorGuard, prepareEditorReplacement }: { data: BootstrapData; run: RunCommand; openDoc: (id: string) => void; editRequest: string | null; clearEditRequest: () => void; requestPrint: (id: string) => void; registerEditorGuard: RegisterEditorGuard; prepareEditorReplacement: () => Promise<boolean> }) {
   const confirmAction=useAppConfirm();
   const canCreatePurchase=canUseCapability(data.principal,"purchases.create"),canEditPurchase=canUseCapability(data.principal,"purchases.edit"),canDeletePurchase=canUseCapability(data.principal,"purchases.delete"),canCreateSupplier=canUseCapability(data.principal,"suppliers.create"),canCreateWarehouse=canUseCapability(data.principal,"warehouses.create");
+  const historyDocuments=useMemo(()=>data.documents.filter(document => document.kind === "purchase" && document.status === "posted"),[data.documents]);
   const [partyId, setPartyId] = useSessionDraft("purchase-party", "");
   const [warehouseId, setWarehouseId] = useSessionDraft("purchase-warehouse", "");
   const [lines, setLines] = useSessionDraft<DraftLine[]>("purchase-lines", []);
@@ -1061,7 +1064,7 @@ function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestP
   useEffect(() => { registerEditorGuard({ isEditing: () => Boolean(editingDocumentId) || dirty(), isDirty: dirty, discard: resetEditor }); return () => registerEditorGuard(null); });
   const loadDocument = async (document: DocumentRecord) => {
     if (!canEditPurchase || document.legacyKey || document.status !== "posted") { openDoc(document.id); return; }
-    if (editingDocumentId && document.id !== editingDocumentId && dirty() && !await confirmAction({message:tr("لديك تعديلات غير محفوظة على الفاتورة الحالية. هل تريد تجاهلها وفتح الفاتورة الأخرى؟")})) return;
+    if (!await prepareEditorReplacement()) return;
     const loadedLines = document.lines.map(line => ({ productId: String(line.productId), quantity: String(line.quantity), unitPrice: String(line.unitPrice), piecePrice: "", actualQuantity: "" }));
     const loadedPayment = document.paymentMethod ?? "note", loadedParty = document.partyId ?? "", loadedWarehouse = document.warehouseId ?? "";
     setLines(loadedLines); setPayment(loadedPayment); setPartyId(loadedParty); setWarehouseId(loadedWarehouse); setEditingDocumentId(document.id); setSelectedLine(null); setQuery("");
@@ -1094,7 +1097,7 @@ function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestP
     } finally { submittingRef.current = false; }
   }
   return <section className="transaction-page"><div className="transaction-workspace purchase-workspace">
-    <div className="workspace-discovery"><FramedSection title={tr("بحث المنتجات")} className="search-panel"><SearchProducts inputRef={productSearchRef} data={data} query={query} setQuery={setQuery} onPick={pick} mode="purchase" warehouseId={warehouseId} collapseResultsWhenIdle /></FramedSection><InvoiceQuickBrowser title={tr("سجل فواتير الشراء")} docs={data.documents.filter(d => d.kind === "purchase" && d.status === "posted")} openDoc={id => { const document = data.documents.find(item => item.id === id); if (document) loadDocument(document); }} /></div>
+    <div className="workspace-discovery"><FramedSection title={tr("بحث المنتجات")} className="search-panel"><SearchProducts inputRef={productSearchRef} data={data} query={query} setQuery={setQuery} onPick={pick} mode="purchase" warehouseId={warehouseId} collapseResultsWhenIdle /></FramedSection><InvoiceQuickBrowser title={tr("سجل فواتير الشراء")} docs={historyDocuments} openDoc={id => { const document = data.documents.find(item => item.id === id); if (document) loadDocument(document); }} /></div>
     <FramedSection title={tr("فاتورة الشراء")} className="invoice-card workspace-invoice"><InvoiceEditorToolbar number={editingDocument ? displayDocumentNumber(editingDocument) : String(data.nextDocumentSequences.purchase)} newInvoice={newInvoice} scanner={<BarcodeScanner products={activeProducts(data.products)} onScan={pick} enabled={purchaseScannerEnabled} onEnabledChange={setPurchaseScannerEnabled} />} /><div className={lines.length ? "invoice-preview has-items" : "invoice-preview"}><div className="erp-table-wrap invoice-preview-list"><table className="erp-table invoice-table" aria-label={tr("منتجات فاتورة الشراء")}><colgroup><col style={{width:"38%"}}/><col style={{width:"14%"}}/><col style={{width:"17%"}}/><col style={{width:"19%"}}/><col style={{width:"12%"}}/></colgroup><thead><tr><th>{tr("الاسم")}</th><th>{tr("الكمية")}</th><th>{tr("سعر الشراء")}</th><th>{tr("المجموع")}</th><th>{tr("حذف")}</th></tr></thead><tbody>{details.map(({line, product}) => <tr key={product.id} onClick={() => setSelectedLine(product.id)} className={selectedLine === product.id ? "selected" : ""}><td className="name-cell"><ProductName name={product.name}/></td><td className="num-cell"><Num value={line.quantity} onChange={value => updatePurchaseLine(product, { quantity: value })} /></td><td className="num-cell"><Num value={line.unitPrice} onChange={value => updatePurchaseLine(product, { unitPrice: value })} /></td><td className="num-cell"><MoneyValue value={val(line.quantity) * val(line.unitPrice)}/></td><td className="action-cell"><button type="button" className="row-delete" aria-label={tr("ui.deleteItem",{name:product.name})} onClick={event => { event.stopPropagation(); setLines(current => current.filter(item => item.productId !== product.id)); }}><X /></button></td></tr>)}{!details.length && <tr className="invoice-empty-row"><td colSpan={5}>{tr("الفاتورة فارغة")}</td></tr>}</tbody></table></div></div></FramedSection>
     <FramedSection title={tr("الدفع")} className="workspace-checkout purchase-checkout"><div className="checkout-layout"><div className="checkout-body purchase-details"><div className="invoice-meta-row"><button data-hover-enter="select" className="meta-option selection-option" aria-pressed={payment !== "note"} onClick={() => setPayment("")}><Banknote /><span><small>{tr("نوع التسوية")}</small><b>{tr("دفع مباشر")}</b></span></button><button data-hover-enter="select" className="meta-option selection-option secondary" aria-pressed={payment === "note"} onClick={() => setPayment("note")}><PencilLine /><span><small>{tr("نوع التسوية")}</small><b>{tr("ملاحظة")}</b></span></button></div><span className="payment-label">{payment === "note" ? tr("المورد") : tr("طريقة الدفع")}</span><div className={`purchase-payment-row${payment === "note" ? " note" : ""}`}>{payment !== "note" && <CompactPaymentSelector selectRef={paymentRef} accounts={data.paymentAccounts} value={payment} onChange={setPayment} missing={lines.length>0&&payment!=="note"&&!payment} preserveSelected={Boolean(editingDocumentId)} />}<div className="purchase-supplier" data-requirement-missing={lines.length>0&&payment==="note"&&!partyId?"true":undefined}><SearchableSelect triggerRef={supplierRef} value={partyId} onChange={setPartyId} placeholder={payment === "note" ? tr("اختر المورد") : tr("شراء مباشر")} searchPlaceholder={tr("ابحث باسم المورد أو رقم الهاتف")} floating allowEmpty={payment !== "note"} options={supplierOptions} /></div>{canCreateSupplier&&<button ref={quickSupplierButton} type="button" className="pos-quick-customer-button" aria-label={tr("إضافة المورد")} title={tr("إضافة المورد")} onClick={() => setQuickSupplier(value => !value)}><Plus /></button>}</div>{quickSupplier&&canCreateSupplier && <QuickSupplier anchor={quickSupplierButton} run={run} cancel={() => setQuickSupplier(false)} onDone={id => { setPartyId(id); setQuickSupplier(false); }} />}<CheckoutInvoiceActions printAfterSave={printAfterSave} setPrintAfterSave={setPrintAfterSave} onDelete={deletePurchase} canDelete={!editingDocument||canDeletePurchase} disabled={!editingDocument && !lines.length} /><label data-requirement-missing={lines.length>0&&!warehouseId?"true":undefined}>{tr("مخزن الاستلام")}<SearchableSelect triggerRef={warehouseRef} value={warehouseId} onChange={setWarehouseId} placeholder={tr("اختر المخزن")} searchPlaceholder={tr("ابحث عن مخزن")} floating options={activeWarehouses(data.warehouses).map(w => ({ value: w.id, label: w.name }))} /></label>{canCreateWarehouse&&<button className="link purchase-add-warehouse" onClick={() => setAddingWh(!addingWh)}><Plus />  {tr("إضافة مخزن")}</button>}{addingWh&&canCreateWarehouse && <InlineCreate label={tr("اسم المخزن")} onSave={async name => { await run({ type: "warehouse.create", name }, tr("تمت إضافة المخزن")); setAddingWh(false); }} />}</div><div className="checkout-footer"><div className="total invoice-total"><span>{tr("الإجمالي")}</span><strong>{money(total)}</strong></div>{(editingDocumentId?canEditPurchase:canCreatePurchase)&&<BlockedAction reasons={lines.length?[...(!warehouseId?[{id:"warehouse",label:tr("مخزن الاستلام")}]:[]),...(payment==="note"&&!partyId?[{id:"supplier",label:tr("المورد")}]:[]),...(payment!=="note"&&!payment?[{id:"payment",label:tr("وسيلة الدفع")}]:[])]:[]}><button className="primary wide" disabled={!warehouseId || !lines.length || (payment === "note" ? !partyId : !payment)} onClick={() => void submit()}>{editingDocumentId ? tr("حفظ التعديلات") : tr("إتمام الشراء")}</button></BlockedAction>}</div></div></FramedSection>
   </div></section>;
@@ -1765,11 +1768,20 @@ function Linked({
 }
 
 function InvoiceQuickBrowser({ title, docs, openDoc }: { title: string; docs: DocumentRecord[]; openDoc: (id: string) => void }) {
-  const today = localBusinessDay(), [from, setFrom] = useState(today), [to, setTo] = useState(today), [allTime, setAllTime] = useState(false);
-  const visible = filterDocumentsByDate(docs, from, to, allTime);
+  const today = localBusinessDay(), [from, setFrom] = useState(today), [to, setTo] = useState(today), [allTime, setAllTime] = useState(false), [page, setPage] = useState(1);
+  const visible = useMemo(() => filterDocumentsByDate(docs, from, to, allTime), [docs, from, to, allTime]);
   const statusCustomer = (document: DocumentRecord) => { const credit = document.paymentMethod === "note" || document.dueTotal > 0 || document.paidTotal < document.total; const customer = invoicePartyName(document) || tr("بيع مباشر"); if (credit) return `${customer} · ${tr("ملاحظة")}`; if (document.status === "posted" || document.paidTotal >= document.total) return `${customer} · ${tr("مدفوعة")}`; return `${customer} · ${tr("معتمد")}`; };
   const columns=useMemo(()=>[{key:"number",type:"number" as const,get:(d:DocumentRecord)=>d.sequence??d.number},{key:"party",type:"text" as const,get:(d:DocumentRecord)=>statusCustomer(d)},{key:"total",type:"money" as const,get:(d:DocumentRecord)=>d.total}],[]),{sort,sortedRows,toggle}=useSortableRows(visible,columns);
-  return <FramedSection title={title} className="quick-invoices"><div className="quick-invoice-head"><CompactDateRange from={from} to={to} allTime={allTime} onAllTime={() => setAllTime(true)} onFromChange={value => { setFrom(value); setAllTime(false); }} onToChange={value => { setTo(value); setAllTime(false); }} /></div><div className="erp-table-wrap quick-invoice-list"><table className="erp-table"><colgroup><col style={{width:"30%"}}/><col style={{width:"44%"}}/><col style={{width:"26%"}}/></colgroup><thead><tr><SortableTableHeader column="number" label={tr("رقم الفاتورة")} sort={sort} toggle={toggle}/><SortableTableHeader column="party" label={tr("الحالة / العميل")} sort={sort} toggle={toggle}/><SortableTableHeader column="total" label={tr("المبلغ")} sort={sort} toggle={toggle}/></tr></thead><tbody>{sortedRows.map(document => <tr key={document.id} onClick={() => openDoc(document.id)}><td dir="ltr">{displayDocumentNumber(document)}</td><td>{statusCustomer(document)}</td><td className="num-cell"><MoneyValue value={document.total}/></td></tr>)}{!sortedRows.length && <tr><td colSpan={3}>{tr("لا توجد فواتير في هذه الفترة")}</td></tr>}</tbody></table></div></FramedSection>;
+  const pageSize=100,totalPages=Math.max(1,Math.ceil(sortedRows.length/pageSize)),currentPage=Math.min(page,totalPages);
+  const pageRows=useMemo(()=>sortedRows.slice((currentPage-1)*pageSize,currentPage*pageSize),[sortedRows,currentPage]);
+  const listRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{if(listRef.current)listRef.current.scrollTop=0},[currentPage,from,to,allTime,sort]);
+  const toggleHistorySort=(key:string)=>{setPage(1);toggle(key)};
+  return <FramedSection title={title} className="quick-invoices">
+    <div className="quick-invoice-head"><CompactDateRange from={from} to={to} allTime={allTime} onAllTime={() => { setAllTime(true); setPage(1); }} onFromChange={value => { setFrom(value); setAllTime(false); setPage(1); }} onToChange={value => { setTo(value); setAllTime(false); setPage(1); }} /></div>
+    <div ref={listRef} className="erp-table-wrap quick-invoice-list"><table className="erp-table"><colgroup><col style={{width:"30%"}}/><col style={{width:"44%"}}/><col style={{width:"26%"}}/></colgroup><thead><tr><SortableTableHeader column="number" label={tr("رقم الفاتورة")} sort={sort} toggle={toggleHistorySort}/><SortableTableHeader column="party" label={tr("الحالة / العميل")} sort={sort} toggle={toggleHistorySort}/><SortableTableHeader column="total" label={tr("المبلغ")} sort={sort} toggle={toggleHistorySort}/></tr></thead><tbody>{pageRows.map(document => <tr key={document.id} onClick={() => openDoc(document.id)}><td dir="ltr">{displayDocumentNumber(document)}</td><td>{statusCustomer(document)}</td><td className="num-cell"><MoneyValue value={document.total}/></td></tr>)}{!sortedRows.length && <tr><td colSpan={3}>{tr("لا توجد فواتير في هذه الفترة")}</td></tr>}</tbody></table></div>
+    {totalPages>1&&<div className="report-pagination no-print" aria-label={title}><button type="button" className="soft" disabled={currentPage<=1} onClick={()=>setPage(Math.max(1,currentPage-1))}>{tr("السابق")}</button><span>{tr("الصفحة")} {number(currentPage)} / {number(totalPages)} · {number(sortedRows.length)} {tr("سجل")}</span><button type="button" className="soft" disabled={currentPage>=totalPages} onClick={()=>setPage(Math.min(totalPages,currentPage+1))}>{tr("التالي")}</button></div>}
+  </FramedSection>;
 }
 
 function LifecycleActions({onEdit,onVoid}:{onEdit?:()=>void;onVoid?:()=>void}) {

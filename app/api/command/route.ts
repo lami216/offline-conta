@@ -1,3 +1,4 @@
+import { historicalInvoiceStockLines, planStockChange } from "../../../lib/stock-numbers.ts";
 import { CommandAdmissionError, withCommandAdmission, type CommandAdmissionContext } from "../../../lib/command-admission.ts";
 import { confirmSaleCostRecovery } from "../../../lib/sale-cost-recovery.ts";
 import {createExpenseCategory,expenseCategorySnapshot} from "../../../lib/expense-categories.ts";
@@ -227,10 +228,10 @@ async function invoiceUpdateRefs(db:Db,session:ClientSession,body:Input,original
   return {warehouse,party,warehouseId,partyId};
 }
 async function changeStock(db: Db, session: ClientSession, product: Record<string, unknown>, warehouse: Record<string, unknown>, delta: number, document: Record<string, unknown>, type: string) {
-  const warehouseId = String(warehouse._id), productId = String(product.id), before = Number((product.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0), after = before + delta;
+  const warehouseId = String(warehouse._id), productId = String(product.id);
+  const { before, after, delta: quantityDelta, stockPath, stockMatch } = planStockChange(product, warehouseId, delta, document);
   if (after < 0) throw new CommandError(`المخزون غير كافٍ للمنتج ${product.name}`);
-  const stockPath = `stocks.${warehouseId}`;
-  const stockMatch = before === 0 ? { $or: [{ [stockPath]: 0 }, { [stockPath]: { $exists: false } }] } : { [stockPath]: before };
+
   const result = await db.collection("products").updateOne({ id: productId, ...stockMatch }, { $set: { [stockPath]: after } }, { session });
   if (!result.matchedCount) throw new CommandError("تغير المخزون أثناء العملية، أعد المحاولة", 409);
   const currentStocks = (product.stocks ??= {}) as Record<string, number>;
@@ -239,7 +240,7 @@ async function changeStock(db: Db, session: ClientSession, product: Record<strin
     await warehouses(db).updateOne({ _id: warehouseId, isArchived: true }, { $set: { isArchived: false, archivedAt: null, updatedAt: new Date() } }, { session });
     warehouse.isArchived = false;
   }
-  await db.collection("stockMovements").insertOne({ id: id("mov"), documentId: document.id, documentNumber: document.number, warehouseId, warehouseName: warehouse.name, productId, productName: product.name, type, quantityDelta: delta, balanceBefore: before, balanceAfter: after, occurredAt: document.occurredAt, documentRevision: Number(document.revision ?? 0) }, { session });
+  await db.collection("stockMovements").insertOne({ id: id("mov"), documentId: document.id, documentNumber: document.number, warehouseId, warehouseName: warehouse.name, productId, productName: product.name, type, quantityDelta, balanceBefore: before, balanceAfter: after, occurredAt: document.occurredAt, documentRevision: Number(document.revision ?? 0) }, { session });
   return { before, after };
 }
 
@@ -862,7 +863,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if (isSale && await db.collection("documents").findOne({ kind: "return", status: "posted", parentDocumentId: documentId }, { session })) throw new CommandError("لا يمكن حذف هذه الفاتورة القديمة لوجود حركة تاريخية مرتبطة بها.", 409);
     const warehouse = await warehouses(db).findOne({ _id: String(original.warehouseId) }, { session });
     if (!warehouse) throw new CommandError("مخزن الفاتورة غير موجود", 409);
-    const oldLines = original.lines as Line[], found = await db.collection("products").find({ id: { $in: oldLines.map(line => line.productId) } }, { session }).toArray(), map = new Map(found.map(product => [String(product.id), product]));
+    const oldLines = historicalInvoiceStockLines(original) as Line[], found = await db.collection("products").find({ id: { $in: oldLines.map(line => line.productId) } }, { session }).toArray(), map = new Map(found.map(product => [String(product.id), product]));
     for (const line of oldLines) try { await changeStock(db, session, map.get(line.productId)!, warehouse, isSale ? line.quantity : -line.quantity, { ...original, occurredAt: new Date().toISOString(), revision: Number(original.revision ?? 0) + 1 }, `${kind}-void`); } catch (error) { if (!isSale && error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("لا يمكن حذف الفاتورة لأن جزءًا من مخزونها تم التصرف فيه.", 409); throw error; }
     if (Number(original.dueTotal) > 0) await changePartyDebt(db, session, original.partyId, kind, -Number(original.dueTotal), true);
     await reverseInvoicePayment(db, session, original, kind);

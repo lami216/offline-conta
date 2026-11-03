@@ -10,6 +10,7 @@ type Actor = { principalType: string; name: string; userId?: string };
 type Source = { documentId: string; number: string; lineId: string; unitCost: number; kind: string; occurredAt: string; fingerprint: string };
 type Resolution = { source: Source | null; reason: string };
 type Candidate = { document: Stored; line: Row; index: number; product: Row | undefined; state: "missing" | "invalid" | "saved-zero"; resolution: Resolution; token: string; lineId: string; revenue: number | null; reviewed: boolean };
+type ClassifiedCandidate = Omit<Candidate, "resolution" | "token" | "revenue">;
 export class SaleCostRecoveryError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
@@ -33,7 +34,7 @@ function readRows(db: SqliteDatabase, table: "documents" | "products" | "app_set
   const where = table === "audit_events" ? " WHERE json_extract(data_json,'$.action')='sale-cost-recovery.confirm' AND json_extract(data_json,'$.version')=1" : "";
   return (db.native.prepare(`SELECT record_key,data_json,rowid FROM ${table}${where} ORDER BY rowid`).all() as Omit<Stored, "value">[]).map(row => ({ ...row, value: JSON.parse(row.data_json) as Row }));
 }
-function snapshot(db: SqliteDatabase) {
+function snapshot(db: SqliteDatabase, includeFingerprint = true) {
   const documents = readRows(db, "documents"), products = readRows(db, "products");
   const reviewedZeros = new Set<string>();
   for (const { value: event } of readRows(db, "audit_events")) {
@@ -48,7 +49,7 @@ function snapshot(db: SqliteDatabase) {
       const rows = sources.get(productId) ?? []; rows.push(document); sources.set(productId, rows);
     }
   }
-  return { documents, sources, reviewedZeros, products: new Map(products.map(row => [String(row.value.id), row.value])), fingerprint: hash([SALE_COST_RECOVERY_VERSION, documents.map(row => [row.record_key, row.data_json]), products.map(row => [row.record_key, row.data_json])]) };
+  return { documents, sources, reviewedZeros, products: new Map(products.map(row => [String(row.value.id), row.value])), fingerprint: includeFingerprint ? hash([SALE_COST_RECOVERY_VERSION, documents.map(row => [row.record_key, row.data_json]), products.map(row => [row.record_key, row.data_json])]) : undefined };
 }
 const zeroIdentity = (document: Row, line: Row, lineId: string) => hash([document.id, document.occurredAt, lineId, line.productId, line.costAtSale, line.quantity, line.unitPrice, line.lineTotal]);
 function saleRevenue(document: Row, index: number) {
@@ -97,8 +98,9 @@ function resolveSource(documents: Stored[], sale: Stored, line: Row): Resolution
   }
   return { source: { documentId: String(latest.value.id), number: String(latest.value.number ?? ""), lineId: String(sourceLine.id ?? ""), unitCost, kind: String(latest.value.kind), occurredAt: String(latest.value.occurredAt), fingerprint: hash(latest.value) }, reason: "proven-prior-source" };
 }
-function candidates(state: ReturnType<typeof snapshot>): Candidate[] {
-  const result: Candidate[] = [];
+/** Counts and pagination need eligibility only, never source resolution per sale. */
+function candidates(state: ReturnType<typeof snapshot>): ClassifiedCandidate[] {
+  const result: ClassifiedCandidate[] = [];
   for (const document of state.documents) {
     const sale = document.value;
     if (sale.kind !== "sale" || sale.status !== "posted" || !Array.isArray(sale.lines) || revision(sale) === null) continue;
@@ -108,18 +110,23 @@ function candidates(state: ReturnType<typeof snapshot>): Candidate[] {
       const cost = reportCostNumber(line.costAtSale), product = state.products.get(String(line.productId));
       if (!ordinary(product, line) || (cost !== null && cost > 0)) continue;
       const stateName = cost === 0 ? "saved-zero" : line.costAtSale === null || line.costAtSale === undefined ? "missing" : "invalid";
-      const quantity = reportCostNumber(line.quantity), revenue = saleRevenue(sale, index);
-      let resolution = quantity === null || quantity <= 0 || revenue === null ? { source: null, reason: "sale-values-unproven" } : resolveSource(state.sources.get(String(line.productId)) ?? [], document, line);
-      if (resolution.source && !Number.isFinite(Number(line.quantity) * resolution.source.unitCost)) resolution = { source: null, reason: "sale-values-unproven" };
       const lineId = text(line.id) && sale.lines.filter((item: Row) => item?.id === line.id).length === 1 ? text(line.id) : `legacy-index:${index}`;
       // General invoice edits may omit additive line metadata. The durable owner
       // journal remains authoritative while the complete saved stock/price tuple agrees.
       const reviewed = cost === 0 && state.reviewedZeros.has(zeroIdentity(sale, line, lineId));
-      const token = hash([SALE_COST_RECOVERY_VERSION, sale, index, product?.perfumeForm ?? null, resolution]);
-      result.push({ document, line, index, product, state: stateName, resolution, token, lineId, revenue, reviewed });
+      result.push({ document, line, index, product, state: stateName, lineId, reviewed });
     }
   }
   return result;
+}
+/** Keep the original source proof and token inputs exact; resolve only used rows. */
+function resolveCandidate(state: ReturnType<typeof snapshot>, candidate: ClassifiedCandidate): Candidate {
+  const { document, line, index, product } = candidate, sale = document.value;
+  const quantity = reportCostNumber(line.quantity), revenue = saleRevenue(sale, index);
+  let resolution = quantity === null || quantity <= 0 || revenue === null ? { source: null, reason: "sale-values-unproven" } : resolveSource(state.sources.get(String(line.productId)) ?? [], document, line);
+  if (resolution.source && !Number.isFinite(Number(line.quantity) * resolution.source.unitCost)) resolution = { source: null, reason: "sale-values-unproven" };
+  const token = hash([SALE_COST_RECOVERY_VERSION, sale, index, product?.perfumeForm ?? null, resolution]);
+  return { ...candidate, resolution, token, revenue };
 }
 function setting(db: SqliteDatabase) { const row = db.native.prepare("SELECT data_json FROM app_settings WHERE record_key=?").get(SALE_COST_RECOVERY_SETTING) as { data_json: string } | undefined; return row ? JSON.parse(row.data_json) as Row : null; }
 function saveSetting(db: SqliteDatabase, value: Row) { db.native.prepare("INSERT INTO app_settings(record_key,data_json) VALUES(?,?) ON CONFLICT(record_key) DO UPDATE SET data_json=excluded.data_json").run(SALE_COST_RECOVERY_SETTING, JSON.stringify({ ...value, id: SALE_COST_RECOVERY_SETTING, _id: SALE_COST_RECOVERY_SETTING })); }
@@ -160,32 +167,35 @@ function atomic<T>(db: SqliteDatabase, work: () => T): T {
 export function recoverHistoricalSaleCosts(db: SqliteDatabase, options: { context?: string } = {}) {
   return atomic(db, () => {
     const state = snapshot(db), prior = setting(db);
-    if (prior?.version === SALE_COST_RECOVERY_VERSION && prior.fingerprint === state.fingerprint) return readSaleCostRecoverySummary(db);
+    const classified = candidates(state);
+    if (prior?.version === SALE_COST_RECOVERY_VERSION && prior.fingerprint === state.fingerprint) return summary(db, classified);
     let recovered = 0;
-    for (const candidate of candidates(state)) {
-      if (candidate.state === "saved-zero" || !candidate.resolution.source || candidate.revenue === null) continue;
+    for (const row of classified) {
+      if (row.state === "saved-zero") continue;
+      const candidate = resolveCandidate(state, row);
+      if (!candidate.resolution.source || candidate.revenue === null) continue;
       apply(db, candidate, candidate.resolution.source.unitCost, { principalType: "system", name: "safe-cost-recovery" }, "automatic", "proven-prior-native-source"); recovered++;
     }
     // An untouched dataset needs no migration metadata. In particular, restoring
     // a backup without a recovery marker must preserve its settings byte-for-byte.
-    if (recovered === 0 && !prior) return readSaleCostRecoverySummary(db);
+    if (recovered === 0 && !prior) return summary(db, classified);
     const final = snapshot(db);
     saveSetting(db, { version: SALE_COST_RECOVERY_VERSION, fingerprint: final.fingerprint, automaticRecovered: Number(prior?.automaticRecovered ?? 0) + recovered, lastRecovered: recovered, completedAt: new Date().toISOString(), context: options.context ?? "startup" });
-    return readSaleCostRecoverySummary(db);
+    return summary(db, candidates(final));
   });
 }
 export function readSaleCostRecoverySummary(db: SqliteDatabase) {
-  return summary(db, candidates(snapshot(db)));
+  return summary(db, candidates(snapshot(db, false)));
 }
-function summary(db: SqliteDatabase, all: Candidate[]) {
+function summary(db: SqliteDatabase, all: ClassifiedCandidate[]) {
   const rows = all.filter(row => !row.reviewed);
   return { automaticRecovered: Number(setting(db)?.automaticRecovered ?? 0), unresolved: rows.filter(row => row.state !== "saved-zero").length, savedZeroReview: rows.filter(row => row.state === "saved-zero").length, reviewedZero: all.filter(row => row.reviewed).length };
 }
 export function accountingHealth(db: SqliteDatabase, options: { page?: number; pageSize?: number } = {}) {
   const page = options.page ?? 1, pageSize = options.pageSize ?? 25;
   if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new SaleCostRecoveryError("إعدادات صفحة مراجعة التكاليف غير صالحة");
-  const candidatesAll = candidates(snapshot(db)), all = candidatesAll.filter(row => !row.reviewed);
-  const rows = all.slice((page - 1) * pageSize, page * pageSize).map(row => ({ documentId: String(row.document.value.id), number: String(row.document.value.number ?? ""), lineId: row.lineId, lineIndex: row.index, productId: String(row.line.productId), productName: String(row.product?.name ?? row.line.description ?? ""), occurredAt: String(row.document.value.occurredAt ?? ""), revision: Number(row.document.value.revision ?? 0), originalCost: row.line.costAtSale ?? null, costState: row.state, suggestedPriorCost: row.resolution.source?.unitCost ?? null, sourceDocumentId: row.resolution.source?.documentId ?? null, sourceNumber: row.resolution.source?.number ?? null, reason: row.resolution.reason, canApplySuggested: row.resolution.source !== null && row.revenue !== null, canConfirmZero: row.revenue !== null && (reportCostNumber(row.line.quantity) ?? 0) > 0, canSetReviewedCost: row.revenue !== null && (reportCostNumber(row.line.quantity) ?? 0) > 0, reviewToken: row.token }));
+  const state = snapshot(db, false), candidatesAll = candidates(state), all = candidatesAll.filter(row => !row.reviewed);
+  const rows = all.slice((page - 1) * pageSize, page * pageSize).map(row => resolveCandidate(state, row)).map(row => ({ documentId: String(row.document.value.id), number: String(row.document.value.number ?? ""), lineId: row.lineId, lineIndex: row.index, productId: String(row.line.productId), productName: String(row.product?.name ?? row.line.description ?? ""), occurredAt: String(row.document.value.occurredAt ?? ""), revision: Number(row.document.value.revision ?? 0), originalCost: row.line.costAtSale ?? null, costState: row.state, suggestedPriorCost: row.resolution.source?.unitCost ?? null, sourceDocumentId: row.resolution.source?.documentId ?? null, sourceNumber: row.resolution.source?.number ?? null, reason: row.resolution.reason, canApplySuggested: row.resolution.source !== null && row.revenue !== null, canConfirmZero: row.revenue !== null && (reportCostNumber(row.line.quantity) ?? 0) > 0, canSetReviewedCost: row.revenue !== null && (reportCostNumber(row.line.quantity) ?? 0) > 0, reviewToken: row.token }));
   return { version: SALE_COST_RECOVERY_VERSION, summary: summary(db, candidatesAll), rows, pagination: { page, pageSize, totalRows: all.length, totalPages: Math.max(1, Math.ceil(all.length / pageSize)) } };
 }
 export function confirmSaleCostRecovery(db: SqliteDatabase, body: Row, actor: Actor) {
@@ -195,8 +205,9 @@ export function confirmSaleCostRecovery(db: SqliteDatabase, body: Row, actor: Ac
   const reviewedCost = reportCostNumber(body.reviewedUnitCost);
   if (action === "set-reviewed-cost" && (reviewedCost === null || reviewedCost <= 0)) throw new SaleCostRecoveryError("تكلفة الوحدة التي راجعتها يجب أن تكون رقمًا موجبًا صالحًا");
   return atomic(db, () => {
-    const state = snapshot(db), candidate = candidates(state).find(row => String(row.document.value.id) === text(body.documentId) && row.lineId === text(body.lineId));
-    if (!candidate || candidate.reviewed) throw new SaleCostRecoveryError("السطر غير متاح لمراجعة التكلفة أو تمت مراجعته بالفعل", 409);
+    const state = snapshot(db), classified = candidates(state).find(row => String(row.document.value.id) === text(body.documentId) && row.lineId === text(body.lineId));
+    if (!classified || classified.reviewed) throw new SaleCostRecoveryError("السطر غير متاح لمراجعة التكلفة أو تمت مراجعته بالفعل", 409);
+    const candidate = resolveCandidate(state, classified);
     if (typeof body.expectedRevision !== "number" || body.expectedRevision !== revision(candidate.document.value) || text(body.reviewToken) !== candidate.token) throw new SaleCostRecoveryError("تغيرت الفاتورة أو مصدر التكلفة؛ حدّث قائمة المراجعة وأعد المحاولة", 409);
     if (candidate.revenue === null || (reportCostNumber(candidate.line.quantity) ?? 0) <= 0) throw new SaleCostRecoveryError("بيانات مبلغ أو كمية البيع غير مكتملة؛ لا يمكن اعتماد التكلفة آليًا", 409);
     if (action === "apply-suggested" && !candidate.resolution.source) throw new SaleCostRecoveryError("لا يوجد مصدر تكلفة تاريخي مؤكد لهذا السطر؛ لا يمكن تخمين التكلفة", 409);

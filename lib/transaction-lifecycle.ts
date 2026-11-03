@@ -1,3 +1,4 @@
+import { planStockChange, stockBalanceAfter } from "./stock-numbers.ts";
 import type { SqliteDatabase as Db, SqliteSession as ClientSession } from "./sqlite.ts";
 import { normalizePartyNet, partyCashDelta, partyNet } from "../app/party-balance.ts";
 
@@ -119,10 +120,9 @@ export async function propagatePartyName(db: Db, session: ClientSession, partyId
 
 async function changeStock(db: Db, session: ClientSession, product: Stored, warehouse: Stored, delta: number, document: Stored, type: string) {
   const warehouseId = String(warehouse._id), productId = String(product.id);
-  const before = Number((product.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0), after = before + delta;
+  const { before, after, delta: quantityDelta, stockPath, stockMatch } = planStockChange(product, warehouseId, delta, document);
   if (after < 0) throw new LifecycleCommandError(`المخزون غير كافٍ للمنتج ${product.name}`);
-  const stockPath = `stocks.${warehouseId}`;
-  const stockMatch = before === 0 ? { $or: [{ [stockPath]: 0 }, { [stockPath]: { $exists: false } }] } : { [stockPath]: before };
+
   const changed = await db.collection("products").updateOne({ id: productId, ...stockMatch }, { $set: { [stockPath]: after } }, { session });
   if (!changed.matchedCount) throw new LifecycleCommandError("تغير المخزون أثناء العملية، أعد المحاولة", 409);
   const currentStocks = (product.stocks ??= {}) as Record<string, number>;
@@ -133,7 +133,7 @@ async function changeStock(db: Db, session: ClientSession, product: Stored, ware
   }
   await db.collection("stockMovements").insertOne({
     id: id("mov"), documentId: document.id, documentNumber: document.number, warehouseId,
-    warehouseName: warehouse.name, productId, productName: product.name, type, quantityDelta: delta,
+    warehouseName: warehouse.name, productId, productName: product.name, type, quantityDelta,
     balanceBefore: before, balanceAfter: after, occurredAt: document.occurredAt,
     documentRevision: Number(document.revision ?? 0),
   }, { session });
@@ -285,7 +285,7 @@ async function updateTransfer(db: Db, session: ClientSession, body: Input) {
   for(const {productId,warehouseId,delta} of deltas.values()){
     if(!delta)continue;
     const product=products.get(productId)!,current=Number(((product.stocks??{}) as Record<string,number>)[warehouseId]??0);
-    if(current+delta<0)throw new LifecycleCommandError("لا يمكن تعديل التحويل لأن جزءًا من المخزون المطلوب عكسه تم التصرف فيه.",409);
+    if(stockBalanceAfter(current,delta)<0)throw new LifecycleCommandError("لا يمكن تعديل التحويل لأن جزءًا من المخزون المطلوب عكسه تم التصرف فيه.",409);
   }
   for(const {productId,warehouseId,delta} of deltas.values()){
     if(!delta)continue;

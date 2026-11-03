@@ -1,6 +1,19 @@
 import type { Locale } from "./locale";
 
 const exactFrench: Record<string, string> = {
+  "أُلغي طلب العملية قبل الحفظ؛ أعد المحاولة إذا لزم الأمر": "La demande a été annulée avant l’enregistrement. Réessayez si nécessaire.",
+  "تعذر بدء العملية في الوقت المحدد؛ أعد المحاولة": "L’opération n’a pas pu démarrer à temps. Veuillez réessayer.",
+  "تعذر التحقق من الطلب في الوقت المحدد؛ أعد المحاولة": "La vérification de la demande a expiré. Veuillez réessayer.",
+  "انتهت مهلة قراءة طلب العملية؛ أعد المحاولة": "La réception de la demande a expiré. Veuillez réessayer.",
+  "تكلفة الوحدة التي راجعتها يجب أن تكون رقمًا موجبًا صالحًا": "Le coût unitaire vérifié doit être un nombre positif valide.",
+  "تغيرت الفاتورة أثناء مراجعة التكلفة؛ حدّث القائمة وأعد المحاولة": "La facture a changé pendant la vérification. Actualisez la liste puis réessayez.",
+  "إعدادات صفحة مراجعة التكاليف غير صالحة": "Les paramètres de pagination de la vérification des coûts sont invalides.",
+  "مراجعة تكاليف المبيعات متاحة للمالك فقط": "Seul le propriétaire peut vérifier les coûts de vente.",
+  "اختر إجراء المراجعة واكتب سببًا واضحًا لا يتجاوز 1000 حرف": "Choisissez une action et indiquez un motif clair de 1000 caractères au maximum.",
+  "السطر غير متاح لمراجعة التكلفة أو تمت مراجعته بالفعل": "Cette ligne n’est pas disponible ou a déjà été vérifiée.",
+  "تغيرت الفاتورة أو مصدر التكلفة؛ حدّث قائمة المراجعة وأعد المحاولة": "La facture ou sa source de coût a changé. Actualisez la liste puis réessayez.",
+  "بيانات مبلغ أو كمية البيع غير مكتملة؛ لا يمكن اعتماد التكلفة آليًا": "Le montant ou la quantité de vente est incomplet. Le coût ne peut pas être validé automatiquement.",
+  "لا يوجد مصدر تكلفة تاريخي مؤكد لهذا السطر؛ لا يمكن تخمين التكلفة": "Cette ligne n’a aucune source de coût historique confirmée. Le coût ne peut pas être estimé.",
   "اسم فئة المصروف مطلوب ولا يتجاوز 80 حرفًا": "Le nom de la catégorie est requis (80 caractères maximum).",
   "فئة المصروف موجودة بالفعل": "Cette catégorie de dépense existe déjà.",
   "فئة المصروف غير صالحة": "Catégorie de dépense invalide.",

@@ -1,3 +1,5 @@
+import { CommandAdmissionError, withCommandAdmission, type CommandAdmissionContext } from "../../../lib/command-admission.ts";
+import { confirmSaleCostRecovery } from "../../../lib/sale-cost-recovery.ts";
 import {createExpenseCategory,expenseCategorySnapshot} from "../../../lib/expense-categories.ts";
 import { requireValidLicense } from "../../../lib/license.ts";
 import { serializeBusinessError } from "../../../lib/business-error.ts";
@@ -969,11 +971,23 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   throw new CommandError("العملية غير مدعومة");
 }
 
-export async function POST(request: Request) {const licenseDenied=await requireValidLicense();if(licenseDenied)return licenseDenied;
+export async function POST(request: Request) {
+  try { return await withCommandAdmission(request, admission => executeAdmittedPost(request, admission)); }
+  catch (error) {
+    log("error", "api.command.admission.failed", { error });
+    if (error instanceof CommandAdmissionError) return Response.json({ error: error.message }, { status: error.status });
+    const response = serializeBusinessError(error);
+    return Response.json(response.body, { status: response.status });
+  }
+}
+async function executeAdmittedPost(request: Request, admission: CommandAdmissionContext) {const licenseDenied=await admission.preflight(requireValidLicense());if(licenseDenied)return licenseDenied;
   let type = "unknown";
   try {
-    const body = await request.json() as Input; type = text(body.type);
+    const body = await admission.readJson() as Input; type = text(body.type);
     const map:Record<string,Capability>={"product.delete":"products.delete","product.stock-zero":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","legacy-party-document.void":"customers.collect.delete","expense-category.create":"expenses.create","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
+    if(type==="sale-cost-recovery.confirm")map[type]="reports.view";
+    const recoveryPrincipal=type==="sale-cost-recovery.confirm"?await getPrincipalFromRequest(request):null;
+    if(type==="sale-cost-recovery.confirm"&&recoveryPrincipal&&!["owner","local"].includes(recoveryPrincipal.principalType))return Response.json({error:"مراجعة تكاليف المبيعات متاحة للمالك فقط"},{status:403});
     let capability=map[type];
     if(["party-cash.post","party.update","party.delete","party.restore"].includes(type)){
       const party=await getDatabase().collection("parties").findOne({id:text(body.partyId??body.id)});
@@ -1004,10 +1018,11 @@ export async function POST(request: Request) {const licenseDenied=await requireV
     const db=await getDatabase(),receipts=db.collection("commandReceipts"),prior=await receipts.findOne({_id:idempotencyKey as never});
     if(prior){if(prior.fingerprint!==fingerprint)return Response.json({error:"مفتاح العملية مستخدم لطلب مختلف"},{status:409});if(prior.status==="committed")return Response.json(prior.result);return Response.json({error:"العملية قيد التنفيذ"},{status:409});}
     let result:unknown="",response:unknown;
-    try{await db.transaction(async session=>{
+    try{admission.assertCanMutate();await db.transaction(async session=>{
+      admission.assertCanMutate();
       await receipts.insertOne({_id:idempotencyKey as never,commandType:type,fingerprint,status:"processing",createdAt:new Date()},{session});
       await db.collection("auditEvents").insertOne({id:id("audit"),action:type,status:"started",createdAt:new Date()},{session});
-      result=await execute(db,session,body);response=typeof result==="object"&&result?result:{id:result};
+      result=type==="sale-cost-recovery.confirm"?confirmSaleCostRecovery(db,body,recoveryPrincipal!):await execute(db,session,body);response=typeof result==="object"&&result?result:{id:result};
       await db.collection("auditEvents").insertOne({id:id("audit"),action:type,entityId:typeof result==="object"&&result?(result as {id?:unknown}).id:result,status:"committed",createdAt:new Date()},{session});
       await receipts.updateOne({_id:idempotencyKey as never},{$set:{status:"committed",result:response,committedAt:new Date()}},{session});
     });}

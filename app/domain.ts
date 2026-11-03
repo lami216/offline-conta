@@ -1,4 +1,5 @@
 import { getDisplayCurrencyCode, type CurrencySettings } from "../lib/currency-core";
+import { formatAccountingDecimal, formatAccountingPercentage } from "../lib/accounting-format";
 export type PaymentMethod = string;
 export type DocumentKind =
   | "purchase"
@@ -319,6 +320,15 @@ export function formatQuantity(value: number) {
 export function formatMoney(value: number) {
   return `${formatNumber(value)} ${getDisplayCurrencyCode()}`;
 }
+export function accountingNumber(value: number) {
+  return western(formatAccountingDecimal(DISPLAY_LOCALE, value));
+}
+export function accountingMoney(value: number) {
+  return `${accountingNumber(value)} ${getDisplayCurrencyCode()}`;
+}
+export function accountingPercent(value: number) {
+  return western(formatAccountingPercentage(DISPLAY_LOCALE, value));
+}
 export function displayDocumentNumber(document: Pick<DocumentRecord, "number" | "sequence" | "kind">) {
   return ["sale", "purchase", "expense"].includes(document.kind) && Number.isSafeInteger(Number(document.sequence)) && Number(document.sequence) > 0 ? String(document.sequence) : document.number;
 }
@@ -343,7 +353,7 @@ export function formatDateTime(value: Date | string | number) {
 }
 
 // Existing view-facing names share the same central formatting policy.
-export const money = formatMoney;
+export const money = accountingMoney;
 export const number = formatNumber;
 export function quantity(value: number) {
   return formatQuantity(value);

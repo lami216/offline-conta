@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import type { DbDocument, SqliteDatabase } from "./sqlite.ts";
 import { reportCostNumber, reportNetLines } from "./report-commerce.ts";
 import { resolveAdjustmentStockCost } from "./adjustment-stock-cost.ts";
@@ -6,7 +7,7 @@ import { stockBalanceAfter } from "./stock-numbers.ts";
 
 export const SALE_COST_RECOVERY_VERSION = 1;
 export const SALE_COST_RECOVERY_SETTING = "sale-cost-recovery:v1";
-const AUTOMATIC_PROOF_POLICY = 2;
+const AUTOMATIC_PROOF_POLICY = 3;
 type Row = DbDocument;
 type Stored = { record_key: string; data_json: string; rowid: number; value: Row };
 type Actor = { principalType: string; name: string; userId?: string };
@@ -14,6 +15,7 @@ type Source = { documentId: string; number: string; lineId: string; unitCost: nu
 type Resolution = { source: Source | null; reason: string };
 type Candidate = { document: Stored; line: Row; index: number; product: Row | undefined; state: "missing" | "invalid" | "saved-zero"; resolution: Resolution; token: string; lineId: string; revenue: number | null; reviewed: boolean };
 type ClassifiedCandidate = Omit<Candidate, "resolution" | "token" | "revenue">;
+type RecoveryLine = Pick<Candidate, "document" | "line" | "lineId" | "index" | "revenue" | "resolution">;
 export class SaleCostRecoveryError extends Error {
   constructor(message: string, public status = 400) { super(message); }
 }
@@ -40,7 +42,8 @@ function readRows(db: SqliteDatabase, table: "documents" | "products" | "app_set
 function snapshot(db: SqliteDatabase, includeFingerprint = true) {
   const documents = readRows(db, "documents"), products = readRows(db, "products");
   const reviewedZeros = new Set<string>();
-  for (const { value: event } of readRows(db, "audit_events")) {
+  const reviewJournals = readRows(db, "audit_events");
+  for (const { value: event } of reviewJournals) {
     if (event.action !== "sale-cost-recovery.confirm" || event.version !== SALE_COST_RECOVERY_VERSION || !["owner", "local"].includes(String(event.actor?.principalType)) || !record(event.afterDocument)) continue;
     const savedLine = event.afterDocument.lines?.[event.lineIndex];
     if (!record(savedLine) || savedLine.saleCostRecovery?.action !== "confirm-zero" || reportCostNumber(savedLine.costAtSale) !== 0) continue;
@@ -52,7 +55,7 @@ function snapshot(db: SqliteDatabase, includeFingerprint = true) {
       const rows = sources.get(productId) ?? []; rows.push(document); sources.set(productId, rows);
     }
   }
-  return { documents, sources, reviewedZeros, products: new Map(products.map(row => [String(row.value.id), row.value])), fingerprint: includeFingerprint ? hash([SALE_COST_RECOVERY_VERSION, documents.map(row => [row.record_key, row.data_json]), products.map(row => [row.record_key, row.data_json])]) : undefined };
+  return { documents, sources, reviewedZeros, reviewJournals, products: new Map(products.map(row => [String(row.value.id), row.value])), fingerprint: includeFingerprint ? hash([SALE_COST_RECOVERY_VERSION, documents.map(row => [row.record_key, row.data_json]), products.map(row => [row.record_key, row.data_json])]) : undefined };
 }
 const zeroIdentity = (document: Row, line: Row, lineId: string) => hash([document.id, document.occurredAt, lineId, line.productId, line.costAtSale, line.quantity, line.unitPrice, line.lineTotal]);
 function saleRevenue(document: Row, index: number) {
@@ -159,10 +162,10 @@ function readProofRows(db: SqliteDatabase, query: string, ...keys: Set<string>[]
     .map(row => ({ ...row, value: JSON.parse(row.data_json) as Row }));
 }
 
-function automaticEvidence(db: SqliteDatabase, state: ReturnType<typeof snapshot>, candidates: ClassifiedCandidate[]) {
+function automaticEvidence(db: SqliteDatabase, state: ReturnType<typeof snapshot>, candidates: Pick<Candidate, "document" | "line">[]) {
   const productIds = new Set<string>(), saleIds = new Set<string>();
   for (const candidate of candidates) {
-    if (candidate.state !== "missing" || imported(candidate.document.value) || !text(candidate.line.id)) continue;
+    if (imported(candidate.document.value) || !text(candidate.line.id)) continue;
     productIds.add(text(candidate.line.productId));
     saleIds.add(text(candidate.document.value.id));
   }
@@ -173,11 +176,14 @@ function automaticEvidence(db: SqliteDatabase, state: ReturnType<typeof snapshot
     ORDER BY rowid`, productIds, saleIds) : [];
   const documentIds = new Set(movements.map(row => text(row.value.documentId)));
   for (const id of saleIds) documentIds.add(id);
+  for (const id of productIds) {
+    for (const row of state.sources.get(id) ?? []) if (row.value.kind === "purchase") documentIds.add(text(row.value.id));
+  }
   const audits = documentIds.size ? readProofRows(db, `
     SELECT record_key,data_json,rowid FROM audit_events
     WHERE json_extract(data_json,'$.entityId') IN (SELECT value FROM json_each(?))
       AND json_extract(data_json,'$.status')='committed'
-      AND json_extract(data_json,'$.action') IN ('sale.post','sale.update','sale.void','purchase.post','purchase.update','purchase.void')
+      AND json_extract(data_json,'$.action') IN ('sale.post','sale.update','sale.void','purchase.post','purchase.update','purchase.void','sale-cost-recovery.confirm')
     ORDER BY rowid`, documentIds) : [];
   return {
     documents: groupRows(state.documents.filter(row => documentIds.has(text(row.value.id))), "id"),
@@ -192,6 +198,10 @@ type AutomaticEvidence = ReturnType<typeof automaticEvidence>;
 type DebitProof = { movement: Stored; audit: Stored; basis: "original-debit" | "edit-introduction" };
 const nativeRecord = (row: Stored) => row.value.id === row.record_key && (row.value._id === undefined || row.value._id === row.record_key) && !imported(row.value);
 const movementQuantity = (row: Row) => typeof row.quantityDelta === "number" && Number.isFinite(row.quantityDelta) ? row.quantityDelta : null;
+const zeroLineKey = (sale: Row, line: Row) => JSON.stringify([sale.id, line.id, line.productId]);
+const rawZero = (row: ClassifiedCandidate, confirmed: Set<string>) =>
+  row.state === "saved-zero" && !row.reviewed && !row.line.saleCostRecovery &&
+  !confirmed.has(zeroLineKey(row.document.value, row.line)) && (revision(row.document.value) ?? 0) > 0;
 
 function coherentMovement(row: Stored) {
   const { balanceBefore, balanceAfter } = row.value;
@@ -201,9 +211,85 @@ function coherentMovement(row: Stored) {
     delta !== null && stockBalanceAfter(balanceBefore, delta) === balanceAfter;
 }
 
+function verifiedReview(row: Stored) {
+  const event = row.value, { beforeDocument: before, afterDocument: after, lineIndex: index } = event;
+  const at = timestamp(event.createdAt);
+  if (!nativeRecord(row) || event.action !== "sale-cost-recovery.confirm" || event.status !== "committed" ||
+      event.version !== SALE_COST_RECOVERY_VERSION || !["owner", "local"].includes(String(event.actor?.principalType)) ||
+      !record(before) || !record(after) || before.id !== event.entityId || before.kind !== "sale" ||
+      before.status !== "posted" || imported(before) || !Array.isArray(before.lines) || !Array.isArray(after.lines) ||
+      !Number.isSafeInteger(index) || index < 0 || !at) return null;
+  const priorRevision = revision(before), updatedAt = timestamp(after.updatedAt);
+  const priorLine = before.lines[index], savedLine = after.lines[index];
+  if (priorRevision === null || after.revision !== priorRevision + 1 || !updatedAt || updatedAt > at ||
+      !record(priorLine) || !record(savedLine) || !text(event.lineId) || event.lineId !== priorLine.id ||
+      before.lines.filter((line: Row) => line?.id === priorLine.id).length !== 1) return null;
+  const metadata = savedLine.saleCostRecovery;
+  const cost = reportCostNumber(savedLine.costAtSale);
+  if (!record(metadata) || metadata.version !== SALE_COST_RECOVERY_VERSION || !timestamp(metadata.at) || metadata.at > at ||
+      cost === null || metadata.snapshot !== hash([savedLine.costAtSale, savedLine.quantity, savedLine.unitPrice, savedLine.lineTotal]) ||
+      metadata.sourceType !== event.sourceType) return null;
+  const manual = metadata.action === "set-reviewed-cost" || metadata.action === "confirm-zero";
+  if (manual) {
+    if (event.sourceType !== "owner-reviewed" || event.source !== null || metadata.sourceDocumentId !== null ||
+        (metadata.action === "confirm-zero" ? cost !== 0 : cost <= 0)) return null;
+  } else if (metadata.action !== "apply-suggested" || event.sourceType !== "proven-prior-source" ||
+      !record(event.source) || event.source.unitCost !== cost || event.source.documentId !== metadata.sourceDocumentId) return null;
+  const restoredLine = { ...savedLine };
+  for (const key of ["costAtSale", "grossProfit", "saleCostRecovery"]) {
+    if (Object.hasOwn(priorLine, key)) restoredLine[key] = priorLine[key];
+    else delete restoredLine[key];
+  }
+  const restored: Row = { ...after, lines: after.lines.map((line: Row, i: number) => i === index ? restoredLine : line) };
+  for (const key of ["revision", "updatedAt"]) {
+    if (Object.hasOwn(before, key)) restored[key] = before[key];
+    else delete restored[key];
+  }
+  const revenue = saleRevenue(before, index);
+  if (!isDeepStrictEqual(restored, before) || revenue === null ||
+      savedLine.grossProfit !== revenue - Number(savedLine.quantity) * cost) return null;
+  return { row, before, after, priorRevision, priorLine, savedLine, cost, action: metadata.action };
+}
+
+function manualCorrections(state: ReturnType<typeof snapshot>) {
+  if (!state.reviewJournals.length) return [];
+  const documents = groupRows(state.documents, "id");
+  const result: { line: RecoveryLine; journal: Stored }[] = [];
+  for (const row of state.reviewJournals) {
+    const review = verifiedReview(row);
+    if (!review || review.action !== "set-reviewed-cost" ||
+        (review.priorLine.costAtSale != null && reportCostNumber(review.priorLine.costAtSale) !== 0)) continue;
+    const matches = documents.get(review.before.id) ?? [];
+    if (matches.length !== 1) continue;
+    const document = matches[0], sale = document.value, currentRevision = revision(sale);
+    if (sale.kind !== "sale" || sale.status !== "posted" || currentRevision === null || currentRevision < review.after.revision ||
+        sale.occurredAt !== review.after.occurredAt || sale.number !== review.after.number ||
+        sale.businessDate !== review.after.businessDate || sale.warehouseId !== review.after.warehouseId) continue;
+    const lineId = review.savedLine.id, currentLines = lines(sale);
+    const index = currentLines.findIndex(line => line.id === lineId);
+    const line = currentLines[index];
+    if (currentLines.filter(item => item.id === lineId).length !== 1 || !isDeepStrictEqual(line, review.savedLine) ||
+        !ordinary(state.products.get(String(line.productId)), line) ||
+        (currentRevision === review.after.revision && !isDeepStrictEqual(sale, review.after))) continue;
+    const revenue = saleRevenue(sale, index);
+    if (revenue === null) continue;
+    result.push({ journal: row, line: { document, line, lineId, index, revenue, resolution: { source: null, reason: "manual-cost-unproven" } } });
+  }
+  return result;
+}
+
+function confirmedZeroLines(state: ReturnType<typeof snapshot>) {
+  const result = new Set<string>();
+  for (const row of state.reviewJournals) {
+    const review = verifiedReview(row);
+    if (review?.action === "confirm-zero") result.add(zeroLineKey(review.after, review.savedLine));
+  }
+  return result;
+}
+
 /** A debit is tied to the actual posting revision. A later header-only edit has
  * no stock row, but still needs its corresponding committed update receipt. */
-function proveDebit(evidence: AutomaticEvidence, candidate: Candidate): DebitProof | null {
+function proveDebit(evidence: AutomaticEvidence, candidate: RecoveryLine): DebitProof | null {
   const { document, line, lineId } = candidate, sale = document.value;
   const allMoves = evidence.documentMoves.get(sale.id) ?? [];
   const targetMoves = allMoves.filter(row => row.value.productId === line.productId);
@@ -216,13 +302,17 @@ function proveDebit(evidence: AutomaticEvidence, candidate: Candidate): DebitPro
       !coherentMovement(movement) || movementQuantity(value) !== -Number(line.quantity)) return null;
   const moveRevision = value.documentRevision;
   if (!Number.isSafeInteger(moveRevision) || moveRevision < 0 || moveRevision > currentRevision) return null;
-  const audits = evidence.audits.get(sale.id) ?? [];
+  const audits = (evidence.audits.get(sale.id) ?? []).filter(({ value }) =>
+    value.action !== "sale-cost-recovery.confirm" || value.version !== undefined || value.beforeDocument !== undefined || value.afterDocument !== undefined);
   if (audits.length !== currentRevision + 1) return null;
   let previous = at;
   for (const [index, audit] of audits.entries()) {
     const committedAt = timestamp(audit.value.createdAt);
-    if (!nativeRecord(audit) || audit.value.action !== (index === 0 ? "sale.post" : "sale.update") ||
-        !committedAt || committedAt < previous || (index > 0 && committedAt === previous)) return null;
+    if (!nativeRecord(audit) || !committedAt || committedAt < previous || (index > 0 && committedAt === previous)) return null;
+    if (audit.value.action === "sale-cost-recovery.confirm") {
+      const review = verifiedReview(audit);
+      if (index === 0 || review?.priorRevision !== index - 1 || review.after.updatedAt <= previous) return null;
+    } else if (audit.value.action !== (index === 0 ? "sale.post" : "sale.update")) return null;
     previous = committedAt;
   }
   if (currentRevision > 0 && (!timestamp(sale.updatedAt) || sale.updatedAt > previous ||
@@ -242,7 +332,8 @@ function proveDebit(evidence: AutomaticEvidence, candidate: Candidate): DebitPro
     if (itemRevision === 0) {
       if (item.type !== "sale" || when !== at || movementQuantity(item)! >= 0) return null;
       originals++;
-    } else if (item.type !== "sale-edit" || when <= audits[itemRevision - 1].value.createdAt) return null;
+    } else if (item.type !== "sale-edit" || audits[itemRevision].value.action !== "sale.update" ||
+        when <= audits[itemRevision - 1].value.createdAt) return null;
     seen.add(key);
     previousRevision = itemRevision;
   }
@@ -250,13 +341,18 @@ function proveDebit(evidence: AutomaticEvidence, candidate: Candidate): DebitPro
   return { movement, audit: audits[moveRevision], basis: moveRevision === 0 ? "original-debit" : "edit-introduction" };
 }
 
-/** An edited addition can use its own receipt only when it is the single native
- * purchase for the SKU and its entire warehouse balance came from that receipt. */
-function adjacentPurchase(state: ReturnType<typeof snapshot>, evidence: AutomaticEvidence, candidate: Candidate, debit: DebitProof): Source | null {
+/** The adjacent receipt funded the whole warehouse balance. Other purchases
+ * are harmless only when their native post is provably earlier or after the debit. */
+function adjacentPurchase(state: ReturnType<typeof snapshot>, evidence: AutomaticEvidence, candidate: RecoveryLine, debit: DebitProof): Source | null {
   const { line, document } = candidate, sale = document.value, movement = debit.movement.value;
+  const productMoves = evidence.productMoves.get(line.productId) ?? [];
+  const receipt = productMoves.findLast(row => row.rowid < debit.movement.rowid && row.value.warehouseId === sale.warehouseId);
+  if (!receipt || !coherentMovement(receipt)) return null;
+  const saved = receipt.value;
   const purchases = (state.sources.get(line.productId) ?? []).filter(row => row.value.kind === "purchase");
-  if (purchases.length !== 1) return null;
-  const purchase = purchases[0], source = purchase.value;
+  const purchase = purchases.find(row => row.value.id === saved.documentId);
+  if (!purchase) return null;
+  const source = purchase.value;
   const purchaseAt = timestamp(source.occurredAt);
   if (!nativeRecord(purchase) || evidence.documents.get(source.id)?.length !== 1 ||
       source.status !== "posted" || revision(source) !== 0 || source.warehouseId !== sale.warehouseId ||
@@ -266,10 +362,6 @@ function adjacentPurchase(state: ReturnType<typeof snapshot>, evidence: Automati
   if (matching.length !== 1 || !text(sourceLine.id) || liquidEvidence(sourceLine) || cost === null || cost <= 0) return null;
   const quantity = purchaseQuantity(source, sourceLine, cost);
   if (quantity === null) return null;
-  const productMoves = evidence.productMoves.get(line.productId) ?? [];
-  const receipt = productMoves.findLast(row => row.rowid < debit.movement.rowid && row.value.warehouseId === sale.warehouseId);
-  if (!receipt || !coherentMovement(receipt)) return null;
-  const saved = receipt.value;
   if (saved.documentId !== source.id || saved.documentNumber !== source.number || saved.type !== "purchase" ||
       saved.documentRevision !== 0 || saved.occurredAt !== purchaseAt || saved.balanceBefore !== 0 ||
       saved.balanceAfter !== quantity || saved.quantityDelta !== quantity || movement.balanceBefore !== quantity ||
@@ -281,10 +373,41 @@ function adjacentPurchase(state: ReturnType<typeof snapshot>, evidence: Automati
       purchaseAt <= originalPost.value.createdAt || committedAt < purchaseAt || committedAt >= movement.occurredAt ||
       audit.rowid <= originalPost.rowid || audit.rowid >= debit.audit.rowid ||
       (source.updatedAt && (!timestamp(source.updatedAt) || source.updatedAt > committedAt))) return null;
+  for (const other of purchases) {
+    if (other === purchase) continue;
+    if (!nativeRecord(other) || evidence.documents.get(other.value.id)?.length !== 1) return null;
+    const posts = (evidence.audits.get(other.value.id) ?? []).filter(row => row.value.action === "purchase.post");
+    const post = posts[0], otherAt = timestamp(post?.value.createdAt), businessAt = timestamp(other.value.occurredAt);
+    if (posts.length !== 1 || !nativeRecord(post) || !otherAt || !businessAt || businessAt > otherAt) return null;
+    const beforeReceipt = post.rowid < audit.rowid && otherAt < purchaseAt;
+    const afterDebit = post.rowid > debit.audit.rowid && otherAt > debit.audit.value.createdAt;
+    if (!beforeReceipt && !afterDebit) return null;
+  }
+  // An invoice edited later can have lost the SKU from its current lines. The
+  // original movement still exposes any competing warehouse acquisition.
+  for (const other of productMoves) {
+    if (other.rowid >= debit.movement.rowid || other.rowid === receipt.rowid ||
+        !["purchase", "purchase-edit"].includes(other.value.type)) continue;
+    const when = timestamp(other.value.occurredAt);
+    if (!coherentMovement(other) || !when || when >= purchaseAt || other.rowid >= receipt.rowid) return null;
+  }
   const proof = { basis: debit.basis, debitMovementId: movement.id, debitAt: movement.occurredAt,
     saleRevision: movement.documentRevision, saleAuditId: debit.audit.value.id, receiptMovementId: saved.id, purchaseAuditId: audit.value.id };
   return { documentId: source.id, number: String(source.number ?? ""), lineId: sourceLine.id, unitCost: cost,
     kind: "purchase", occurredAt: purchaseAt, fingerprint: hash([source, saved, movement, audit.value, debit.audit.value]), proof };
+}
+
+function resolveEditCorrection(state: ReturnType<typeof snapshot>, evidence: AutomaticEvidence, candidate: RecoveryLine, review?: Stored) {
+  const debit = proveDebit(evidence, candidate);
+  if (candidate.revenue === null || debit?.basis !== "edit-introduction") return null;
+  const source = adjacentPurchase(state, evidence, candidate, debit);
+  if (!source || source.unitCost === reportCostNumber(candidate.line.costAtSale) ||
+      !Number.isFinite(Number(candidate.line.quantity) * source.unitCost)) return null;
+  if (review) {
+    source.proof = { ...source.proof, priorManualAuditId: review.value.id };
+    source.fingerprint = hash([source.fingerprint, review.value]);
+  }
+  return { ...candidate, resolution: { source, reason: review ? "proven-correction-of-manual-cost" : "proven-correction-of-zero-cost" } };
 }
 
 function resolveAutomatic(state: ReturnType<typeof snapshot>, evidence: AutomaticEvidence, candidate: Candidate): Candidate {
@@ -319,11 +442,11 @@ function resolveAutomatic(state: ReturnType<typeof snapshot>, evidence: Automati
 }
 function setting(db: SqliteDatabase) { const row = db.native.prepare("SELECT data_json FROM app_settings WHERE record_key=?").get(SALE_COST_RECOVERY_SETTING) as { data_json: string } | undefined; return row ? JSON.parse(row.data_json) as Row : null; }
 function saveSetting(db: SqliteDatabase, value: Row) { db.native.prepare("INSERT INTO app_settings(record_key,data_json) VALUES(?,?) ON CONFLICT(record_key) DO UPDATE SET data_json=excluded.data_json").run(SALE_COST_RECOVERY_SETTING, JSON.stringify({ ...value, id: SALE_COST_RECOVERY_SETTING, _id: SALE_COST_RECOVERY_SETTING })); }
-function journal(db: SqliteDatabase, action: string, beforeDocument: Row, afterDocument: Row, candidate: Candidate, actor: Actor, reason: string, ownerReviewed = false) {
+function journal(db: SqliteDatabase, action: string, beforeDocument: Row, afterDocument: Row, candidate: RecoveryLine, actor: Actor, reason: string, ownerReviewed = false) {
   const id = `sale-cost-recovery-${randomUUID()}`;
   db.native.prepare("INSERT INTO audit_events(record_key,data_json) VALUES(?,?)").run(id, JSON.stringify({ id, _id: id, action, version: SALE_COST_RECOVERY_VERSION, status: "committed", createdAt: new Date().toISOString(), entityId: beforeDocument.id, lineId: candidate.lineId, lineIndex: candidate.index, actor, reason, sourceType: ownerReviewed ? "owner-reviewed" : "proven-prior-source", source: ownerReviewed ? null : candidate.resolution.source, beforeDocument, afterDocument }));
 }
-function apply(db: SqliteDatabase, candidate: Candidate, cost: number, actor: Actor, action: "automatic" | "apply-suggested" | "confirm-zero" | "set-reviewed-cost", reason: string) {
+function apply(db: SqliteDatabase, candidate: RecoveryLine, cost: number, actor: Actor, action: "automatic" | "apply-suggested" | "confirm-zero" | "set-reviewed-cost", reason: string) {
   const before = candidate.document.value, after = structuredClone(before), line = after.lines[candidate.index];
   if (!Number.isFinite(Number(line.quantity) * cost) || !Number.isFinite(candidate.revenue! - Number(line.quantity) * cost)) throw new SaleCostRecoveryError("تكلفة الوحدة التي راجعتها يجب أن تكون رقمًا موجبًا صالحًا");
   line.costAtSale = cost;
@@ -357,22 +480,37 @@ export function recoverHistoricalSaleCosts(db: SqliteDatabase, options: { contex
   return atomic(db, () => {
     const state = snapshot(db), prior = setting(db);
     const classified = candidates(state);
-    const evidence = automaticEvidence(db, state, classified);
+    const manual = manualCorrections(state);
+    const confirmed = confirmedZeroLines(state);
+    const eligible = (rows: ClassifiedCandidate[]) => rows.filter(row => row.state === "missing" || rawZero(row, confirmed));
+    const evidence = automaticEvidence(db, state, [...eligible(classified), ...manual.map(row => row.line)]);
     if (prior?.version === SALE_COST_RECOVERY_VERSION && prior.fingerprint === evidence.fingerprint) return summary(db, classified);
     let recovered = 0;
+    const actor = { principalType: "system", name: "safe-cost-recovery" };
     for (const row of classified) {
-      if (row.state === "saved-zero") continue;
-      const candidate = resolveAutomatic(state, evidence, resolveCandidate(state, row));
-      if (!candidate.resolution.source || candidate.revenue === null) continue;
-      apply(db, candidate, candidate.resolution.source.unitCost, { principalType: "system", name: "safe-cost-recovery" }, "automatic",
-        candidate.resolution.source.proof ? "proven-native-stock-debit" : "proven-prior-native-source");
+      if (row.state === "saved-zero" && !rawZero(row, confirmed)) continue;
+      const candidate = row.state === "saved-zero"
+        ? resolveEditCorrection(state, evidence, { ...row, revenue: saleRevenue(row.document.value, row.index), resolution: { source: null, reason: "" } })
+        : resolveAutomatic(state, evidence, resolveCandidate(state, row));
+      if (!candidate?.resolution.source || candidate.revenue === null) continue;
+      const reason = row.state === "saved-zero" ? candidate.resolution.reason
+        : candidate.resolution.source.proof ? "proven-native-stock-debit" : "proven-prior-native-source";
+      apply(db, candidate, candidate.resolution.source.unitCost, actor, "automatic", reason);
+      recovered++;
+    }
+    for (const row of manual) {
+      const correction = resolveEditCorrection(state, evidence, row.line, row.journal);
+      if (!correction?.resolution.source) continue;
+      apply(db, correction, correction.resolution.source.unitCost, actor, "automatic", correction.resolution.reason);
       recovered++;
     }
     // An untouched dataset needs no migration metadata. In particular, restoring
     // a backup without a recovery marker must preserve its settings byte-for-byte.
     if (recovered === 0 && !prior) return summary(db, classified);
     const final = snapshot(db), remaining = candidates(final);
-    const fingerprint = recovered ? automaticEvidence(db, final, remaining).fingerprint : evidence.fingerprint;
+    const fingerprint = recovered
+      ? automaticEvidence(db, final, [...eligible(remaining), ...manualCorrections(final).map(row => row.line)]).fingerprint
+      : evidence.fingerprint;
     saveSetting(db, { version: SALE_COST_RECOVERY_VERSION, fingerprint, automaticRecovered: Number(prior?.automaticRecovered ?? 0) + recovered, lastRecovered: recovered, completedAt: new Date().toISOString(), context: options.context ?? "startup" });
     return summary(db, remaining);
   });

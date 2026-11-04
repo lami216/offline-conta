@@ -156,12 +156,17 @@ test('adding a newly bought product to an earlier invoice uses the edit-time cos
   const saleLine = productId => ({ productId, quantity: 1, piecePrice: 150 });
   const saleId = await command('sale.post', { lines: [saleLine(originalId)] });
   const original = await f.doc(saleId);
+  const openDraft = { documentId: saleId, lines: [saleLine(originalId), saleLine(newId)] };
+  await command('purchase.post', { lines: [{ productId: newId, quantity: 1, unitPrice: 90 }] });
   await command('purchase.post', { lines: [{ productId: originalId, quantity: 1, unitPrice: 120 }, { productId: newId, quantity: 1, unitPrice: 100 }] });
-  await command('sale.update', { documentId: saleId, lines: [saleLine(originalId), saleLine(newId)] });
+  await command('sale.update', openDraft);
   const updated = await f.doc(saleId);
   assert.equal(updated.occurredAt, original.occurredAt);
   assert.equal(updated.lines[0].id, original.lines[0].id);
   assert.deepEqual(updated.lines.map(line => [line.costAtSale, line.grossProfit]), [[70, 80], [100, 50]]);
+  await command('purchase.post', { lines: [{ productId: newId, quantity: 1, unitPrice: 140 }] });
+  await command('sale.update', openDraft);
+  assert.deepEqual((await f.doc(saleId)).lines.map(line => line.costAtSale), [70, 100]);
   const report = await f.report(undefined, null);
   assert.equal(report.body.summary.costKnown, true);
   assert.equal(report.body.summary.profit, 130);

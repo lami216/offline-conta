@@ -1,4 +1,6 @@
 import { planStockChange, stockBalanceAfter } from "./stock-numbers.ts";
+import { currentProductCost } from "./product-cost.ts";
+import { reportCostNumber } from "./report-commerce.ts";
 import type { SqliteDatabase as Db, SqliteSession as ClientSession } from "./sqlite.ts";
 import { normalizePartyNet, partyCashDelta, partyNet } from "../app/party-balance.ts";
 
@@ -348,11 +350,17 @@ async function updateAdjustment(db: Db, session: ClientSession, body: Input) {
     const baseline = Number(old.balanceBefore), oldDelta=Number(old.quantity??0);
     if (!Number.isFinite(baseline)||!Number.isFinite(oldDelta)) throw new LifecycleCommandError("سند التصحيح القديم لا يحتوي بيانات كافية للتعديل الآمن", 409);
     const revisedDelta = line.actualQuantity - baseline, editDelta = revisedDelta - oldDelta, product = products.get(line.productId)!;
+    let unitPrice = old.unitPrice;
+    if (revisedDelta > Math.max(0, oldDelta)) {
+      const cost = await currentProductCost(db, session, product, String(warehouse._id));
+      if (cost === null || (oldDelta > 0 && (reportCostNumber(unitPrice) ?? 0) <= 0)) throw new LifecycleCommandError(`لا يمكن زيادة مخزون المنتج ${product.name} بالتصحيح من دون مصدر تكلفة موثّق.`, 409);
+      if (oldDelta <= 0) unitPrice = cost;
+    }
     if(editDelta){
       try { await changeStock(db, session, product, warehouse, editDelta, audit, "adjustment-edit"); }
       catch (error) { if (error instanceof LifecycleCommandError && /المخزون غير كاف/.test(error.message)) throw new LifecycleCommandError("لا يمكن تعديل التصحيح لأن المخزون الحالي لا يكفي لهذا التغيير.", 409); throw error; }
     }
-    revisedLines.push({ ...old, description: `${product.name} — ${reason} (قبل ${baseline}، بعد ${line.actualQuantity})`, quantity: revisedDelta, balanceBefore: baseline, balanceAfter: line.actualQuantity });
+    revisedLines.push({ ...old, description: `${product.name} — ${reason} (قبل ${baseline}، بعد ${line.actualQuantity})`, quantity: revisedDelta, unitPrice, balanceBefore: baseline, balanceAfter: line.actualQuantity });
   }
   await db.collection("documents").updateOne({ id: documentId, status: "posted" }, { $set: { title: reason, lines: revisedLines, updatedAt: new Date(), revision } }, { session });
   await preserveHistoricalWarehouseArchiveIfEmpty(db,session,String(warehouse._id),warehouseWasArchived,warehouseArchivedAt);

@@ -1,4 +1,8 @@
+import { historicalInvoiceStockLines, planStockChange } from "../../../lib/stock-numbers.ts";
+import { CommandAdmissionError, withCommandAdmission, type CommandAdmissionContext } from "../../../lib/command-admission.ts";
+import {createExpenseCategory,expenseCategorySnapshot} from "../../../lib/expense-categories.ts";
 import { requireValidLicense } from "../../../lib/license.ts";
+import { serializeBusinessError } from "../../../lib/business-error.ts";
 import type { SqliteSession as ClientSession, SqliteDatabase as Db } from "../../../lib/sqlite.ts";
 import { getDatabase } from "../../../lib/sqlite.ts";
 import { log } from "../../../lib/log.ts";
@@ -7,11 +11,11 @@ import { isProductExpired, resolvePartyType } from "../../domain.ts";
 import { normalizePartyNet, partyNet } from "../../party-balance.ts";
 import { nextDocumentSequence, type SequencedDocumentKind } from "../../../lib/document-sequences.ts";
 import { deriveOpeningStockState, planOpeningStockCorrection } from "../../../lib/opening-stock.ts";
-import { currentProductCost, resolveProductCost } from "../../../lib/product-cost.ts";
-import { executeLifecycleCommand, findActiveFinancialMovement, LifecycleCommandError, propagatePartyName, restoreProductArchiveStockClearance, reverseFinancialMovement } from "../../../lib/transaction-lifecycle.ts";
+import { currentProductCost } from "../../../lib/product-cost.ts";
+import { executeLifecycleCommand, findActiveFinancialMovement, propagatePartyName, restoreProductArchiveStockClearance, reverseFinancialMovement } from "../../../lib/transaction-lifecycle.ts";
 
 type Input = Record<string, unknown>;
-type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; costAtSale?: number | null; grossProfit?: number | null };
+type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; costAtSale?: number | null; grossProfit?: number | null; saleCostRecovery?: Record<string, unknown> };
 type WarehouseDoc = { _id: string; name: string; isSalesDefault?: boolean; [key: string]: unknown };
 const warehouses = (db: Db) => db.collection<WarehouseDoc>("warehouses");
 class CommandError extends Error {
@@ -99,15 +103,8 @@ async function financialMovement(db: Db, session: ClientSession, document: Recor
   if (!result.matchedCount) throw new CommandError(`الرصيد غير كافٍ في ${account.name}`);
   await db.collection("financialMovements").insertOne({ id: id("fin"), paymentMethod: account.id, paymentCode: account.code, direction, amount, documentId: document.id, documentNumber: document.number, partyId: document.partyId ?? null, partyName: document.partyName ?? null, type, occurredAt: document.occurredAt, transferId: document.transferId ?? null, note: document.note ?? null, status: "posted", revision: Number(document.revision ?? 0) }, { session });
 }
-async function authoritativeCost(db: Db, session: ClientSession, product: Record<string, unknown>) {
-  return currentProductCost(db, session, product);
-}
-async function historicalCost(db: Db, session: ClientSession, productId: string, occurredAt: string) {
-  const documents = await db.collection("documents").find(
-    { status: "posted", occurredAt: { $lte: occurredAt }, "lines.productId": productId }, { session },
-  ).toArray();
-  // Do not pass today's product metadata into a historical invoice correction.
-  return resolveProductCost({ id: productId }, documents).cost;
+async function authoritativeCost(db: Db, session: ClientSession, product: Record<string, unknown>, warehouseId?: string) {
+  return currentProductCost(db, session, product, warehouseId);
 }
 async function changePartyDebt(db: Db, session: ClientSession, partyId: unknown, kind: "sale" | "purchase", delta: number, reversing = false) {
   if (!delta) return;
@@ -223,10 +220,10 @@ async function invoiceUpdateRefs(db:Db,session:ClientSession,body:Input,original
   return {warehouse,party,warehouseId,partyId};
 }
 async function changeStock(db: Db, session: ClientSession, product: Record<string, unknown>, warehouse: Record<string, unknown>, delta: number, document: Record<string, unknown>, type: string) {
-  const warehouseId = String(warehouse._id), productId = String(product.id), before = Number((product.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0), after = before + delta;
+  const warehouseId = String(warehouse._id), productId = String(product.id);
+  const { before, after, delta: quantityDelta, stockPath, stockMatch } = planStockChange(product, warehouseId, delta, document);
   if (after < 0) throw new CommandError(`المخزون غير كافٍ للمنتج ${product.name}`);
-  const stockPath = `stocks.${warehouseId}`;
-  const stockMatch = before === 0 ? { $or: [{ [stockPath]: 0 }, { [stockPath]: { $exists: false } }] } : { [stockPath]: before };
+
   const result = await db.collection("products").updateOne({ id: productId, ...stockMatch }, { $set: { [stockPath]: after } }, { session });
   if (!result.matchedCount) throw new CommandError("تغير المخزون أثناء العملية، أعد المحاولة", 409);
   const currentStocks = (product.stocks ??= {}) as Record<string, number>;
@@ -235,7 +232,7 @@ async function changeStock(db: Db, session: ClientSession, product: Record<strin
     await warehouses(db).updateOne({ _id: warehouseId, isArchived: true }, { $set: { isArchived: false, archivedAt: null, updatedAt: new Date() } }, { session });
     warehouse.isArchived = false;
   }
-  await db.collection("stockMovements").insertOne({ id: id("mov"), documentId: document.id, documentNumber: document.number, warehouseId, warehouseName: warehouse.name, productId, productName: product.name, type, quantityDelta: delta, balanceBefore: before, balanceAfter: after, occurredAt: document.occurredAt, documentRevision: Number(document.revision ?? 0) }, { session });
+  await db.collection("stockMovements").insertOne({ id: id("mov"), documentId: document.id, documentNumber: document.number, warehouseId, warehouseName: warehouse.name, productId, productName: product.name, type, quantityDelta, balanceBefore: before, balanceAfter: after, occurredAt: document.occurredAt, documentRevision: Number(document.revision ?? 0) }, { session });
   return { before, after };
 }
 
@@ -470,6 +467,7 @@ async function requireInitialOpeningDocument(db: Db, session: ClientSession, doc
 
 export async function execute(db: Db, session: ClientSession, body: Input) {
   const type = text(body.type);
+  if(type==="expense-category.create")return createExpenseCategory(db,session,body);
   const lifecycle = await executeLifecycleCommand(db, session, body);
   if (lifecycle.handled) return lifecycle.result;
   if (type === "opening-stock-initial.void") {
@@ -815,8 +813,8 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
       const product = newProducts.get(line.productId)!, old = oldByProduct.get(line.productId);
       const unitPrice = positive(isSale ? line.piecePrice : line.unitPrice, isSale ? "سعر الفرد" : "سعر الشراء"), lineTotal = Math.round(line.quantity * unitPrice);
       if (isSale) {
-        const cost = old ? old.costAtSale ?? null : await historicalCost(db, session, line.productId, String(original.occurredAt));
-        calculated.push({ id: old?.id ?? id("line"), productId: line.productId, description: product.name, quantity: line.quantity, unitPrice, lineTotal, costAtSale: cost, grossProfit: cost == null ? null : lineTotal - line.quantity * Number(cost) });
+        const cost = old ? old.costAtSale ?? null : await authoritativeCost(db, session, product, warehouseId);
+        calculated.push({ id: old?.id ?? id("line"), productId: line.productId, description: product.name, quantity: line.quantity, unitPrice, lineTotal, costAtSale: cost, grossProfit: cost == null ? null : lineTotal - line.quantity * Number(cost), ...(old?.saleCostRecovery ? { saleCostRecovery: old.saleCostRecovery } : {}) });
       } else calculated.push({ id: old?.id ?? id("line"), productId: line.productId, description: product.name, quantity: line.quantity, unitPrice, lineTotal });
     }
     const total = calculated.reduce((sum, line) => sum + Number(line.lineTotal), 0), paidTotal = paymentMethod === "note" ? 0 : total, dueTotal = total - paidTotal;
@@ -857,7 +855,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if (isSale && await db.collection("documents").findOne({ kind: "return", status: "posted", parentDocumentId: documentId }, { session })) throw new CommandError("لا يمكن حذف هذه الفاتورة القديمة لوجود حركة تاريخية مرتبطة بها.", 409);
     const warehouse = await warehouses(db).findOne({ _id: String(original.warehouseId) }, { session });
     if (!warehouse) throw new CommandError("مخزن الفاتورة غير موجود", 409);
-    const oldLines = original.lines as Line[], found = await db.collection("products").find({ id: { $in: oldLines.map(line => line.productId) } }, { session }).toArray(), map = new Map(found.map(product => [String(product.id), product]));
+    const oldLines = historicalInvoiceStockLines(original) as Line[], found = await db.collection("products").find({ id: { $in: oldLines.map(line => line.productId) } }, { session }).toArray(), map = new Map(found.map(product => [String(product.id), product]));
     for (const line of oldLines) try { await changeStock(db, session, map.get(line.productId)!, warehouse, isSale ? line.quantity : -line.quantity, { ...original, occurredAt: new Date().toISOString(), revision: Number(original.revision ?? 0) + 1 }, `${kind}-void`); } catch (error) { if (!isSale && error instanceof CommandError && /المخزون غير كاف/.test(error.message)) throw new CommandError("لا يمكن حذف الفاتورة لأن جزءًا من مخزونها تم التصرف فيه.", 409); throw error; }
     if (Number(original.dueTotal) > 0) await changePartyDebt(db, session, original.partyId, kind, -Number(original.dueTotal), true);
     await reverseInvoicePayment(db, session, original, kind);
@@ -871,7 +869,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if (party && party.partyType !== (isSale ? "customer" : "supplier")) throw new CommandError(isSale ? "يجب اختيار عميل صالح" : "يجب اختيار مورد صالح");
     if (isSale && input.some(line => isProductExpired(map.get(line.productId)!, new Date().toISOString().slice(0, 10)))) throw new CommandError("انتهت صلاحية هذا المنتج ولا يمكن بيعه.");
     if (paymentMethod !== "note") await paymentAccount(db, session, paymentMethod);
-    const costs = isSale ? new Map(await Promise.all(input.map(async line => [line.productId, await authoritativeCost(db, session, map.get(line.productId)!)] as const))) : new Map<string, number | null>();
+    const costs = isSale ? new Map(await Promise.all(input.map(async line => [line.productId, await authoritativeCost(db, session, map.get(line.productId)!, warehouseId)] as const))) : new Map<string, number | null>();
     const calculated = input.map(line => { const p = map.get(line.productId)!; let unitPrice: number, total: number; if (isSale) { const price = positive(line.piecePrice, "سعر الفرد"); total = Math.round(line.quantity * price); unitPrice = price; } else { unitPrice = positive(line.unitPrice, "سعر الشراء"); total = Math.round(unitPrice * line.quantity); } return { id: id("line"), productId: line.productId, description: p.name, quantity: line.quantity, unitPrice, lineTotal: total, ...(isSale ? { costAtSale: costs.get(line.productId) ?? null, grossProfit: costs.get(line.productId) == null ? null : total - line.quantity * Number(costs.get(line.productId)) } : {}) }; });
     const total = calculated.reduce((s, l) => s + l.lineTotal, 0);
     const suppliedCash = body.cashAmount ?? body.paidAmount;
@@ -928,19 +926,20 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     return doc.id;
   }
   if (["payment.post","settlement.post","offset.post"].includes(type)) throw new CommandError("هذا المسار المحاسبي القديم متاح للقراءة فقط؛ استخدم دورة الحركات الحالية.",409);
-  if (type === "expense.post") { const title = text(body.title), amount = positive(body.amount, "المبلغ"), date = text(body.occurredAt), parsedDate = new Date(`${date}T12:00:00Z`); if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.valueOf()) || parsedDate.toISOString().slice(0,10) !== date) throw new CommandError("العنوان والتاريخ غير صالحين"); const method = text(body.paymentMethod); await paymentAccount(db, session, method); const doc = { ...await numberedDocument(db, session, "expense", "EXP"), revision: 0, occurredAt: parsedDate.toISOString(), partyId: null, partyName: null, warehouseId: null, warehouseName: null, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: method, title, total: amount, dueTotal: 0, paidTotal: amount, cashAmount: amount, lines: [{ id: id("line"), productId: null, description: title, quantity: 1, unitPrice: amount, lineTotal: amount }] }; await financialMovement(db, session, doc, "out", amount, "expense"); await db.collection("documents").insertOne(doc, { session }); return doc.id; }
+  if (type === "expense.post") { const title = text(body.title), amount = positive(body.amount, "المبلغ"), date = text(body.occurredAt), parsedDate = new Date(`${date}T12:00:00Z`); if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.valueOf()) || parsedDate.toISOString().slice(0,10) !== date) throw new CommandError("العنوان والتاريخ غير صالحين"); const method = text(body.paymentMethod); await paymentAccount(db, session, method); const doc = { ...await numberedDocument(db, session, "expense", "EXP"), revision: 0, occurredAt: parsedDate.toISOString(), partyId: null, partyName: null, warehouseId: null, warehouseName: null, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: method, title, ...await expenseCategorySnapshot(db,session,body), total: amount, dueTotal: 0, paidTotal: amount, cashAmount: amount, lines: [{ id: id("line"), productId: null, description: title, quantity: 1, unitPrice: amount, lineTotal: amount }] }; await financialMovement(db, session, doc, "out", amount, "expense"); await db.collection("documents").insertOne(doc, { session }); return doc.id; }
   if (type === "expense.update") {
     const documentId=text(body.documentId),title=text(body.title),amount=positive(body.amount,"المبلغ"),date=text(body.occurredAt),method=text(body.paymentMethod),parsedDate=new Date(`${date}T12:00:00Z`);
     if(!title||!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(parsedDate.valueOf())||parsedDate.toISOString().slice(0,10)!==date)throw new CommandError("العنوان والتاريخ غير صالحين");
     const original=await db.collection("documents").findOne({id:documentId,kind:"expense",status:"posted"},{session});
     if(!original||original.legacyKey)throw new CommandError("المصروف غير موجود أو غير قابل للتعديل",404);
+    const category=await expenseCategorySnapshot(db,session,body,original);
     const historicalPayment=await paymentAccountForHistoricalEdit(db,session,method,original.paymentMethod);
     const movement=await findActiveFinancialMovement(db,session,{documentId,type:"expense"});
     if(!movement)throw new CommandError("تعذر العثور على حركة المصروف الأصلية",409);
     await reverseFinancialMovement(db,session,movement,"تعديل مصروف");
     await reactivateHistoricalPaymentAccount(db,session,historicalPayment.account,historicalPayment.sameOriginal);
     const occurredAt=parsedDate.toISOString(),lineId=(original.lines as Line[]|undefined)?.[0]?.id??id("line");
-    const revised={title,total:amount,dueTotal:0,paidTotal:amount,cashAmount:amount,paymentMethod:method,occurredAt,lines:[{id:lineId,productId:null,description:title,quantity:1,unitPrice:amount,lineTotal:amount}],updatedAt:new Date(),revision:Number(original.revision??0)+1};
+    const revised={title,...category,total:amount,dueTotal:0,paidTotal:amount,cashAmount:amount,paymentMethod:method,occurredAt,lines:[{id:lineId,productId:null,description:title,quantity:1,unitPrice:amount,lineTotal:amount}],updatedAt:new Date(),revision:Number(original.revision??0)+1};
     await financialMovement(db,session,{...original,...revised},"out",amount,"expense");
     await db.collection("documents").updateOne({id:documentId,kind:"expense",status:"posted"},{$set:revised},{session});
     return documentId;
@@ -965,11 +964,20 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   throw new CommandError("العملية غير مدعومة");
 }
 
-export async function POST(request: Request) {const licenseDenied=await requireValidLicense();if(licenseDenied)return licenseDenied;
+export async function POST(request: Request) {
+  try { return await withCommandAdmission(request, admission => executeAdmittedPost(request, admission)); }
+  catch (error) {
+    log("error", "api.command.admission.failed", { error });
+    if (error instanceof CommandAdmissionError) return Response.json({ error: error.message }, { status: error.status });
+    const response = serializeBusinessError(error);
+    return Response.json(response.body, { status: response.status });
+  }
+}
+async function executeAdmittedPost(request: Request, admission: CommandAdmissionContext) {const licenseDenied=await admission.preflight(requireValidLicense());if(licenseDenied)return licenseDenied;
   let type = "unknown";
   try {
-    const body = await request.json() as Input; type = text(body.type);
-    const map:Record<string,Capability>={"product.delete":"products.delete","product.stock-zero":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","legacy-party-document.void":"customers.collect.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
+    const body = await admission.readJson() as Input; type = text(body.type);
+    const map:Record<string,Capability>={"product.delete":"products.delete","product.stock-zero":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","legacy-party-document.void":"customers.collect.delete","expense-category.create":"expenses.create","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
     let capability=map[type];
     if(["party-cash.post","party.update","party.delete","party.restore"].includes(type)){
       const party=await getDatabase().collection("parties").findOne({id:text(body.partyId??body.id)});
@@ -1000,7 +1008,8 @@ export async function POST(request: Request) {const licenseDenied=await requireV
     const db=await getDatabase(),receipts=db.collection("commandReceipts"),prior=await receipts.findOne({_id:idempotencyKey as never});
     if(prior){if(prior.fingerprint!==fingerprint)return Response.json({error:"مفتاح العملية مستخدم لطلب مختلف"},{status:409});if(prior.status==="committed")return Response.json(prior.result);return Response.json({error:"العملية قيد التنفيذ"},{status:409});}
     let result:unknown="",response:unknown;
-    try{await db.transaction(async session=>{
+    try{admission.assertCanMutate();await db.transaction(async session=>{
+      admission.assertCanMutate();
       await receipts.insertOne({_id:idempotencyKey as never,commandType:type,fingerprint,status:"processing",createdAt:new Date()},{session});
       await db.collection("auditEvents").insertOne({id:id("audit"),action:type,status:"started",createdAt:new Date()},{session});
       result=await execute(db,session,body);response=typeof result==="object"&&result?result:{id:result};
@@ -1010,8 +1019,8 @@ export async function POST(request: Request) {const licenseDenied=await requireV
     catch(error){if((error as {code?:number}).code===11000){const duplicate=await receipts.findOne({_id:idempotencyKey as never});if(duplicate?.fingerprint!==fingerprint)return Response.json({error:"مفتاح العملية مستخدم لطلب مختلف"},{status:409});if(duplicate?.status==="committed")return Response.json(duplicate.result);return Response.json({error:"العملية قيد التنفيذ"},{status:409});}throw error;}
     log("info","api.command.completed",{commandType:type,entityId:result});return Response.json(response);
   }catch(error){
-    const known=error instanceof CommandError||error instanceof LifecycleCommandError,status=known?error.status:500;
+    const response=serializeBusinessError(error);
     log("error","api.command.failed",{commandType:type,error});
-    return Response.json({error:known?error.message:"تعذر تنفيذ العملية",...(error instanceof CommandError&&error.details?error.details:{})},{status});
+    return Response.json(response.body,{status:response.status});
   }
 }

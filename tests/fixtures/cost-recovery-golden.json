@@ -1,0 +1,2668 @@
+{
+  "description": "Exact health rows, review tokens, summaries and pagination from the pre-optimization recovery module on synthetic cases.",
+  "cases": [
+    {
+      "name": "valid-zero",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a901057fce76cc1c23132810c7a289b4e63aacbdf0306a83935174190d101039"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a901057fce76cc1c23132810c7a289b4e63aacbdf0306a83935174190d101039"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a901057fce76cc1c23132810c7a289b4e63aacbdf0306a83935174190d101039"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 1,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "valid-missing",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 1,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": null,
+                "costState": "missing",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "8090d9b7cf79dc115976e0593ac9de7426ff0d7ac3b3b14197e7285117aa445a"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 1,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": null,
+                "costState": "missing",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "8090d9b7cf79dc115976e0593ac9de7426ff0d7ac3b3b14197e7285117aa445a"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 1,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 1,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": null,
+                "costState": "missing",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "8090d9b7cf79dc115976e0593ac9de7426ff0d7ac3b3b14197e7285117aa445a"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 1,
+        "savedZeroReview": 0,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "invalid-negative",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 1,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": -1,
+                "costState": "invalid",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "c41b834a4bd212a14347e5b0e912d0a958a4f2bd498c7363c4e6c81c0fe3d19e"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 1,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": -1,
+                "costState": "invalid",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "c41b834a4bd212a14347e5b0e912d0a958a4f2bd498c7363c4e6c81c0fe3d19e"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 1,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 1,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": -1,
+                "costState": "invalid",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "c41b834a4bd212a14347e5b0e912d0a958a4f2bd498c7363c4e6c81c0fe3d19e"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 1,
+        "savedZeroReview": 0,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "invalid-sale",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "sale-values-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": false,
+                "canSetReviewedCost": false,
+                "reviewToken": "1d37335d19a3f3cde237b57ed3c02e43a913c29557d2b8d3b00bd7963abe7757"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "sale-values-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": false,
+                "canSetReviewedCost": false,
+                "reviewToken": "1d37335d19a3f3cde237b57ed3c02e43a913c29557d2b8d3b00bd7963abe7757"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "sale-values-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": false,
+                "canSetReviewedCost": false,
+                "reviewToken": "1d37335d19a3f3cde237b57ed3c02e43a913c29557d2b8d3b00bd7963abe7757"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 1,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "imported-sale",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "unsupported-import-or-date",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "62a9b0ca9b0e252fb2e68d4c9b8b32e01ce0e279b6b4b17e3ce64f34d9ed7e06"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "unsupported-import-or-date",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "62a9b0ca9b0e252fb2e68d4c9b8b32e01ce0e279b6b4b17e3ce64f34d9ed7e06"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "unsupported-import-or-date",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "62a9b0ca9b0e252fb2e68d4c9b8b32e01ce0e279b6b4b17e3ce64f34d9ed7e06"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 1,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "imported-source",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 1,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "voided-source",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 1,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "revised-source",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 1,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "future-source",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-history-unproven",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "cd998bba495547da2bb8bfc8f1c63c9da3957b3c7b3063c635779ee46469d1c7"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 1,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "late-posted-source",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-posted-after-sale",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "1c6c1dc44a614c4fc5b17d051fa6aeb190ccadf497acd1a2ae511d17ac14b0c9"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-posted-after-sale",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "1c6c1dc44a614c4fc5b17d051fa6aeb190ccadf497acd1a2ae511d17ac14b0c9"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "source-posted-after-sale",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "1c6c1dc44a614c4fc5b17d051fa6aeb190ccadf497acd1a2ae511d17ac14b0c9"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 1,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "tied-sources",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "ambiguous-source-order",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a451d42811124651117420dc5dd236e463e097fa5f1c036882fcd5ea59479872"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "ambiguous-source-order",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a451d42811124651117420dc5dd236e463e097fa5f1c036882fcd5ea59479872"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "ambiguous-source-order",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a451d42811124651117420dc5dd236e463e097fa5f1c036882fcd5ea59479872"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 1,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "invalid-latest-source",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "latest-source-cost-unknown",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "42db3f3427889e5cde2dc6adab9129637b4f673c6303c1c2e639d47c8889c902"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "latest-source-cost-unknown",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "42db3f3427889e5cde2dc6adab9129637b4f673c6303c1c2e639d47c8889c902"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 1,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": null,
+                "sourceDocumentId": null,
+                "sourceNumber": null,
+                "reason": "latest-source-cost-unknown",
+                "canApplySuggested": false,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "42db3f3427889e5cde2dc6adab9129637b4f673c6303c1c2e639d47c8889c902"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 1,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 1,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "generated-decant",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 0,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "untagged-generated",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 0,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "positive-control",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 0
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 0,
+        "reviewedZero": 0
+      }
+    },
+    {
+      "name": "reviewed-zero",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 1
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 1
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 1
+            },
+            "rows": [],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 0,
+              "reviewedZero": 1
+            },
+            "rows": [],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 0,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 0,
+        "reviewedZero": 1
+      }
+    },
+    {
+      "name": "many-pending",
+      "pages": [
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 1
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 5,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a901057fce76cc1c23132810c7a289b4e63aacbdf0306a83935174190d101039"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 1,
+              "totalRows": 5,
+              "totalPages": 5
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 3
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 5,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a901057fce76cc1c23132810c7a289b4e63aacbdf0306a83935174190d101039"
+              },
+              {
+                "documentId": "sale-1",
+                "number": "SAL-1",
+                "lineId": "sale-line-1",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "37b75e4a525730dd7e879fb7afd594c4b0b1b3e2dbd6d25a3a989633f3b9bcd6"
+              },
+              {
+                "documentId": "sale-2",
+                "number": "SAL-2",
+                "lineId": "sale-line-2",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a34859c5b6d5c8c23aab91894d07e443f1169ef084f186b9332e66c347ce6dc5"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 3,
+              "totalRows": 5,
+              "totalPages": 2
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 2,
+            "pageSize": 2
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 5,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale-2",
+                "number": "SAL-2",
+                "lineId": "sale-line-2",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a34859c5b6d5c8c23aab91894d07e443f1169ef084f186b9332e66c347ce6dc5"
+              },
+              {
+                "documentId": "sale-3",
+                "number": "SAL-3",
+                "lineId": "sale-line-3",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "51402ce8260d259b4420329b3d52de686526a7375b0a01e6953c18eed528e664"
+              }
+            ],
+            "pagination": {
+              "page": 2,
+              "pageSize": 2,
+              "totalRows": 5,
+              "totalPages": 3
+            }
+          }
+        },
+        {
+          "options": {
+            "page": 1,
+            "pageSize": 100
+          },
+          "result": {
+            "version": 1,
+            "summary": {
+              "automaticRecovered": 0,
+              "unresolved": 0,
+              "savedZeroReview": 5,
+              "reviewedZero": 0
+            },
+            "rows": [
+              {
+                "documentId": "sale",
+                "number": "SAL-EQUIVALENCE",
+                "lineId": "sale-line",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a901057fce76cc1c23132810c7a289b4e63aacbdf0306a83935174190d101039"
+              },
+              {
+                "documentId": "sale-1",
+                "number": "SAL-1",
+                "lineId": "sale-line-1",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "37b75e4a525730dd7e879fb7afd594c4b0b1b3e2dbd6d25a3a989633f3b9bcd6"
+              },
+              {
+                "documentId": "sale-2",
+                "number": "SAL-2",
+                "lineId": "sale-line-2",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "a34859c5b6d5c8c23aab91894d07e443f1169ef084f186b9332e66c347ce6dc5"
+              },
+              {
+                "documentId": "sale-3",
+                "number": "SAL-3",
+                "lineId": "sale-line-3",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "51402ce8260d259b4420329b3d52de686526a7375b0a01e6953c18eed528e664"
+              },
+              {
+                "documentId": "sale-4",
+                "number": "SAL-4",
+                "lineId": "sale-line-4",
+                "lineIndex": 0,
+                "productId": "p",
+                "productName": "Synthetic cost equivalence",
+                "occurredAt": "2026-09-10T10:00:00.000Z",
+                "revision": 0,
+                "originalCost": 0,
+                "costState": "saved-zero",
+                "suggestedPriorCost": 100,
+                "sourceDocumentId": "purchase",
+                "sourceNumber": "PUR-EQUIVALENCE",
+                "reason": "proven-prior-source",
+                "canApplySuggested": true,
+                "canConfirmZero": true,
+                "canSetReviewedCost": true,
+                "reviewToken": "6f8da6a8f9ade3e20015e29cc3b6c0b574d17a6368a4ea6fd7e491b5f836f436"
+              }
+            ],
+            "pagination": {
+              "page": 1,
+              "pageSize": 100,
+              "totalRows": 5,
+              "totalPages": 1
+            }
+          }
+        }
+      ],
+      "summary": {
+        "automaticRecovered": 0,
+        "unresolved": 0,
+        "savedZeroReview": 5,
+        "reviewedZero": 0
+      }
+    }
+  ]
+}

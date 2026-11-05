@@ -17,8 +17,8 @@ test("Next.js and affected transitive packages are resolved to patched, reproduc
     read("package-lock.json").then(JSON.parse),
   ]);
   const packages = lock.packages;
-  assert.equal(pkg.dependencies.next, "16.4.0");
-  assert.equal(pkg.devDependencies["eslint-config-next"], "16.4.0");
+  assert.equal(pkg.dependencies.next, "16.4.2");
+  assert.equal(pkg.devDependencies["eslint-config-next"], "16.4.2");
   assert.equal(packages["node_modules/next"].version, pkg.dependencies.next);
   assert.equal(packages["node_modules/eslint-config-next"].version, pkg.devDependencies["eslint-config-next"]);
   assert.equal(packages[""].dependencies.next, pkg.dependencies.next);

@@ -1,4 +1,13 @@
 export const arMessages = {
+  "command.saving": "جارٍ حفظ العملية، انتظر حتى يكتمل الحفظ…",
+  "command.waitForSave": "انتظر اكتمال حفظ العملية الحالية قبل الانتقال أو تحديث البيانات.",
+  "ac.unknown": "غير مؤكد",
+  "ac.unknownWarning": "توجد مبيعات بقيمة {amount} دون تكلفة تاريخية مؤكدة. لذلك يبقى الربح والهامش غير مؤكدين.",
+  "فئة المصروف": "فئة المصروف",
+  "إضافة فئة مصروف": "إضافة فئة مصروف",
+  "اسم فئة المصروف": "اسم فئة المصروف",
+  "تمت إضافة فئة المصروف": "تمت إضافة فئة المصروف",
+  "كل فئات المصاريف": "كل فئات المصاريف",
   "opening.cost": "تكلفة رصيد البداية",
   "opening.loading": "جاري تحميل رصيد البداية من سجل المخزون الكامل…",
   "opening.failed": "يمكن تعديل بيانات المنتج، لكن تعديل رصيد البداية متوقف.",
@@ -1037,6 +1046,15 @@ export type MessageKey = keyof typeof arMessages;
 export type TranslationParams = Record<string, string | number>;
 
 export const frMessages: Record<MessageKey, string> = {
+  "command.saving": "Enregistrement en cours, veuillez patienter…",
+  "command.waitForSave": "Attendez la fin de l’enregistrement avant de changer de page ou d’actualiser les données.",
+  "ac.unknown": "Non confirmé",
+  "ac.unknownWarning": "Des ventes de {amount} n’ont pas de coût historique confirmé. Le bénéfice et la marge restent non confirmés.",
+  "فئة المصروف": "Catégorie de dépense",
+  "إضافة فئة مصروف": "Ajouter une catégorie de dépense",
+  "اسم فئة المصروف": "Nom de la catégorie de dépense",
+  "تمت إضافة فئة المصروف": "Catégorie de dépense ajoutée",
+  "كل فئات المصاريف": "Toutes les catégories de dépenses",
   "opening.cost": "Coût du stock initial",
   "opening.loading": "Chargement du stock initial depuis son historique complet…",
   "opening.failed": "Les informations du produit restent modifiables, mais pas le stock initial.",

@@ -10,6 +10,7 @@ function canonical(value){
 }
 const hash=value=>createHash('sha256').update(typeof value==='string'?value:canonical(value)).digest('hex');
 const fingerprint=key=>createHash('sha256').update(canonical({crv:key.crv,kty:key.kty,x:key.x,y:key.y})).digest('base64url');
+function retryAfterSeconds(value,now=Date.now()){if(typeof value!=='string'||!value.trim())return 0;const text=value.trim(),seconds=/^\d+$/.test(text)?Number(text):(Date.parse(text)-now)/1000;return Number.isFinite(seconds)?Math.max(0,Math.min(86400,Math.ceil(seconds))):0;}
 function verifyEnvelope(envelope,issuers,schema,scope={},now=Date.now()){
  if(!envelope||envelope.schema!==schema||envelope.version!==1||typeof envelope.kid!=='string'||!issuers[envelope.kid]||typeof envelope.signature!=='string'||!/^[A-Za-z0-9_-]{86}$/.test(envelope.signature))throw fault('INVALID_SERVICE_SIGNATURE');
  const {signature,...signed}=envelope;
@@ -26,4 +27,4 @@ function signChallenge(challenge,operation,payload,sessionToken,privateKey,now=D
  return sign('sha256',Buffer.from(challenge.message),{key:privateKey,dsaEncoding:'ieee-p1363'}).toString('base64url');
 }
 function normalizedPhone(value){return String(value).normalize('NFKC').replace(/[٠-٩]/g,c=>String(c.charCodeAt(0)-1632)).replace(/[۰-۹]/g,c=>String(c.charCodeAt(0)-1776)).trim();}
-module.exports={APPLICATION_ID,PATH,canonical,hash,fingerprint,fault,verifyEnvelope,signChallenge,normalizedPhone};
+module.exports={APPLICATION_ID,PATH,canonical,hash,fingerprint,fault,verifyEnvelope,signChallenge,normalizedPhone,retryAfterSeconds};

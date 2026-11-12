@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const {trustedSender}=require('../native-backup.cjs');
-function accessSender(event,owner,origin){if(!trustedSender(event,owner,origin))return false;try{return ['/remote-access','/remote-access/','/shared','/shared/'].includes(new URL(event.senderFrame.url).pathname);}catch{return false;}}
+function accessSender(event,owner,origin){if(!trustedSender(event,owner,origin))return false;try{return ['/login','/login/','/remote-access','/remote-access/','/shared','/shared/'].includes(new URL(event.senderFrame.url).pathname);}catch{return false;}}
 function registerDesktopAccessHandlers({ipcMain,client,getWindow,getOrigin,isClosing=()=>false}){
  const handlers={state:v=>client.view(v?.branchId),enter:v=>client.enter(v),newRequest:()=>client.beginNewRequest(),request:v=>client.request(v),poll:()=>client.requestStatus(),activate:()=>client.acceptActivation(),login:v=>client.login(v),logout:()=>client.logout(),refresh:v=>client.refresh(v.branchId),submit:v=>client.submit(v),draft:v=>client.saveDraft(v),ack:v=>client.acknowledge(v.operationId)};
  for(const [name,handler]of Object.entries(handlers))ipcMain.handle('alkarna:access:'+name,async(event,value)=>{

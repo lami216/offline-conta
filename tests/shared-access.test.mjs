@@ -32,9 +32,10 @@ test('OS-protected state refuses insecure fallback or corruption and never write
  }finally{await rm(directory,{recursive:true,force:true});}
 });
 
-test('new access IPC accepts only the owning main frame and the two application access pages',()=>{
+test('access IPC accepts only the owning main frame and the unified login or established access pages',()=>{
  const frame={url:'http://127.0.0.1:4321/remote-access'},contents={mainFrame:frame},owner={isDestroyed:()=>false,webContents:contents},event={sender:contents,senderFrame:frame};assert.equal(accessSender(event,owner,'http://127.0.0.1:4321'),true);
- for(const url of ['http://127.0.0.1:4321/login','http://127.0.0.1:9999/remote-access','https://3ali.store/remote-access']){frame.url=url;assert.equal(accessSender(event,owner,'http://127.0.0.1:4321'),false);}frame.url='http://127.0.0.1:4321/shared';assert.equal(accessSender(event,owner,'http://127.0.0.1:4321'),true);assert.equal(accessSender({...event,senderFrame:{url:frame.url}},owner,'http://127.0.0.1:4321'),false);assert.equal(accessSender({...event,sender:{}},owner,'http://127.0.0.1:4321'),false);
+ frame.url='http://127.0.0.1:4321/login';assert.equal(accessSender(event,owner,'http://127.0.0.1:4321'),true);
+ for(const url of ['http://127.0.0.1:4321/settings','http://127.0.0.1:9999/login','https://3ali.store/login']){frame.url=url;assert.equal(accessSender(event,owner,'http://127.0.0.1:4321'),false);}frame.url='http://127.0.0.1:4321/shared';assert.equal(accessSender(event,owner,'http://127.0.0.1:4321'),true);assert.equal(accessSender({...event,senderFrame:{url:frame.url}},owner,'http://127.0.0.1:4321'),false);assert.equal(accessSender({...event,sender:{}},owner,'http://127.0.0.1:4321'),false);
 });
 
 test('contiguous scoped view patches preserve order and fail closed on gaps, altered hashes and foreign branches',()=>{

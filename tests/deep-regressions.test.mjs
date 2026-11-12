@@ -73,7 +73,13 @@ test("edit identities survive reload, navigation is guarded, and barcode capture
 
 test("login clears accounting session drafts between users",async()=>{
  const source=await readFile(new URL("../app/login/page.tsx",import.meta.url),"utf8");
- assert.match(source,/key\.startsWith\("conta:"\)/);
+ assert.match(source,/useEffect\(\(\)=>watchLocalLoginDrafts\(\),\[\]\)/);
+ const {completeLocalLogin}=await import("../app/shared-access-client.ts");
+ const original=Object.getOwnPropertyDescriptor(globalThis,"sessionStorage"),storage={"conta:sale-lines":"PRIVATE-DRAFT",unrelated:"KEEP"};
+ Object.defineProperty(storage,"removeItem",{value:key=>{delete storage[key]},enumerable:false});
+ Object.defineProperty(globalThis,"sessionStorage",{value:storage,configurable:true});
+ try{completeLocalLogin("same");assert.equal(storage["conta:sale-lines"],"PRIVATE-DRAFT");completeLocalLogin("changed");assert.equal(storage["conta:sale-lines"],undefined);assert.equal(storage.unrelated,"KEEP");}
+ finally{if(original)Object.defineProperty(globalThis,"sessionStorage",original);else delete globalThis.sessionStorage;}
 });
 
 

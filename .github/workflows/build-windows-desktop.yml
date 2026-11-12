@@ -32,7 +32,10 @@ jobs:
       # Production vulnerabilities at high or critical severity must stop distribution.
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
-      - run: npm test
+      - name: Run tests with generated data outside the reviewed source
+        env:
+          ALKARNA_USER_DATA: ${{ runner.temp }}/alkarna-tests
+        run: npm test
       - run: npx tsc --noEmit
       - run: npm run lint
       - run: npm run build

@@ -3,7 +3,7 @@ import {type FormEvent,type ReactNode,useCallback,useEffect,useRef,useState} fro
 import {useRouter} from "next/navigation";
 import {useI18n} from "../i18n/provider";
 import {translateApiError} from "../i18n/api-errors";
-import {accessCall,type AccessView} from "../shared-access-client";
+import {accessCall,completeLocalLogin,type AccessView} from "../shared-access-client";
 import {canonicalPhoneIdentifier,remoteEntryKind} from "./login-routing";
 
 export function LoginForm({exitButton}:{exitButton:ReactNode}){
@@ -22,15 +22,15 @@ export function LoginForm({exitButton}:{exitButton:ReactNode}){
   const body=new FormData();body.set("username",name);body.set("password",secret);
   const response=await fetch("/api/auth/login",{method:"POST",headers:{"x-alkarna-login-ui":"1"},body});
   const result=await response.json() as {ok:boolean;field?:"username"|"password";error?:string};
-  return{response,result,known:response.headers.get("x-alkarna-local-account")!=="unknown"};
+  return{response,result,known:response.headers.get("x-alkarna-local-account")!=="unknown",scope:response.headers.get("x-alkarna-local-account-change")};
  }
- const enterLocal=()=>{router.replace("/");router.refresh();};
+ const enterLocal=(scope:string|null)=>{if(scope!=="same"&&scope!=="changed")throw Error("LOCAL_SESSION_UNCONFIRMED");completeLocalLogin(scope);router.replace("/");router.refresh();};
  async function submit(event:FormEvent<HTMLFormElement>){
   event.preventDefault();if(busy.current)return;busy.current=true;setSubmitting(true);setError("");setNotice("");
   try{
    const entryKind=remoteEntryKind(username);let local=await localLogin(username,password);
    if(!local.result.ok&&local.result.field==="username"&&!local.known&&entryKind==="phone"&&canonicalPhoneIdentifier(username)!==username.trim())local=await localLogin(canonicalPhoneIdentifier(username),password);
-   if(local.response.ok&&local.result.ok){enterLocal();return;}
+   if(local.response.ok&&local.result.ok){enterLocal(local.scope);return;}
    if(local.result.field!=="username"||local.known){setError(translateApiError(locale,local.result.error??"تعذر تسجيل الدخول"));if(local.result.field==="username"){setUsername("");requestAnimationFrame(()=>usernameRef.current?.focus());}else if(local.result.field==="password"){setPassword("");requestAnimationFrame(()=>passwordRef.current?.focus());}return;}
    if(!nativeAvailable||entryKind==="none"){setError(institutionHint);setUsername("");requestAnimationFrame(()=>usernameRef.current?.focus());return;}
    if(!consent){setError(text("وافق على التحقق من بيانات الدخول والجهاز للمتابعة.","Acceptez la vérification des identifiants et de cet appareil pour continuer."));return;}
@@ -42,7 +42,7 @@ export function LoginForm({exitButton}:{exitButton:ReactNode}){
    }
    if(next.license.valid&&next.request?.stage==="linked"){
     const activated=await localLogin(canonicalPhoneIdentifier(username),password);
-    if(activated.response.ok&&activated.result.ok){setPassword("");enterLocal();return;}
+    if(activated.response.ok&&activated.result.ok){setPassword("");enterLocal(activated.scope);return;}
     setNotice(text("هذا الجهاز جاهز. استخدم بيانات الحساب المحلي الموجود للدخول.","Cet appareil est prêt. Utilisez les identifiants du compte local existant."));
    }else setNotice(pendingNotice);
    setPassword("");

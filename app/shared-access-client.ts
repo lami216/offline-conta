@@ -15,3 +15,13 @@ export async function accessCall<K extends keyof AccessBridge>(method:K,...args:
  const fn=api[method] as (...args:Parameters<AccessBridge[K]>)=>ReturnType<AccessBridge[K]>;
  const reply=await fn(...args);if(!reply.ok)throw Object.assign(Error(reply.message),{code:reply.code,retryAfter:reply.retryAfter});return reply.value as Awaited<ReturnType<AccessBridge[K]>> extends Reply<infer T>?T:never;
 }
+
+// Transient local editor drafts stay with the existing authenticated principal.
+let localLoginGeneration=0;
+function clearLocalLoginDrafts(){try{if(typeof sessionStorage!=="undefined")for(const key of Object.keys(sessionStorage))if(key.startsWith("conta:"))sessionStorage.removeItem(key);}catch{/* Unavailable storage cannot expose another account's cached editor. */}}
+export function completeLocalLogin(scope:"same"|"changed"){localLoginGeneration++;if(scope==="changed")clearLocalLoginDrafts();}
+export function watchLocalLoginDrafts(){
+ let active=true;const generation=localLoginGeneration;
+ void fetch("/api/license/status",{cache:"no-store",credentials:"same-origin"}).then(response=>{if(active&&generation===localLoginGeneration&&response.status===401)clearLocalLoginDrafts();}).catch(()=>{});
+ return()=>{active=false;};
+}

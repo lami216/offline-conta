@@ -27,6 +27,8 @@ jobs:
       # an unnecessary node-gyp rebuild, then install Electron explicitly.
       - run: npm ci --ignore-scripts
       - run: node node_modules/electron/install.js
+      - name: Verify real Windows DPAPI and access IPC boundaries
+        run: node scripts/run-desktop-access-secure.mjs
       # Production vulnerabilities at high or critical severity must stop distribution.
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
@@ -61,4 +63,14 @@ jobs:
             dist/AlKarna-Setup-x64.exe.sha256
           if-no-files-found: error
           compression-level: 0
+          retention-days: 14
+      - name: Archive exact reviewed source
+        run: git archive --format=tar.gz --output=dist/contatools-desktop-client-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v7
+        with:
+          name: AlKarna-shared-client-source-${{ github.run_number }}
+          path: |
+            dist/contatools-desktop-client-source.tar.gz
+            desktop-access-proof/*.json
+          if-no-files-found: error
           retention-days: 14

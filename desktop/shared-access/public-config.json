@@ -1,0 +1,11 @@
+{
+  "origin": "https://3ali.store",
+  "applicationId": "mr.alkarna.desktop",
+  "issuers": {
+    "0d224040-8d24-4f18-9b3e-052fe2016a6f": {
+      "kty": "EC", "crv": "P-256",
+      "x": "LRSTLFJEiaYCIAElFP-GnhP3-r1Y1nqMYaQgfWej-ds",
+      "y": "xaM57f2A5tUE4XnRuNWxsHPs0YwUtuCtFIduQGmHVwU"
+    }
+  }
+}

@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const {app,BrowserWindow,Menu,shell,dialog,session,ipcMain}=require('electron');
+const {app,BrowserWindow,Menu,shell,dialog,session,ipcMain,safeStorage}=require('electron');
+const {DesktopAccessClient}=require('./shared-access/client.cjs');
+const {createProtectedStore}=require('./shared-access/storage.cjs');
+const {registerDesktopAccessHandlers}=require('./shared-access/ipc.cjs');
+const accessConfig=require('./shared-access/public-config.json');
 const {createNativeBackupService,registerNativeBackupHandler}=require('./native-backup.cjs');
 const PRODUCT_NAME='الكرنه';
 const LOCALE_COOKIE='alkarna_locale';
@@ -66,6 +70,10 @@ async function start(){
  server.stdout.on('data',chunk=>logStream.write(chunk));server.stderr.on('data',chunk=>logStream.write(chunk));server.on('error',error=>stamp(`child error: ${error.stack||error}`));server.on('exit',(code,signal)=>{stamp(`child exit code=${code} signal=${signal}`);if(ready&&!quitting){dialog.showErrorBox(PRODUCT_NAME,`توقف خادم الكرنه بشكل غير متوقع.\nراجع سجل التشغيل:\n${logPath}`);window?.destroy();app.quit()}});
  const url=`http://127.0.0.1:${port}`;serverUrl=url;for(let i=0;i<120;i++){if(server.exitCode!==null)break;try{const response=await fetch(`${url}/api/health`);if(response.status===200){ready=true;break}}catch{}await new Promise(r=>setTimeout(r,250))}if(!ready)return failStartup();stamp('health ready');stamp(`native-save electron=${process.versions.electron} chrome=${process.versions.chrome} platform=${process.platform}`);
  window=new BrowserWindow({title:PRODUCT_NAME,width:1500,height:900,minWidth:1100,minHeight:700,icon:join(root,'public','alkarna-logo.png'),webPreferences:{preload:join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true}});const expectedOrigin=new URL(url).origin,isLocal=target=>{try{return new URL(target).origin===expectedOrigin}catch{return false}};
+ const localLicense=async()=>{const response=await fetch(serverUrl+'/api/desktop/access/license',{redirect:'error',headers:{'x-alkarna-desktop-token':desktopToken}});if(!response.ok)throw Object.assign(Error('تعذر قراءة ترخيص Windows.'),{code:'WINDOWS_LICENSE_UNAVAILABLE'});return response.json();};
+ const installRemoteLicense=async document=>{const response=await fetch(serverUrl+'/api/desktop/access/license',{method:'POST',redirect:'error',headers:{'x-alkarna-desktop-token':desktopToken,'content-type':'application/octet-stream'},body:document});const result=await response.json();if(!response.ok)throw Object.assign(Error(result.error||'تعذر تثبيت الترخيص.'),{code:result.code||'ACTIVATION_FAILED'});return result;};
+ const accessClient=new DesktopAccessClient({store:createProtectedStore(join(userData,'shared-access'),safeStorage),config:accessConfig,appVersion:app.getVersion(),localLicense,installLicense:installRemoteLicense});
+ registerDesktopAccessHandlers({ipcMain,client:accessClient,getWindow:()=>window,getOrigin:()=>serverUrl,isClosing:()=>quitting||Boolean(closeFlow?.isActive())});
  Menu.setApplicationMenu(null);window.webContents.setWindowOpenHandler(({url:target})=>{if(isLocal(target))return{action:'allow'};shell.openExternal(target);return{action:'deny'}});window.webContents.on('will-navigate',(event,target)=>{if(!isLocal(target))event.preventDefault()});
  closeFlow=createCloseFlow({dialog,window:()=>window,saveBackup:()=>nativeBackup.save(signal=>fetch(`${serverUrl}/api/desktop/backup`,{signal,redirect:'error',headers:{'x-alkarna-desktop-token':desktopToken,'accept-encoding':'identity'}})),fetchBackup:async()=>{const response=await fetch(`${serverUrl}/api/desktop/backup`,{headers:{'x-alkarna-desktop-token':desktopToken}});if(!response.ok)throw Error(`backup HTTP ${response.status}`);return Buffer.from(await response.arrayBuffer())},writeBackup:writeFile,getLocale:currentLocale,onFailure:async error=>{stamp(`backup failed: ${error.stack||error}`)},approveQuit:async()=>{quitting=true;await stopServer();logStream?.end();app.quit()}});
  window.on('close',event=>{if(quitting||closeFlow.isApproved())return;event.preventDefault();void requestDesktopClose().then(closed=>{if(!closed&&window&&!window.isDestroyed()){window.focus();window.webContents.focus()}})});

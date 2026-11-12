@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('alkarnaBackup', {
 
 // Narrow methods only: no renderer access to credentials, keys, URLs or arbitrary IPC.
 contextBridge.exposeInMainWorld('alkarnaAccess', {
-  state: () => ipcRenderer.invoke('alkarna:access:state'),
+  state: branchId => ipcRenderer.invoke('alkarna:access:state', branchId===undefined?undefined:{branchId}),
   newRequest: () => ipcRenderer.invoke('alkarna:access:newRequest'),
   request: value => ipcRenderer.invoke('alkarna:access:request', value),
   poll: () => ipcRenderer.invoke('alkarna:access:poll'),

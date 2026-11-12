@@ -5,9 +5,9 @@ const {applySharedDelta}=require('./delta.cjs');
 const {APPLICATION_ID,hash,fingerprint,fault,signChallenge,normalizedPhone,verifyEnvelope,retryAfterSeconds}=require('./protocol.cjs');
 
 class DesktopAccessClient {
- constructor({store,config,appVersion,localLicense,installLicense,fetchResponse=fetch,now=Date.now}){
+ constructor({store,config,appVersion,localLicense,installLicense,setupLocalAccount,fetchResponse=fetch,now=Date.now}){
   const origin=new URL(config.origin);if(origin.protocol!=='https:'||origin.origin!==config.origin||origin.username||origin.password)throw fault('INVALID_SERVICE_ORIGIN');
-  this.store=store;this.config=config;this.version=appVersion;this.localLicense=localLicense;this.installLicense=installLicense;this.fetchResponse=fetchResponse;this.now=now;this.state=null;this.branch=null;this.serial=Promise.resolve();this.metrics={requests:0,bytesReceived:0};this.retryDeadlines=new Map();
+  this.store=store;this.config=config;this.version=appVersion;this.localLicense=localLicense;this.installLicense=installLicense;this.setupLocalAccount=setupLocalAccount;this.fetchResponse=fetchResponse;this.now=now;this.state=null;this.branch=null;this.serial=Promise.resolve();this.metrics={requests:0,bytesReceived:0};this.retryDeadlines=new Map();
  }
  exclusive(fn){const task=this.serial.then(fn);this.serial=task.catch(()=>{});return task;}
  async initialize(){if(this.state)return;let s=await this.store.read();if(!s){const pair=generateKeyPairSync('ec',{namedCurve:'prime256v1'}),key=pair.publicKey.export({format:'jwk'});s={schema:1,installationId:randomUUID(),publicJwk:{kty:key.kty,crv:key.crv,x:key.x,y:key.y},privateDer:pair.privateKey.export({format:'der',type:'pkcs8'}).toString('base64'),request:null,session:null,pending:null,receipt:null,draft:null,drafts:{},lastDraftBranch:null};await this.store.write(s);}if(!s.installationId||!s.privateDer||!s.publicJwk)throw fault('ACCESS_STATE_UNREADABLE');this.state=s;this.key=createPrivateKey({key:Buffer.from(s.privateDer,'base64'),format:'der',type:'pkcs8'});}
@@ -28,7 +28,7 @@ class DesktopAccessClient {
   if(input?.consent!==true)throw fault('CONSENT_REQUIRED','وافق على إرسال بيانات هذا الجهاز لمراجعة المسؤول.');
   const identifier=String(input.identifier||'').normalize('NFKC').trim(),phone=normalizedPhone(identifier);
   if(/^[234][0-9]{7}$/.test(phone))return{kind:'activation',...await this.request({identifier:phone,code:input.code,purpose:'activation',consent:true})};
-  if(!/^\S+@\S+\.\S+$/.test(identifier))throw fault('INVALID_IDENTIFIER','أدخل رقمًا من 8 أرقام يبدأ بـ 2 أو 3 أو 4، أو حساب المنشأة الذي أعطاك المسؤول.');
+  if(!/^\S+@\S+\.\S+$/.test(identifier))throw fault('INVALID_IDENTIFIER','تواصل مع مسؤول منشأتك للحصول على بيانات الدخول.');
   return{kind:'organization',...await this.login({identifier,code:input.code})};
  }
  async recordRequestResponse(response){if(!response||typeof response.stage!=='string')throw fault('INVALID_SERVICE_RESPONSE');if(response.requestId&&response.requestId!==this.state.request.requestId)throw fault('WRONG_GRANT_SCOPE');const next={...this.state.request,stage:response.stage,expiresAt:response.expiresAt??null};
@@ -36,7 +36,17 @@ class DesktopAccessClient {
   if(response.licenseDocument){next.activation=response.licenseDocument;}
   await this.persist({request:next});}
  async requestStatus(){return this.exclusive(async()=>{await this.initialize();const r=this.state.request;if(!r)throw fault('NO_PENDING_REQUEST');let response;try{response=await this.call('request.status',{installationId:this.state.installationId,requestId:r.requestId,identifier:r.identifier,code:r.code});}catch(error){if(![401,404].includes(error.status)||r.stage!=='pending')throw error;response=await this.call('request.create',{...(r.metadata||this.metadata()),deviceCode:r.deviceCode,identifier:r.identifier,code:r.code,requestId:r.requestId,purpose:r.purpose,...(r.licenseDocument?{licenseDocument:r.licenseDocument}:{})});}await this.recordRequestResponse(response);return this.publicRequest();});}
- async acceptActivation(){return this.exclusive(async()=>{await this.initialize();const r=this.state.request;if(!r?.grant)throw fault('NO_APPROVED_ACTIVATION');const already=r.acceptedGrantHash===hash(r.grant),verificationTime=already?Math.min(this.now(),r.grant.payload.expiresAt-1):this.now();const p=verifyEnvelope(r.grant,this.config.issuers,'contatools-desktop-decision',{installationId:this.state.installationId,keyFingerprint:fingerprint(this.state.publicJwk),requestId:r.requestId,purpose:'desktop-request-approval',requestPurpose:r.purpose,deviceCode:r.deviceCode},verificationTime);let result={linked:true};if(r.purpose!=='shared'){const document=r.activation;if(typeof document!=='string'||hash(document)!==p.licenseDocumentHash)throw fault('WRONG_ACTIVATION_DOCUMENT');result=await this.installLicense(document);}await this.persist({request:{...r,acceptedGrantHash:hash(r.grant),stage:'accepted-local'}});const response=await this.call('request.accept',{installationId:this.state.installationId,requestId:r.requestId,grantHash:hash(r.grant)});if(response.accepted!==true)throw fault('INVALID_SERVICE_RESPONSE');await this.persist({request:{...this.state.request,stage:'linked'}});return result;});}
+ async acceptActivation(){return this.exclusive(async()=>{
+  await this.initialize();const r=this.state.request;if(!r?.grant)throw fault('NO_APPROVED_ACTIVATION');
+  const already=r.acceptedGrantHash===hash(r.grant),verificationTime=already?Math.min(this.now(),r.grant.payload.expiresAt-1):this.now();
+  const p=verifyEnvelope(r.grant,this.config.issuers,'contatools-desktop-decision',{installationId:this.state.installationId,keyFingerprint:fingerprint(this.state.publicJwk),requestId:r.requestId,purpose:'desktop-request-approval',requestPurpose:r.purpose,deviceCode:r.deviceCode},verificationTime);
+  let result={linked:true};
+  if(r.purpose!=='shared'){const document=r.activation;if(typeof document!=='string'||hash(document)!==p.licenseDocumentHash)throw fault('WRONG_ACTIVATION_DOCUMENT');result=await this.installLicense(document);}
+  await this.persist({request:{...r,acceptedGrantHash:hash(r.grant),stage:'accepted-local'}});
+  if(r.purpose!=='shared'&&this.setupLocalAccount)await this.setupLocalAccount({identifier:r.identifier,code:r.code,licenseDocumentHash:p.licenseDocumentHash});
+  const response=await this.call('request.accept',{installationId:this.state.installationId,requestId:r.requestId,grantHash:hash(r.grant)});
+  if(response.accepted!==true)throw fault('INVALID_SERVICE_RESPONSE');await this.persist({request:{...this.state.request,stage:'linked'}});return result;
+ });}
  async login(input){return this.exclusive(async()=>{await this.initialize();const code=String(input.code||''),identifier=String(input.identifier||'').normalize('NFKC').trim().toLowerCase();if(code.length<12||code.length>256||!/^\S+@\S+\.\S+$/.test(identifier))throw fault('INVALID_CREDENTIALS');const response=await this.call('session.login',{...this.metadata(),identifier,code,clientProtocol:{sharedDeltaVersion:1,salesViewVersion:1,deviceApprovalVersion:1}});
   if(response?.stage==='pending'){
    const expected=['deviceStatus','installationId','mode','requestId','stage'];

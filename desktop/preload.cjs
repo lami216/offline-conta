@@ -13,3 +13,17 @@ contextBridge.exposeInMainWorld('alkarnaPrinting', {
 contextBridge.exposeInMainWorld('alkarnaBackup', {
   save: () => ipcRenderer.invoke('alkarna:backup:save'),
 });
+
+// Narrow methods only: no renderer access to credentials, keys, URLs or arbitrary IPC.
+contextBridge.exposeInMainWorld('alkarnaAccess', {
+  state: () => ipcRenderer.invoke('alkarna:access:state'),
+  request: value => ipcRenderer.invoke('alkarna:access:request', value),
+  poll: () => ipcRenderer.invoke('alkarna:access:poll'),
+  activate: () => ipcRenderer.invoke('alkarna:access:activate'),
+  login: value => ipcRenderer.invoke('alkarna:access:login', value),
+  logout: () => ipcRenderer.invoke('alkarna:access:logout'),
+  refresh: branchId => ipcRenderer.invoke('alkarna:access:refresh', {branchId}),
+  submit: value => ipcRenderer.invoke('alkarna:access:submit', value),
+  draft: value => ipcRenderer.invoke('alkarna:access:draft', value),
+  ack: operationId => ipcRenderer.invoke('alkarna:access:ack', {operationId}),
+});

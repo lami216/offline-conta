@@ -337,7 +337,7 @@ function ContaAppContent() {
       const statusResponse=await fetch("/api/license/status"),status=await statusResponse.json() as LicenseStatus;
       if(!statusResponse.ok)throw new Error((status as {error?:string}).error??tr("تعذر التحقق من الترخيص"));
       setLicenseStatus(status);
-      if(!status.valid){setSettingsTab("license");setView("settings");setError("");return}
+      if(!status.valid){setError("");window.location.replace("/remote-access");return}
       const r = await fetch("/api/bootstrap");
       const j = await r.json();
       if (!r.ok) throw new Error(j.error);
@@ -465,7 +465,7 @@ function ContaAppContent() {
     return()=>{cancelled=true;window.clearTimeout(timer)};
   }, [autoPrintId, data.documents, locale]);
   const autoPrintDocument=autoPrintId?data.documents.find(document=>document.id===autoPrintId)??null:null;
-  if(!loading&&licenseStatus&&!licenseStatus.valid)return <div className="unlicensed-shell" dir={dir}><div className="unlicensed-session"><button className="language-switch soft" type="button" onClick={()=>setLocale(locale==="ar"?"fr":"ar")}><Globe/>{locale==="ar"?"Français":"العربية"}</button><form action="/api/auth/logout" method="post"><button className="soft" type="submit"><LogOut/>  {tr("خروج")}</button></form></div><SupportLicensePage initialStatus={licenseStatus} onActivated={()=>reload({blocking:true})}/></div>;
+  if(!loading&&licenseStatus&&!licenseStatus.valid)return <div className="unlicensed-shell" dir={dir}><div className="unlicensed-session"><button className="language-switch soft" type="button" onClick={()=>setLocale(locale==="ar"?"fr":"ar")}><Globe/>{locale==="ar"?"Français":"العربية"}</button></div><p role="status">{locale==="ar"?"جارٍ فتح حساب المنشأة…":"Ouverture du compte de l’établissement…"}</p><Link href="/remote-access">{locale==="ar"?"فتح حساب المنشأة":"Ouvrir le compte de l’établissement"}</Link></div>;
   return (
     <div className={`app-shell section-${view}`} dir={dir}>
       {lowStockWarning && <LowStockWarningDialog message={lowStockWarning} locale={locale} onClose={() => setLowStockWarning("")} />}

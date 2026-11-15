@@ -46,12 +46,18 @@ test("party-ledger labels carry stable semantic codes for localized presentation
 
 test("bank operation presentation no longer depends on Arabic display words", () => {
   const financialBlock = app.slice(app.indexOf("type FinancialDetail"), app.indexOf("function Banks("));
+  const banks = app.slice(app.indexOf("function Banks("), app.indexOf("function Parties("));
   assert.match(financialBlock, /detail\.kind==="manual-deposit"/);
   assert.match(financialBlock, /detail\.kind==="manual-withdrawal"/);
   assert.doesNotMatch(financialBlock, /\/إيداع\/\.test\(detail\.type\)/);
   assert.doesNotMatch(financialBlock, /\/سحب\/\.test\(detail\.type\)/);
-  assert.match(app, /tr\(label\)/);
-  assert.match(app, /Object\.entries\(movementLabels\)\.map\(\(\[key,label\]\)=>\[key,tr\(label\)\]\)/);
+  assert.match(banks, /const movementLabels=useMemo<Record<string,string>>\(\(\)=>\(\{sale:tr\("بيع"\),purchase:tr\("شراء"\)/);
+  assert.match(banks, /const summaryMovementLabels=useMemo<Record<string,string>>\(\(\)=>\(\{\.\.\.movementLabels,/);
+  assert.match(banks, /label:summaryMovementLabels\[row\.kind\]\?\?row\.kind/);
+  assert.match(banks, /source:movementSummarySource\(row\.kind\)/);
+  assert.doesNotMatch(banks, /Object\.entries\(movementLabels\)\.map\(\(\[key,label\]\)=>\[key,tr\(label\)\]\)/);
+  assert.equal(translate("fr", "بيع"), "vente");
+  assert.equal(translate("fr", "شراء"), "achat");
 });
 
 test("specific system confirmations and official document metadata are localized", () => {

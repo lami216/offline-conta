@@ -7,11 +7,12 @@ import {randomUUID} from 'node:crypto';
 
 let directory,sqlite,db,POST,auth;
 const environment=new Map(),origin='http://127.0.0.1:3241';
-const post=async(body,{user,key=randomUUID()}={})=>{
- const response=await POST(new Request(origin+'/api/command',{method:'POST',headers:{Origin:origin,Host:'127.0.0.1:3241','Content-Type':'application/json','Idempotency-Key':key,...(user?{Cookie:`conta_session=${auth.createSession({principalType:'user',userId:user})}`}:{})},body:JSON.stringify(body)}));
+const post=async(body,{user,owner=false,key=randomUUID()}={})=>{
+ const session=owner?auth.createSession({principalType:'owner'}):user?auth.createSession({principalType:'user',userId:user}):null;
+ const response=await POST(new Request(origin+'/api/command',{method:'POST',headers:{Origin:origin,Host:'127.0.0.1:3241','Content-Type':'application/json','Idempotency-Key':key,...(session?{Cookie:`conta_session=${session}`}:{})},body:JSON.stringify(body)}));
  return{status:response.status,body:await response.json()};
 };
-const ok=async(body,options)=>{const result=await post(body,options);assert.equal(result.status,200,JSON.stringify(result));return result.body.id;};
+const ok=async(body,options={owner:true})=>{const result=await post(body,options);assert.equal(result.status,200,JSON.stringify(result));return result.body.id;};
 const state=()=>Promise.all(['parties','employees','products','documents','paymentAccounts','financialMovements','stockMovements','auditEvents','commandReceipts','counters'].map(name=>db.collection(name).find().toArray()));
 const cash=async()=>(await db.collection('paymentAccounts').findOne({id:'cash'})).balance;
 const party=id=>db.collection('parties').findOne({id});
@@ -28,12 +29,14 @@ beforeEach(async()=>{
  await db.collection('paymentAccounts').insertOne({id:'cash',code:'cash',name:'Synthetic cash',isActive:true,balance:10000,openingBalance:10000});
  await db.collection('products').insertOne({id:'p',sku:'1',name:'Synthetic ordinary product',stocks:{w:0},pieceCost:0,piecePrice:150});
  await db.collection('users').insertMany([
+  {id:'owner',username:'owner',name:'Synthetic owner',isActive:true,permissions:[]},
   {id:'creator',username:'creator',name:'Synthetic creator',isActive:true,permissions:['customers.create']},
   {id:'opening',username:'opening',name:'Synthetic opening manager',isActive:true,permissions:['customers.create','party.opening.manage']},
  ]);
 });
 
 test('quick party creation remains zero balance; full creation needs an additional opening capability before writing anything',async()=>{
+ const anonymousBefore=await state();assert.equal((await post({type:'party.create',partyType:'customer',name:'Synthetic anonymous attempt'})).status,401);assert.deepEqual(await state(),anonymousBefore);
  const quick=await ok({type:'party.create',partyType:'customer',name:'Synthetic quick name'},{user:'creator'});assert.equal((await party(quick)).net,0);assert.equal(await db.collection('documents').countDocuments({partyId:quick}),0);
  const before=await state(),body={type:'party.create',partyType:'customer',name:'Synthetic full name',opening:{direction:'receivable',amount:1000}};
  assert.equal((await post(body,{user:'creator'})).status,403);assert.deepEqual(await state(),before);

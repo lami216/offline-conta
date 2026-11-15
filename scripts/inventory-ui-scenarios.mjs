@@ -134,8 +134,19 @@ export async function runInventoryScenarios({ cdp, origin, command, database, sc
   for (const locale of ["ar", "fr"]) {
     await evaluate(`window.__smokeSetLocale(${JSON.stringify(locale)})`);
     layouts.push(...await captureControlLayouts({ cdp, screenshot, scope: ".inventory-filter-controls", name: "inventory-filters-" + locale }));
+    assert.equal(await evaluate('document.querySelectorAll(".inventory-filter-controls > .combobox > .combobox-trigger span")[1]?.textContent'),locale==="fr"?"Toutes les catégories":"كل الفئات","The all-category UI label has a real translation, not the generic failure fallback");
+    assert.equal(await evaluate('document.querySelector(".inventory-list-panel input").value'),prefix,"Changing language never translates the user's search text");
     const cards = await evaluate('(()=>{const cards=[...document.querySelectorAll(".inventory-overview-metrics > span")].map(node=>{const box=node.getBoundingClientRect();return{top:box.top,bottom:box.bottom,left:box.left,right:box.right}});return{cards,width:innerWidth}})()');
     assert(cards.cards[1].top >= cards.cards[0].bottom - 2 && Math.abs(cards.cards[1].top - cards.cards[2].top) < 2, "Value stays above the two side-by-side count/quantity cards");
+    if(locale==="fr"){
+      await choose(1,"فئة الجرد المصححة");
+      await expectScope(definitions.slice(0,2).map(row=>row.name),9,130);
+      const selected=await evaluate('(()=>{const span=document.querySelectorAll(".inventory-filter-controls > .combobox > .combobox-trigger span")[1];return{text:span.textContent,title:span.title,search:document.querySelector(".inventory-list-panel input").value}})()');
+      assert.deepEqual(selected,{text:"فئة الجرد المصححة",title:"فئة الجرد المصححة",search:prefix},"French UI preserves literal custom category and search values");
+      layouts.push(...await captureControlLayouts({cdp,screenshot,scope:".inventory-filter-controls",name:"inventory-custom-category-fr",widths:[1280,480]}));
+      await choose(1,"Toutes les catégories");
+      await expectScope(definitions.map(row=>row.name),12,220);
+    }
   }
   assert.deepEqual(await unchanged(), beforeBrowsing, "Inventory browsing, period/locale changes and export leave every stock/financial/document snapshot unchanged");
   await evaluate('window.__smokeSetLocale("ar")');

@@ -1,4 +1,5 @@
 export const arMessages = {
+  "كل الفئات": "كل الفئات",
   "وحدة الرصيد": "وحدة الرصيد",
   "فلتر فئة المنتجات": "فلتر فئة المنتجات",
   "كل الحالات": "كل الحالات",
@@ -1148,6 +1149,7 @@ export type MessageKey = keyof typeof arMessages;
 export type TranslationParams = Record<string, string | number>;
 
 export const frMessages: Record<MessageKey, string> = {
+  "كل الفئات": "Toutes les catégories",
   "وحدة الرصيد": "Unité du stock",
   "فلتر فئة المنتجات": "Filtrer par catégorie de produit",
   "كل الحالات": "Tous les états",

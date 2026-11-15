@@ -55,7 +55,7 @@ function createNativeBackupService({ dialog, getWindow, homeDirectory, getLocale
       choice = await dialog.showSaveDialog(owner, {
         title: locale === 'fr' ? 'Enregistrer la sauvegarde' : 'حفظ النسخة الاحتياطية',
         defaultPath,
-        filters: [{ name: locale === 'fr' ? 'Sauvegarde Al Karna Parfums' : 'نسخة الكرنة للعطور', extensions: ['conta.json', 'json'] }],
+        filters: [{ name: locale === 'fr' ? 'Sauvegarde Al Karna' : 'نسخة الكرنه', extensions: ['conta.json', 'json'] }],
         properties: ['showOverwriteConfirmation', 'dontAddToRecent'],
       });
     } catch (error) { log(`backup stage=dialog-failed code=${error.code || 'unknown'}`); throw error; }

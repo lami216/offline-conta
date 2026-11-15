@@ -5,6 +5,7 @@ import { SqliteDatabase, ensureDatabaseSchema } from '../lib/sqlite.ts';
 import { accrueDueEmployees, handlePayrollCommand } from '../lib/payroll.ts';
 import { buildReport, parseReportFilters } from '../lib/reports.ts';
 import { buildEmployeeLedger } from '../lib/employee-ledger.ts';
+import { bankScopeBreakdown, filterFinancialMovements } from '../app/bank-filters.ts';
 
 const clock = day => new Date(`${day}T15:00:00.000Z`);
 async function fixture(t) {
@@ -98,6 +99,13 @@ test('salary refund reduces paid wage expense without becoming revenue, and bank
   assert.equal((await f.report('expenses')).summary.total, 1500);
   const financial = await f.report('financial', period);
   assert.deepEqual([financial.summary.incoming, financial.summary.outgoing, financial.rows[0].employeeId], [500, 0, employeeId]);
+  assert.deepEqual([financial.rows[0].documentId, financial.rows[0].partyType, financial.rows[0].party], [refundId, 'employee', 'Synthetic worker']);
+  const accounts = await f.db.collection('paymentAccounts').find().toArray(), movements = await f.db.collection('financialMovements').find().toArray();
+  const refundScope = bankScopeBreakdown(accounts, filterFinancialMovements(movements, period), []);
+  assert.deepEqual(refundScope.income.find(row => row.kind === 'employee-payment'), { kind: 'employee-payment', count: 1, value: 500 });
+  const allScope = bankScopeBreakdown(accounts, movements, []);
+  assert.equal(allScope.expenses.find(row => row.kind === 'employee-payment').value, 2000);
+  assert.equal(allScope.income.find(row => row.kind === 'employee-payment').value, 500);
 });
 
 test('an advance becomes expense on the later earned accrual and keeps its real source rather than a new cash movement', async t => {

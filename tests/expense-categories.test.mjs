@@ -71,9 +71,9 @@ test('older backups without expense categories still restore without assigning h
 });
 test('schema v8 adds category storage to an existing v7 database without changing old documents',async t=>{
   const {h,post}=await fixture(t);await post();const before=await h.db.collection('documents').find().toArray();
-  h.db.native.exec('DROP TABLE expense_categories; DELETE FROM schema_migrations WHERE version=8;');
+  h.db.native.exec('DROP TABLE expense_categories; DELETE FROM schema_migrations WHERE version>=8;');
   ensureDatabaseSchema(h.db);assert.equal(await h.db.collection('expenseCategories').countDocuments(),0);assert.deepEqual(await h.db.collection('documents').find().toArray(),before);
-  ensureDatabaseSchema(h.db);assert.equal(h.db.native.prepare('SELECT max(version) v FROM schema_migrations').get().v,8);
+  ensureDatabaseSchema(h.db);assert.equal(h.db.native.prepare('SELECT max(version) v FROM schema_migrations').get().v,9);
 });
 
 test('historical scheduled and new expenses all remain included in the simplified report and backup', async t => {
@@ -89,7 +89,7 @@ test('historical scheduled and new expenses all remain included in the simplifie
   const report = await buildReport(h.db,filter({expenseCategoryId:category}));
   assert.deepEqual([report.summary.total,report.summary.count],[600,3]);
   assert.equal(report.rows.length,3);
-  assert.equal(Object.hasOwn(report.summary,'recurringTotal'),false);
+  assert.equal(report.summary.recurringTotal,600);assert.equal(report.summary.nonrecurringTotal,0);
   assert.equal(Object.hasOwn(report.summary,'oneOffTotal'),false);
   assert(report.rows.every(row=>!Object.hasOwn(row,'recurring')));
   for(const retiredType of ['once','recurring']){

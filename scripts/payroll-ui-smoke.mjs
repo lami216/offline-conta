@@ -1,0 +1,394 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+import http from "node:http";
+import { fileURLToPath } from "node:url";
+import { spawn, spawnSync } from "node:child_process";
+import { build } from "esbuild";
+import { assertControlBounds, captureControlLayouts } from "./ui-control-bounds.mjs";
+
+if (process.env.CI !== "true" || process.env.GITHUB_ACTIONS !== "true" || process.platform !== "win32") {
+  throw new Error("This smoke check runs only in GitHub Actions on Windows.");
+}
+assert(process.execArgv.includes("--test") || process.env.NODE_TEST_CONTEXT !== undefined, "Use the Node test runner for this CI-only fixture.");
+
+const source = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const output = path.join(source, "test-output", "payroll-ui");
+const temporaryRoot = path.resolve(os.tmpdir());
+const profile = fs.mkdtempSync(path.join(temporaryRoot, "alkarna-payroll-ui-"));
+assert.equal(path.dirname(profile), temporaryRoot);
+for (const name of ["data", "licensing", "chrome"]) fs.mkdirSync(path.join(profile, name));
+fs.mkdirSync(output, { recursive: true });
+Object.assign(process.env, {
+  NODE_ENV: "test", ALKARNA_DESKTOP: "1", ALKARNA_USER_DATA: profile,
+  ALKARNA_DATABASE_PATH: path.join(profile, "data", "audit.sqlite"),
+  ALKARNA_LICENSE_STATE_PATH: path.join(profile, "licensing", "state.json"),
+  ALKARNA_LICENSE_DISABLE_REGISTRY: "1", ALKARNA_TEST_LICENSE_BYPASS: "1",
+});
+delete process.env.ALKARNA_DESKTOP_TOKEN;
+delete process.env.ALKARNA_TEST_DEVICE_ID;
+
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function until(check, description, milliseconds = 20000) {
+  const deadline = Date.now() + milliseconds;
+  while (Date.now() < deadline) {
+    if (await check()) return;
+    await pause(50);
+  }
+  throw new Error("Timed out waiting for " + description);
+}
+const result = {
+  status: "running", mode: "Actual Offline Conta React employee, parties, reports and ordinary sale/purchase components with real application routes in an isolated CI profile",
+  ciOnly: true, licenseBypass: "test-only CI", screenshots: [], checkpoints: [],
+};
+let database, closeDatabase, server, chrome, cdp, browserBundle;
+
+async function connectCdp(url) {
+  const socket = new WebSocket(url), pending = new Map(), errors = [], consoleMessages = [], network = [];
+  let sequence = 0;
+  await new Promise((resolve, reject) => {
+    socket.addEventListener("open", resolve, { once: true });
+    socket.addEventListener("error", reject, { once: true });
+  });
+  socket.addEventListener("message", event => {
+    const message = JSON.parse(String(event.data));
+    if (message.method === "Runtime.exceptionThrown") errors.push(message.params.exceptionDetails.exception?.description ?? message.params.exceptionDetails.text);
+    if (message.method === "Runtime.consoleAPICalled") consoleMessages.push({type:message.params.type,args:message.params.args.map(argument=>argument.value??argument.description)});
+    if (message.method === "Network.responseReceived") network.push({url:message.params.response.url,status:message.params.response.status});
+    if (message.method === "Network.loadingFailed") network.push({requestId:message.params.requestId,error:message.params.errorText});
+    const request = pending.get(message.id);
+    if (!request) return;
+    pending.delete(message.id);
+    clearTimeout(request.timer);
+    if (message.error) request.reject(new Error(JSON.stringify(message.error)));
+    else request.resolve(message.result);
+  });
+  const call = (method, params = {}) => new Promise((resolve, reject) => {
+    const id = ++sequence;
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error("CDP timeout " + method)); }, 20000);
+    pending.set(id, { resolve, reject, timer });
+    socket.send(JSON.stringify({ id, method, params }));
+  });
+  return {
+    call, errors, consoleMessages, network, close: () => socket.close(),
+    async evaluate(expression) {
+      const response = await call("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+      if (response.exceptionDetails) throw new Error(JSON.stringify(response.exceptionDetails));
+      return response.result.value;
+    },
+  };
+}
+
+async function main() {
+  const sqlite = await import("../lib/sqlite.ts");
+  closeDatabase = sqlite.closeDatabase;
+  database = sqlite.initializeDatabase();
+  assert.equal(await database.collection("employees").countDocuments(), 0);
+  assert.equal(await database.collection("users").countDocuments(), 0, "Fresh CI profile uses the application's standard local principal");
+  result.authentication = "Standard local principal on a fresh profile without users";
+  const account = await database.collection("paymentAccounts").findOne({ code: "cash" });
+  await database.collection("paymentAccounts").updateOne({ id: account.id }, { $set: { balance: 1000, openingBalance: 1000, isActive: true } });
+  const { execute, POST } = await import("../app/api/command/route.ts");
+  const { GET } = await import("../app/api/bootstrap/route.ts");
+  const { GET: historyGET } = await import("../app/api/history/route.ts");
+  const { GET: reportsGET } = await import("../app/api/reports/route.ts");
+  const bootstrapCheck = await GET(new Request("http://127.0.0.1:3219/api/bootstrap"));
+  assert.equal(bootstrapCheck.status, 200, await bootstrapCheck.text());
+  const date = new Date().toISOString().slice(0, 10);
+  const employeeId = await database.transaction(session => execute(database, session, {
+    type: "employee.create", name: "عامل فحص الواجهة", phone: "00000000", amount: 100,
+    startDate: date, intervalMonths: 12, entitlement: "beginning",
+  }));
+
+  const entry = `
+    import React,{useCallback,useEffect,useRef,useState} from "react";
+    import{createRoot}from"react-dom/client";
+    import EmployeesPage from "./app/employees-page";
+    import{Parties,PartyPage,Reports,Expenses,Pos,Purchases,Warehouses}from"./app/conta-app";
+    import{LocaleProvider,useI18n}from"./app/i18n/provider";
+    import{ConfirmationProvider,useAppConfirm}from"./app/app-confirm";
+    import{requestEditorReplacement}from"./app/editor-replacement";
+    import{finishSuccessfulCommand}from"./app/command-lifecycle";
+    import{tr}from"./app/i18n/messages";
+    function Shell(){
+      const[data,setData]=useState(null),[sourceId,setSourceId]=useState(${JSON.stringify(employeeId)}),[view,setView]=useState("employees");
+      const[selectedPartyId,setSelectedPartyId]=useState(null),editorGuard=useRef(null),pending=useRef(false);
+      const{setLocale}=useI18n(),confirmAction=useAppConfirm();
+      const register=useCallback(guard=>{editorGuard.current=guard},[]);
+      const prepare=()=>requestEditorReplacement({hasPendingCommands:()=>pending.current,getGuard:()=>editorGuard.current,confirmDiscard:()=>confirmAction({message:tr("لديك تعديلات غير محفوظة. هل تريد تجاهلها والانتقال؟")}),onPending:()=>{window.__smokePendingBlocked=true}});
+      const refresh=async()=>{const response=await fetch("/api/bootstrap"),value=await response.json();if(!response.ok)throw new Error(value.error||"Bootstrap failed");setData(value)};
+      useEffect(()=>{void refresh().catch(error=>{window.__smokeError=error.stack;console.error(error)})},[]);
+      useEffect(()=>{
+        window.__smokeSetView=async next=>{if(!await prepare())return false;await refresh();setView(next);document.getElementById("root").className="app-shell section-"+(["party-ledger","expense-report","overview"].includes(next)?"reports":next==="party-detail"?"customers":next==="sale"?"pos":next==="purchase"?"purchases":next);return true};
+        window.__smokeSetLocale=setLocale;
+        return()=>{delete window.__smokeSetView;delete window.__smokeSetLocale};
+      },[setLocale]);
+      const run=async(body,_message,afterSuccess)=>{
+        window.__smokeCommandCount=(window.__smokeCommandCount||0)+1;
+        window.__payrollBusy=true;pending.current=true;
+        try{
+          const response=await fetch("/api/command",{method:"POST",headers:{"content-type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)});
+          const value=await response.json();if(!response.ok)throw new Error(value.error);
+          await finishSuccessfulCommand(afterSuccess,refresh);
+          window.__lastPayrollResult=value;return value.id;
+        }finally{window.__payrollBusy=false;pending.current=false}
+      };
+      if(!data)return <p>Loading</p>;
+      const openDoc=id=>{window.__openedPayrollDocument=id};
+      if(view==="customers"||view==="suppliers")return <Parties key={view} partyType={view==="customers"?"customer":"supplier"} data={data} run={run} openParty={party=>{window.__openedParty=party.id;setSelectedPartyId(party.id);setView("party-detail")}} canEdit canDelete registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
+      if(view==="party-detail"){const party=data.parties.find(row=>row.id===selectedPartyId);return party?<PartyPage key={party.id} party={party} data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>:<p>Missing synthetic party</p>}
+      if(view==="party-ledger")return <Reports data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type="party-ledger" sourceRequest={null} clearSourceRequest={()=>{}}/>;
+      if(view==="expenses")return <Expenses data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} registerEditorGuard={register} canEdit canDelete/>;
+      if(view==="expense-report"||view==="overview")return <Reports key={view} data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type={view==="overview"?"overview":"expenses"} sourceRequest={null} clearSourceRequest={()=>{}}/>;
+      if(view==="sale")return <Pos data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} requestPrint={id=>{window.__printedInvoice=id}} openStockAdjustment={()=>{throw new Error("Unexpected inventory editor in invoice smoke")}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
+      if(view==="purchase")return <Purchases data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} requestPrint={id=>{window.__printedInvoice=id}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
+      if(view==="warehouses")return <Warehouses data={data} run={run} openDoc={openDoc}/>;
+      return <EmployeesPage data={data} run={run} openDoc={id=>{window.__openedPayrollDocument=id}} sourceId={sourceId} clearSource={()=>setSourceId(null)} registerEditorGuard={register}/>;
+    }
+    createRoot(document.getElementById("root")).render(<LocaleProvider initialLocale="ar"><ConfirmationProvider><Shell/></ConfirmationProvider></LocaleProvider>);
+  `;
+  const bundled = await build({
+    absWorkingDir: source, stdin: { contents: entry, resolveDir: source, loader: "tsx" },
+    bundle: true, platform: "browser", format: "iife", write: false, jsx: "automatic",
+    plugins:[{name:"ci-only-component-exports",setup(builder){builder.onLoad({filter:/[\\/]app[\\/]conta-app\.tsx$/},args=>({contents:fs.readFileSync(args.path,"utf8")+"\nexport { Parties, PartyPage, Reports, Expenses, Pos, Purchases, Warehouses };\n",loader:"tsx",resolveDir:path.dirname(args.path)}))}}],
+    define: { "process.env.NODE_ENV": JSON.stringify("production") },
+  });
+  const script = bundled.outputFiles[0].contents;
+  browserBundle=script;
+  const styles=[...fs.readFileSync(path.join(source,"app","layout.tsx"),"utf8").matchAll(/^import "\.\/([^"\r\n]+\.css)";/gm)].map(match=>match[1]);
+  assert(styles.includes("globals.css")&&styles.includes("employees-compact.css")&&styles.includes("party-compact.css"),"Use the actual Offline application theme imports");
+  const css = styles.map(name=>fs.readFileSync(path.join(source,"app",name),"utf8")).join("\n").replace(/^[ \t]*@import[^\r\n]*;[ \t]*(?:\r?\n|$)/gm, "");
+  server = http.createServer(async (request, response) => {
+    try {
+      if (request.url === "/app.js") { response.writeHead(200, { "content-type": "text/javascript" }); response.end(script); return; }
+      if (request.url === "/app.css") { response.writeHead(200, { "content-type": "text/css" }); response.end(css); return; }
+      if (request.url === "/") {
+        response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        response.end('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><link rel="stylesheet" href="/app.css"><style>body{display:block;margin:0}#root{display:block;height:100vh}.employees-workspace{height:100%}</style><div id="root" class="app-shell section-employees"></div><script src="/app.js"></script></html>');
+        return;
+      }
+      const chunks = [];
+      let bytes = 0;
+      for await (const chunk of request) {
+        bytes += chunk.length;
+        if (bytes > 65536) throw new Error("CI request too large");
+        chunks.push(chunk);
+      }
+      const headers = Object.fromEntries(Object.entries(request.headers).filter(([, value]) => value !== undefined).map(([key, value]) => [key, Array.isArray(value) ? value.join(",") : value]));
+      const webRequest = new Request("http://" + request.headers.host + request.url, {
+        method: request.method, headers,
+        ...(request.method === "POST" ? { body: Buffer.concat(chunks) } : {}),
+      });
+      const value = request.url === "/api/bootstrap" ? await GET(webRequest) :
+        request.url.startsWith("/api/history?") ? await historyGET(webRequest) :
+        request.url.startsWith("/api/reports?") ? await reportsGET(webRequest) :
+        request.url === "/api/command" ? await POST(webRequest) : new Response("Not found", { status: 404 });
+      response.writeHead(value.status, Object.fromEntries(value.headers));
+      response.end(Buffer.from(await value.arrayBuffer()));
+    } catch (error) {
+      response.writeHead(500, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: error.message }));
+    }
+  });
+  await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+  const base = "http://127.0.0.1:" + server.address().port;
+  const executable = [process.env.CHROME_PATH, path.join(process.env.ProgramFiles ?? "C:\\Program Files", "Google/Chrome/Application/chrome.exe"),
+    path.join(process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)", "Google/Chrome/Application/chrome.exe")].find(file => file && fs.existsSync(file));
+  assert(executable, "Chrome is installed on the Windows runner");
+  chrome = spawn(executable, ["--headless=new", "--disable-gpu", "--disable-background-networking", "--no-first-run", "--no-default-browser-check",
+    "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--user-data-dir=" + path.join(profile, "chrome"), "about:blank"],
+  { windowsHide: true, stdio: "ignore" });
+  const portFile = path.join(profile, "chrome", "DevToolsActivePort");
+  await until(() => fs.existsSync(portFile), "Chrome debugging port");
+  const port = fs.readFileSync(portFile, "utf8").split(/\r?\n/)[0];
+  const targets = await (await fetch("http://127.0.0.1:" + port + "/json/list")).json();
+  cdp = await connectCdp(targets.find(target => target.type === "page").webSocketDebuggerUrl);
+  await cdp.call("Page.enable");
+  await cdp.call("Runtime.enable");
+  await cdp.call("Network.enable");
+  await cdp.call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  await cdp.call("Page.navigate", { url: base });
+  await until(() => cdp.evaluate('Boolean(document.querySelector(".employee-payment-panel"))'), "employee account");
+  await cdp.evaluate(`
+    window.__payrollUi={
+      fill(label,value){
+        const row=[...document.querySelectorAll(".employee-payment-panel label")].find(element=>element.firstChild.textContent.trim()===label);
+        if(!row)throw new Error("Missing field "+label);
+        const field=row.querySelector("input,select");
+        const prototype=field.tagName==="SELECT"?HTMLSelectElement.prototype:HTMLInputElement.prototype;
+        Object.getOwnPropertyDescriptor(prototype,"value").set.call(field,value);
+        field.dispatchEvent(new Event("input",{bubbles:true}));field.dispatchEvent(new Event("change",{bubbles:true}));
+      },
+      submit(){document.querySelector(".employee-payment-panel button.primary").click()},
+      action(number,label){
+        const row=[...document.querySelectorAll(".employees-history tbody tr")].find(element=>element.querySelector(".source-link")?.title===number);
+        const button=[...row.querySelectorAll("button[aria-label]")].find(element=>element.getAttribute("aria-label").startsWith(label+" "));
+        if(!button)throw new Error("Missing history action "+label);button.click();
+      }
+    };
+  `);
+  const state = async () => ({
+    employee: await database.collection("employees").findOne({ id: employeeId }),
+    account: await database.collection("paymentAccounts").findOne({ id: account.id }),
+    documents: await database.collection("documents").find({ employeeId }).toArray(),
+  });
+  async function expectState(balance, cash) {
+    await until(async () => {
+      const current = await state();
+      return current.employee.balance === balance && current.account.balance === cash &&
+        await cdp.evaluate('!window.__payrollBusy && document.querySelector(".employee-balance strong")?.textContent.includes(' + JSON.stringify(String(Math.abs(balance))) + ')');
+    }, "employee balance" + balance + " and cash" + cash);
+  }
+  const fill = (label, value) => cdp.evaluate("window.__payrollUi.fill(" + JSON.stringify(label) + "," + JSON.stringify(String(value)) + ")");
+  async function screenshot(name, width) {
+    await cdp.call("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    await cdp.evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+    assert.equal(await cdp.evaluate("document.documentElement.scrollWidth>innerWidth+1"),false,"No page-level horizontal overflow");
+    const capture = await cdp.call("Page.captureScreenshot", { format: "png", captureBeyondViewport: false });
+    fs.writeFileSync(path.join(output, name + ".png"), Buffer.from(capture.data, "base64"));
+    result.screenshots.push(name + ".png");
+  }
+  async function employeeScreenshot(name,width) {
+    await screenshot(name,width);
+    (result.employeeLayouts??=[]).push(await assertControlBounds({cdp,scope:".employees-toolbar,.employee-card,.employee-payment-panel,.employees-history .employee-actions",name}));
+    const layout = await cdp.evaluate(`(()=>{
+      const box=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return{x:r.x,right:r.right,y:r.y,bottom:r.bottom}};
+      return{list:box(".employees-list"),history:box(".employees-history"),account:box(".employees-account"),overflow:document.documentElement.scrollWidth>innerWidth+1};
+    })()`);
+    assert.equal(layout.overflow, false);
+    if (width === 1280) {
+      assert(layout.history.y >= layout.list.bottom - 1);
+      assert(layout.history.right <= layout.account.x + 1 || layout.account.right <= layout.history.x + 1);
+    }
+  }
+  await expectState(100, 1000);
+  await cdp.evaluate('document.querySelector(".employee-payment-panel select").focus()');
+  await cdp.call("Input.dispatchKeyEvent", { type: "keyDown", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+  await cdp.call("Input.dispatchKeyEvent", { type: "keyUp", key: "Tab", code: "Tab", windowsVirtualKeyCode: 9 });
+  assert(await cdp.evaluate('document.activeElement===document.querySelector(".employee-payment-panel input[type=number]")'));
+  result.checkpoints.push("Keyboard Tab moves from movement direction to amount");
+  await fill("نوع الحركة", "withdraw");
+  await fill("المبلغ", 150);
+  await fill("وسيلة الدفع", account.id);
+  await cdp.evaluate("window.__payrollUi.submit()");
+  await expectState(-50, 850);
+  assert(await cdp.evaluate('document.querySelector(".employee-balance").textContent.includes("مستحق على العامل")'));
+  const withdrawal = (await state()).documents.find(document => document.kind === "employee-payment");
+  await employeeScreenshot("withdrawal-1280", 1280);
+  await employeeScreenshot("withdrawal-760", 760);
+  await employeeScreenshot("withdrawal-480", 480);
+  result.checkpoints.push("Actual UI withdrawal150 exceeds accrued100, cash850 and signed worker balance-50");
+  await fill("نوع الحركة", "deposit");
+  await fill("المبلغ", 30);
+  await fill("وسيلة الدفع", account.id);
+  await cdp.evaluate("window.__payrollUi.submit()");
+  await expectState(-20, 880);
+  const deposit = (await state()).documents.find(document => document.employeePaymentDirection === "deposit");
+  assert(deposit);
+  await employeeScreenshot("deposit-760", 760);
+  await employeeScreenshot("deposit-480", 480);
+  await cdp.evaluate('window.__smokeSetLocale("fr")');
+  await until(()=>cdp.evaluate('document.documentElement.lang==="fr"'),"French worker movement locale");
+  await employeeScreenshot("deposit-fr-1280", 1280);
+  await employeeScreenshot("deposit-fr-760", 760);
+  await employeeScreenshot("deposit-fr-480", 480);
+  await cdp.evaluate('window.__smokeSetLocale("ar")');
+  await until(()=>cdp.evaluate('document.documentElement.lang==="ar"'),"Arabic worker actions restored");
+  result.checkpoints.push("Actual UI deposit30 increases cash and worker balance");
+  await fill("المبلغ", 7);
+  await cdp.evaluate("window.__payrollUi.action(" + JSON.stringify(deposit.number) + ',"تعديل")');
+  await until(() => cdp.evaluate('Boolean(document.querySelector(".app-confirm-dialog"))'), "unsaved editor confirmation");
+  await cdp.evaluate('document.querySelector(".app-confirm-actions button:last-child").click()');
+  assert.equal(await cdp.evaluate('document.querySelector(".employee-payment-panel input[type=number]").value'), "7");
+  await expectState(-20, 880);
+  await cdp.evaluate("window.__payrollUi.action(" + JSON.stringify(deposit.number) + ',"تعديل")');
+  await until(() => cdp.evaluate('Boolean(document.querySelector(".app-confirm-dialog"))'), "confirmed editor replacement");
+  await cdp.evaluate('document.querySelector(".app-confirm-actions button").click()');
+  await until(() => cdp.evaluate('document.querySelector(".employee-payment-panel select")?.value==="deposit"'), "deposit edit direction");
+  result.checkpoints.push("Canceling the unsaved-editor dialog keeps the draft and cash, confirming opens the history edit");
+  await fill("المبلغ", 50);
+  await fill("سبب التعديل", "CI correction");
+  (result.employeeLayouts??=[]).push(...await captureControlLayouts({cdp,screenshot,scope:".employee-payment-panel",name:"worker-movement-edit-ar"}));
+  await cdp.evaluate('window.__smokeSetLocale("fr")');
+  (result.employeeLayouts??=[]).push(...await captureControlLayouts({cdp,screenshot,scope:".employee-payment-panel",name:"worker-movement-edit-fr"}));
+  await cdp.evaluate('window.__smokeSetLocale("ar")');
+  await cdp.evaluate("window.__payrollUi.submit()");
+  await expectState(0, 900);
+  const edit = (await state()).documents.find(document => document.id === deposit.id);
+  assert.equal(edit.revision, 1);
+  result.checkpoints.push("History edits the deposit in place with its saved direction and exact cash delta");
+  for (const [document, balance, cash] of [[edit, -50, 850], [withdrawal, 100, 1000]]) {
+    await cdp.evaluate("window.__payrollUi.action(" + JSON.stringify(document.number) + ',"إلغاء السند")');
+    await until(() => cdp.evaluate('Boolean(document.querySelector(".app-confirm-dialog"))'), "void confirmation");
+    await cdp.evaluate('document.querySelector(".app-confirm-actions button").click()');
+    await expectState(balance, cash);
+    const saved = (await state()).documents.find(row => row.id === document.id);
+    assert.equal(saved.status, "voided");
+  }
+  await employeeScreenshot("after-voids-1280", 1280);
+  result.checkpoints.push("Both void actions restore their original effects once, leaving accrual100 and cash1000");
+  const final = await state();
+  assert.equal(final.documents.filter(document => document.kind === "employee-accrual" && document.status === "posted").length, 1);
+  assert.equal(final.documents.filter(document => document.kind === "employee-payment" && document.status === "posted").length, 0);
+  const {runWorkerProfileScenarios}=await import("./worker-profile-ui-scenarios.mjs");
+  result.workerProfiles=await runWorkerProfileScenarios({cdp,database,employeeId,screenshot});
+  result.checkpoints.push(...result.workerProfiles.checkpoints);
+  const command=async body=>{
+    const response=await fetch(base+"/api/command",{method:"POST",headers:{"content-type":"application/json",Origin:base,"Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)}),value=await response.json();
+    assert.equal(response.status,200,JSON.stringify(value));return value.id;
+  };
+  await cdp.evaluate('window.__smokeSetLocale("ar")');
+  await until(()=>cdp.evaluate('document.documentElement.lang==="ar"'),"Arabic party scenario locale");
+  const {runPartiesReportScenarios}=await import("./parties-ui-scenarios.mjs");
+  result.partyReports=await runPartiesReportScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.partyReports.checkpoints);
+  const {runExpenseOverviewScenarios}=await import("./expense-overview-ui-scenarios.mjs");
+  result.expenseOverview=await runExpenseOverviewScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.expenseOverview.checkpoints);
+  const {runInvoiceTotalsScenarios}=await import("./invoice-totals-ui-scenarios.mjs");
+  result.invoiceTotals=await runInvoiceTotalsScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.invoiceTotals.checkpoints);
+  const {runInventoryScenarios}=await import("./inventory-ui-scenarios.mjs");
+  result.inventory=await runInventoryScenarios({cdp,origin:base,command,database,screenshot,output});
+  result.checkpoints.push(...result.inventory.checkpoints);
+  assert.deepEqual(cdp.errors, []);
+  result.status = "passed";
+}
+
+try {
+  await main();
+} catch (error) {
+  result.status = "failed";
+  result.error = error.stack;
+  result.browserErrors = cdp?.errors ?? [];
+  result.browserConsole = cdp?.consoleMessages ?? [];
+  result.browserNetwork = cdp?.network ?? [];
+  if(browserBundle)fs.writeFileSync(path.join(output,"bundle.js"),browserBundle);
+  if (cdp) {
+    try {
+      const screenshot = await cdp.call("Page.captureScreenshot", { format: "png" });
+      fs.writeFileSync(path.join(output, "failure.png"), Buffer.from(screenshot.data, "base64"));
+      fs.writeFileSync(path.join(output, "failure.html"), await cdp.evaluate("document.documentElement.outerHTML"));
+    } catch {}
+  }
+  process.exitCode = 1;
+} finally {
+  if (cdp) cdp.close();
+  if (chrome && chrome.exitCode === null) spawnSync("taskkill", ["/PID", String(chrome.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+  if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  if (closeDatabase) closeDatabase();
+  const resolved = path.resolve(profile);
+  assert.equal(path.dirname(resolved), temporaryRoot);
+  assert(path.basename(resolved).startsWith("alkarna-payroll-ui-"));
+  try {
+    fs.rmSync(resolved, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    result.profileRemoved = true;
+  } catch (error) {
+    result.profileRemoved = false;
+    result.cleanupError = error.message;
+    process.exitCode = 1;
+  }
+  fs.writeFileSync(path.join(output, "result.json"), JSON.stringify(result, null, 2));
+}
+console.log(JSON.stringify(result));

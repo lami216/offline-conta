@@ -11,7 +11,7 @@ const bounded = (value:string|null, fallback:number, max:number) => {
 };
 
 const documentCapabilities: Capability[] = [
-  "records.view", "pos.view", "purchases.view", "expenses.view",
+  "employees.view", "party.opening.manage", "records.view", "pos.view", "purchases.view", "expenses.view",
   "customers.view", "suppliers.view", "warehouses.transfer", "warehouses.adjust",
   "banks.view", "banks.movements.view",
 ];
@@ -28,7 +28,10 @@ export async function GET(request:Request){
  if(!allowed)return Response.json({error:"غير مصرح"},{status:403});
  const coarseAccess={can:(capability:string)=>hasCapability(principal,capability as Capability)};
  if(resource==="documents"&&kind&&!reportDocumentLookup&&!canReadDocumentKind(kind,coarseAccess))return Response.json({error:"غير مصرح"},{status:403});
+ const status=url.searchParams.get("status")?.trim()??"";
+ if(resource==="documents"&&status&&!["all","posted","voided"].includes(status))return Response.json({error:"حالة المستند غير صالحة"},{status:400});
  const query:Record<string,unknown>={};
+ if(resource==="documents"&&(status==="posted"||status==="voided"))query.status=status;
  if(id)query.id=id;
  if(kind)query[resource==="documents"?"kind":"type"]=kind;
  if(from||to){

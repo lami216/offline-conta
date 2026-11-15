@@ -1,6 +1,9 @@
 import { historicalInvoiceStockLines, planStockChange } from "../../../lib/stock-numbers.ts";
 import { CommandAdmissionError, withCommandAdmission, type CommandAdmissionContext } from "../../../lib/command-admission.ts";
-import {createExpenseCategory,expenseCategorySnapshot} from "../../../lib/expense-categories.ts";
+import {createExpenseCategory,updateExpenseCategory,deleteExpenseCategory,expenseCategorySnapshot} from "../../../lib/expense-categories.ts";
+import {postPartyOpening,updatePartyOpening,voidPartyOpening} from "../../../lib/party-opening.ts";
+import {handlePayrollCommand} from "../../../lib/payroll.ts";
+import {resolveInvoiceLineTotal,sumInvoiceLineTotals} from "../../invoice-line-amount.ts";
 import { requireValidLicense } from "../../../lib/license.ts";
 import { serializeBusinessError } from "../../../lib/business-error.ts";
 import type { SqliteSession as ClientSession, SqliteDatabase as Db } from "../../../lib/sqlite.ts";
@@ -15,7 +18,7 @@ import { currentProductCost } from "../../../lib/product-cost.ts";
 import { executeLifecycleCommand, findActiveFinancialMovement, propagatePartyName, restoreProductArchiveStockClearance, reverseFinancialMovement } from "../../../lib/transaction-lifecycle.ts";
 
 type Input = Record<string, unknown>;
-type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; actualQuantity?: number; costAtSale?: number | null; grossProfit?: number | null; saleCostRecovery?: Record<string, unknown> };
+type Line = { id?: string; productId: string; quantity: number; description?: string; piecePrice?: number; unitPrice?: number; lineTotal?: unknown; lineTotalMode?: "exact"; actualQuantity?: number; costAtSale?: number | null; grossProfit?: number | null; saleCostRecovery?: Record<string, unknown> };
 type WarehouseDoc = { _id: string; name: string; isSalesDefault?: boolean; [key: string]: unknown };
 const warehouses = (db: Db) => db.collection<WarehouseDoc>("warehouses");
 class CommandError extends Error {
@@ -67,7 +70,7 @@ const lines = (body: Input): Line[] => {
   return body.lines.map((raw) => {
     const r = raw as Input, productId = text(r.productId), quantity = positive(r.quantity, "الكمية");
     if (!productId || seen.has(productId)) throw new CommandError("المنتجات غير صالحة أو مكررة"); seen.add(productId);
-    return { productId, quantity, piecePrice: num(r.piecePrice), unitPrice: num(r.unitPrice), actualQuantity: num(r.actualQuantity) };
+    return { productId, quantity, piecePrice: num(r.piecePrice), unitPrice: num(r.unitPrice), actualQuantity: num(r.actualQuantity), ...(Object.hasOwn(r,"lineTotal")?{lineTotal:r.lineTotal}:{}) };
   });
 };
 const baseDocument = (kind: string, prefix: string) => ({
@@ -467,7 +470,13 @@ async function requireInitialOpeningDocument(db: Db, session: ClientSession, doc
 
 export async function execute(db: Db, session: ClientSession, body: Input) {
   const type = text(body.type);
+  if(type.startsWith("employee.")||type.startsWith("employee-payment.")||type.startsWith("employee-accrual."))return handlePayrollCommand(db,session,body);
+  if(type==="party-opening.post")return postPartyOpening(db,session,body);
+  if(type==="party-opening.update")return updatePartyOpening(db,session,body);
+  if(type==="party-opening.void")return voidPartyOpening(db,session,body);
   if(type==="expense-category.create")return createExpenseCategory(db,session,body);
+  if(type==="expense-category.update")return updateExpenseCategory(db,session,body);
+  if(type==="expense-category.delete")return deleteExpenseCategory(db,session,body);
   const lifecycle = await executeLifecycleCommand(db, session, body);
   if (lifecycle.handled) return lifecycle.result;
   if (type === "opening-stock-initial.void") {
@@ -657,11 +666,14 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     return documentId;
   }
   if (type === "party.create") {
+    if(body.opening!==undefined&&(!body.opening||typeof body.opening!=="object"||Array.isArray(body.opening)))throw new CommandError("رصيد البداية غير صالح");
     const name = text(body.name), phone = text(body.phone), partyType = text(body.partyType); if (!name) throw new CommandError("اسم الحساب مطلوب");
     if (!["customer", "supplier"].includes(partyType)) throw new CommandError("نوع الحساب غير صالح");
     if (phone) { const existing = await db.collection("parties").findOne({ phone, partyType }, { session }); if (existing) throw new CommandError("رقم الهاتف مستخدم لحساب آخر من النوع نفسه", 409); }
     const party = { id: id("party"), name, phone, partyType, receivable: 0, payable: 0, net: 0, createdAt: new Date() };
-    await db.collection("parties").insertOne(party, { session }); return party.id;
+    await db.collection("parties").insertOne(party, { session });
+    if(body.opening!==undefined)await postPartyOpening(db,session,{...(body.opening as Input),partyId:party.id});
+    return party.id;
   }
   if (type === "party.update") {
     const partyId=text(body.id),party=await db.collection("parties").findOne({id:partyId,isArchived:{$ne:true}},{session});
@@ -811,13 +823,16 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const calculated = [] as Record<string, unknown>[];
     for (const line of input) {
       const product = newProducts.get(line.productId)!, old = oldByProduct.get(line.productId);
-      const unitPrice = positive(isSale ? line.piecePrice : line.unitPrice, isSale ? "سعر الفرد" : "سعر الشراء"), lineTotal = Math.round(line.quantity * unitPrice);
+      const unitPrice = positive(isSale ? line.piecePrice : line.unitPrice, isSale ? "سعر الفرد" : "سعر الشراء");
+      const suppliedTotal=Object.hasOwn(line,"lineTotal"),exact=suppliedTotal||old?.lineTotalMode==="exact";
+      const proposedTotal=suppliedTotal?line.lineTotal:old?.lineTotalMode==="exact"&&Number(old.quantity)===line.quantity&&Number(old.unitPrice)===unitPrice?old.lineTotal:line.quantity*unitPrice;
+      const lineTotal=resolveInvoiceLineTotal(line.quantity,unitPrice,proposedTotal,exact),amountMode=exact?{lineTotalMode:"exact" as const}:{};
       if (isSale) {
         const cost = old ? old.costAtSale ?? null : await authoritativeCost(db, session, product, warehouseId);
-        calculated.push({ id: old?.id ?? id("line"), productId: line.productId, description: product.name, quantity: line.quantity, unitPrice, lineTotal, costAtSale: cost, grossProfit: cost == null ? null : lineTotal - line.quantity * Number(cost), ...(old?.saleCostRecovery ? { saleCostRecovery: old.saleCostRecovery } : {}) });
-      } else calculated.push({ id: old?.id ?? id("line"), productId: line.productId, description: product.name, quantity: line.quantity, unitPrice, lineTotal });
+        calculated.push({ id: old?.id ?? id("line"), productId: line.productId, description: product.name, quantity: line.quantity, unitPrice, lineTotal, ...amountMode, costAtSale: cost, grossProfit: cost == null ? null : lineTotal - line.quantity * Number(cost), ...(old?.saleCostRecovery ? { saleCostRecovery: old.saleCostRecovery } : {}) });
+      } else calculated.push({ id: old?.id ?? id("line"), productId: line.productId, description: product.name, quantity: line.quantity, unitPrice, lineTotal, ...amountMode });
     }
-    const total = calculated.reduce((sum, line) => sum + Number(line.lineTotal), 0), paidTotal = paymentMethod === "note" ? 0 : total, dueTotal = total - paidTotal;
+    const total = sumInvoiceLineTotals(calculated.map(line=>Number(line.lineTotal)),calculated.some(line=>line.lineTotalMode==="exact")), paidTotal = paymentMethod === "note" ? 0 : total, dueTotal = total - paidTotal;
     if (dueTotal && !party) throw new CommandError(isSale ? "اختر عميلاً عند وجود مبلغ مستحق" : "اختر موردًا عند وجود مبلغ مستحق");
     const oldWarehouse = await warehouses(db).findOne({ _id: String(original.warehouseId) }, { session });
     if (!oldWarehouse) throw new CommandError("مخزن الفاتورة الأصلي غير موجود", 409);
@@ -870,8 +885,12 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     if (isSale && input.some(line => isProductExpired(map.get(line.productId)!, new Date().toISOString().slice(0, 10)))) throw new CommandError("انتهت صلاحية هذا المنتج ولا يمكن بيعه.");
     if (paymentMethod !== "note") await paymentAccount(db, session, paymentMethod);
     const costs = isSale ? new Map(await Promise.all(input.map(async line => [line.productId, await authoritativeCost(db, session, map.get(line.productId)!, warehouseId)] as const))) : new Map<string, number | null>();
-    const calculated = input.map(line => { const p = map.get(line.productId)!; let unitPrice: number, total: number; if (isSale) { const price = positive(line.piecePrice, "سعر الفرد"); total = Math.round(line.quantity * price); unitPrice = price; } else { unitPrice = positive(line.unitPrice, "سعر الشراء"); total = Math.round(unitPrice * line.quantity); } return { id: id("line"), productId: line.productId, description: p.name, quantity: line.quantity, unitPrice, lineTotal: total, ...(isSale ? { costAtSale: costs.get(line.productId) ?? null, grossProfit: costs.get(line.productId) == null ? null : total - line.quantity * Number(costs.get(line.productId)) } : {}) }; });
-    const total = calculated.reduce((s, l) => s + l.lineTotal, 0);
+    const calculated = input.map(line => {
+      const p=map.get(line.productId)!,unitPrice=positive(isSale?line.piecePrice:line.unitPrice,isSale?"سعر الفرد":"سعر الشراء"),exact=Object.hasOwn(line,"lineTotal");
+      const total=resolveInvoiceLineTotal(line.quantity,unitPrice,line.lineTotal,exact);
+      return {id:id("line"),productId:line.productId,description:p.name,quantity:line.quantity,unitPrice,lineTotal:total,...(exact?{lineTotalMode:"exact" as const}:{}),...(isSale?{costAtSale:costs.get(line.productId)??null,grossProfit:costs.get(line.productId)==null?null:total-line.quantity*Number(costs.get(line.productId))}:{})};
+    });
+    const total=sumInvoiceLineTotals(calculated.map(line=>line.lineTotal),calculated.some(line=>line.lineTotalMode==="exact"));
     const suppliedCash = body.cashAmount ?? body.paidAmount;
     const settlementAmount = suppliedCash == null || suppliedCash === "" ? (paymentMethod === "note" ? 0 : total) : positive(suppliedCash, isSale ? "المبلغ المستلم" : "المبلغ المدفوع", true);
     if (paymentMethod === "note" ? settlementAmount !== 0 : settlementAmount !== total) throw new CommandError("الدفع الجزئي داخل الفاتورة غير مدعوم. الفاتورة إما مدفوعة بالكامل أو ملاحظة بالكامل، ثم تُسجل أي دفعة لاحقة من حساب الطرف.", 409);
@@ -977,7 +996,7 @@ async function executeAdmittedPost(request: Request, admission: CommandAdmission
   let type = "unknown";
   try {
     const body = await admission.readJson() as Input; type = text(body.type);
-    const map:Record<string,Capability>={"product.delete":"products.delete","product.stock-zero":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","legacy-party-document.void":"customers.collect.delete","expense-category.create":"expenses.create","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
+    const map:Record<string,Capability>={"product.delete":"products.delete","product.stock-zero":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","legacy-party-document.void":"customers.collect.delete","party-opening.post":"party.opening.manage","party-opening.update":"party.opening.manage","party-opening.void":"party.opening.manage","employee.create":"employees.manage","employee.update":"employees.manage","employee.archive":"employees.manage","employee.restore":"employees.manage","employee-accrual.sync":"employees.manage","employee-accrual.update":"employees.manage","employee-accrual.void":"employees.manage","employee-payment.post":"employees.pay","employee-payment.update":"employees.pay","employee-payment.void":"employees.pay","expense-category.create":"expenses.create","expense-category.update":"expenses.edit","expense-category.delete":"expenses.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
     let capability=map[type];
     if(["party-cash.post","party.update","party.delete","party.restore"].includes(type)){
       const party=await getDatabase().collection("parties").findOne({id:text(body.partyId??body.id)});
@@ -1000,6 +1019,7 @@ async function executeAdmittedPost(request: Request, admission: CommandAdmission
       }
     }
     if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;
+    if(type==="party.create"&&body.opening!==undefined){const openingDenied=await requireCapability(request,"party.opening.manage");if(openingDenied)return openingDenied;}
     if((type==="product.update"&&body.replaceOpeningStock===true)||(type==="product.create"&&Number(body.openingStock??0)>0)){const stockDenied=await requireCapability(request,"warehouses.adjust");if(stockDenied)return stockDenied;}
     if(!validSameOrigin(request))return Response.json({error:"طلب غير صالح"},{status:403});
     const idempotencyKey=text(request.headers.get("Idempotency-Key"));

@@ -73,7 +73,14 @@ test("party ledger filters real compatible roles and transient documents overlay
   const source = normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
   assert.match(source, /filter\(p=>resolvePartyType\(p\)===partyTypeFilter\)/);
   assert.match(source, /search:`\$\{p\.name\} \$\{p\.phone\?\?""\}`/);
-  assert.match(source, /setPartyTypeFilter\("supplier"\);setPartyId\(""\);setResult\(null\)/);
+  assert.match(source, /reportAccountRoles = \["employee", "customer", "supplier"\]/);
+  assert.match(source, /<select className="party-ledger-role-select"[^>]+value=\{partyTypeFilter\}[\s\S]*?onChange=\{event=>selectLedgerRole\(event\.target\.value as "employee"\|"customer"\|"supplier"\)\}/);
+  assert.match(source, /reportAccountRoles\.map\(role=><option key=\{role\} value=\{role\}>\{reportAccountGroupLabel\(role\)\}<\/option>\)/);
+  assert.match(source, /<SearchableSelect key=\{partyTypeFilter\} value=\{partyId\}/);
+  const roleSwitch=source.slice(source.indexOf('const selectLedgerRole ='),source.indexOf('const ledgerHeading ='));
+  assert.match(roleSwitch,/reportRequest\.current\?\.abort\(\)/);
+  assert.match(roleSwitch,/setPartyTypeFilter\(role\); setPartyId\(""\); setResult\(null\); setSortState\(null\)/);
+  assert.match(source,/partyTypeFilter==="employee"\?\(data\.employees\?\?\[\]\):data\.parties\.filter\(p=>resolvePartyType\(p\)===partyTypeFilter\)/);
   assert.doesNotMatch(source, /\) : doc \? \(/);
   assert.match(source, /\{doc && createPortal\(<div className="modal-overlay document-modal-overlay"/);
 });

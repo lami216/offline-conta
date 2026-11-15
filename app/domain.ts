@@ -13,7 +13,10 @@ export type DocumentKind =
   | "offset"
   | "settlement"
   | "account-transfer"
-  | "account-adjustment";
+  | "account-adjustment"
+  | "party-opening"
+  | "employee-accrual"
+  | "employee-payment";
 export type PartyType = "customer" | "supplier";
 export interface Party {
   id: string;
@@ -43,7 +46,7 @@ export interface ProductCategory {
   name: string;
   createdAt?: string;
 }
-export interface ExpenseCategory {id:string;name:string;createdAt?:string}
+export interface ExpenseCategory {id:string;name:string;kind?:"recurring"|"nonrecurring";isArchived?:boolean;revision?:number;createdAt?:string;updatedAt?:string}
 export interface Product {
   id: string;
   name: string;
@@ -90,6 +93,7 @@ export interface DocumentLine {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  lineTotalMode?: "exact";
   costAtSale?: number | null;
   grossProfit?: number | null;
   balanceBefore?: number;
@@ -115,6 +119,19 @@ export interface DocumentRecord {
   toAccountId?: string | null;
   status: string;
   title: string | null;
+  employeeId?: string;
+  employeeName?: string;
+  employeePaymentDirection?: "withdraw" | "deposit";
+  employeePaymentVersion?: 2;
+  amount?: number;
+  periodStart?: string;
+  periodEnd?: string;
+  dueDate?: string;
+  balanceDelta?: number;
+  allocations?: Array<{accrualId:string;amount:number}>;
+  partyOpeningDirection?: "receivable"|"payable";
+  partyOpeningAmount?: number;
+  partyOpeningContribution?: number;
   expenseCategoryId?: string | null;
   expenseCategoryName?: string | null;
   note?: string | null;
@@ -162,7 +179,10 @@ export interface Movement {
   occurredAt: string;
   documentRevision?: number;
 }
+export interface EmployeeAgreement {id:string;startDate:string;endDate?:string;amount:number;intervalMonths:number;entitlement:"beginning"|"end"}
+export interface Employee {id:string;name:string;phone:string;startDate:string;balance:number;revision:number;isArchived?:boolean;agreements:EmployeeAgreement[]}
 export interface BootstrapData {
+  employees?: Employee[];
   principal: { principalType: "local" | "owner" | "user"; name: string; permissions: string[] };
   branding: InvoiceBrandingSettings;
   currency: CurrencySettings;
@@ -238,6 +258,8 @@ export interface PaymentAccount {
 }
 export function activePaymentAccounts<T extends Pick<PaymentAccount, "isActive" | "isArchived">>(accounts: T[]) { return accounts.filter(account => account.isActive !== false && account.isArchived !== true); }
 export interface FinancialMovement {
+  employeeId?: string;
+  employeeName?: string;
   id: string;
   paymentMethod: string;
   direction: "in" | "out";
@@ -276,6 +298,9 @@ export const paymentMethods: Array<{
   { id: "bimbank", label: "بيم" },
 ];
 export const kindLabels: Record<DocumentKind, string> = {
+  "party-opening": "رصيد بداية الديون",
+  "employee-accrual": "استحقاق عامل",
+  "employee-payment": "حركة حساب عامل",
   purchase: "فاتورة شراء",
   sale: "فاتورة بيع",
   return: "حركة تاريخية",
@@ -289,7 +314,8 @@ export const kindLabels: Record<DocumentKind, string> = {
   "account-adjustment": "سحب / إيداع",
 };
 /** Give native party cash movements a direction-specific label, leaving legacy payment records unchanged. */
-export function documentKindLabel(document: Pick<DocumentRecord, "kind" | "partyCashDirection">, partyType?: PartyType): string {
+export function documentKindLabel(document: Pick<DocumentRecord, "kind" | "partyCashDirection" | "employeePaymentDirection">, partyType?: PartyType): string {
+  if (document.kind === "employee-payment") return document.employeePaymentDirection === "deposit" ? "إيداع العامل" : "سحب العامل";
   if (document.kind !== "payment" || !document.partyCashDirection) return kindLabels[document.kind];
   if (partyType === "supplier") return document.partyCashDirection === "receive" ? "استلام من المورد" : "دفع للمورد";
   if (partyType === "customer") return document.partyCashDirection === "receive" ? "استلام من العميل" : "دفع للعميل";
@@ -335,6 +361,17 @@ export function displayDocumentNumber(document: Pick<DocumentRecord, "number" | 
 /** Accounting-backed inventory valuation. Manual pieceCost never silently becomes historical cost. */
 export function inventoryUnitCost(product: Pick<Product, "lastPurchaseCost" | "openingCost" | "legacyOpeningCost">) {
   return product.lastPurchaseCost ?? product.openingCost ?? product.legacyOpeningCost ?? 0;
+}
+/** Ordinary products share one accounting unit cost across warehouses. Keep the
+ * existing selected-warehouse quantity calculation; no lot or card-price fallback. */
+export function inventoryValueAcrossWarehouses(product: Pick<Product, "stocks" | "lastPurchaseCost" | "openingCost" | "legacyOpeningCost">, warehouseIds: string[]) {
+  const quantity=warehouseIds.reduce((sum,warehouseId)=>sum+Number(product.stocks?.[warehouseId]??0),0);
+  return quantity*inventoryUnitCost(product);
+}
+export function inventoryAverageUnitCostAcrossWarehouses(product: Pick<Product, "lastPurchaseCost" | "openingCost" | "legacyOpeningCost">, warehouseIds: string[]) {
+  // The common UI supplies its scope, but ordinary cost is not warehouse-specific.
+  void warehouseIds;
+  return inventoryUnitCost(product);
 }
 export function formatDate(
   value: Date | string | number,

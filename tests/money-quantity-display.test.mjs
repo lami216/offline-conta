@@ -6,7 +6,7 @@ import { formatMoney, formatQuantity } from "../app/domain.ts";
 const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
 const openingHistorySource = await readFile(new URL("../app/opening-stock-history.tsx", import.meta.url), "utf8");
 
-test("money uses the default currency while quantities remain unitless", () => {
+test("money carries MRU while quantities remain unitless", () => {
   assert.equal(formatMoney(7), "7 MRU");
   assert.equal(formatQuantity(7), "7");
 });
@@ -21,7 +21,7 @@ test("warehouse movement report uses declared column types instead of key-name c
   assert.match(source, /columnType==="number"\|\|columnType==="money"/);
 });
 
-test("displayed prices, totals, and inventory values use currency formatting", () => {
+test("read-only monetary values and invoice footers use currency formatting", () => {
   const forbidden = [
     /number\(inventoryValue\)/,
     /number\(inventoryUnitCost\(/,
@@ -39,15 +39,18 @@ test("displayed prices, totals, and inventory values use currency formatting", (
   assert.match(source, /hasInventoryView\?money\(inventoryValue\)/);
   assert.match(source, /money\(inventoryUnitCost\(product\)\)/);
   assert.match(source, /money\(selectedQty \* inventoryUnitCost\(product\)\)/);
-  assert.match(source, /<MoneyValue value=\{lineTotal\}\/>/);
+  // Invoice row totals are editable decimal inputs now. The invoice footer and
+  // read-only document totals retain the shared currency formatter.
+  assert.match(source, /money\(total\)/);
   assert.match(source, /<MoneyValue value=\{document\.total\}\/>/);
 });
 
 test("stock counts and quantities stay plain numbers without MRU", () => {
-  assert.match(source, /number\(totalPieces\)/);
+  assert.match(source, /number\(inventory\.summary\.count\)/);
+  assert.match(source, /inventoryQuantityLabel\(inventory\.summary,[^\n]*format: number/);
   assert.match(source, /number\(qty\(product\)\)/);
   assert.match(source, /number\(selectedQty\)/);
   assert.match(openingHistorySource, /number\(delta\)/);
   assert.doesNotMatch(openingHistorySource, /money\(delta\)/);
-  assert.doesNotMatch(source, /money\(totalPieces\)|money\(qty\(product\)\)|money\(selectedQty\)|money\(current\)|money\(stock\)/);
+  assert.doesNotMatch(source, /money\(inventory\.summary\.pieces\)|money\(qty\(product\)\)|money\(selectedQty\)|money\(current\)|money\(stock\)/);
 });

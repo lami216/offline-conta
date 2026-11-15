@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const {app,BrowserWindow,Menu,shell,dialog,session,ipcMain}=require('electron');
 const {createNativeBackupService,registerNativeBackupHandler}=require('./native-backup.cjs');
+const {createIsolatedBackupWriter}=require('./backup-writer.cjs');
 const PRODUCT_NAME='الكرنه';
 const LOCALE_COOKIE='alkarna_locale';
 app.setName(PRODUCT_NAME);
@@ -58,7 +59,7 @@ async function failStartup(){ready=false;stamp(`health timeout; log=${logPath}`)
 async function requestDesktopClose(){try{await nativeBackup?.waitForIdle()}catch{/* reported by the save caller */}return closeFlow.requestClose()}
 async function start(){
  registerPrintingHandlers();
- nativeBackup=createNativeBackupService({dialog,getWindow:()=>window,homeDirectory:app.getPath('home'),getLocale:currentLocale,log:stamp});
+ nativeBackup=createNativeBackupService({dialog,getWindow:()=>window,homeDirectory:app.getPath('home'),getLocale:currentLocale,log:stamp,writeBackup:createIsolatedBackupWriter()});
  registerNativeBackupHandler({ipcMain,service:nativeBackup,getWindow:()=>window,getOrigin:()=>serverUrl,fetchResponse:fetch,isClosing:()=>quitting||Boolean(closeFlow?.isActive())});
  const port=await freePort(),userData=app.getPath('userData'),root=app.isPackaged?join(process.resourcesPath,'alkarna-runtime'):process.cwd(),entry=app.isPackaged?join(root,'server.js'):join(root,'node_modules','next','dist','bin','next'),args=app.isPackaged?[entry]:[entry,'dev','-H','127.0.0.1','-p',String(port)];
  const logs=join(userData,'logs');mkdirSync(logs,{recursive:true});logPath=join(logs,'desktop-server.log');logStream=createWriteStream(logPath,{flags:'a'});stamp(`spawn port=${port} executable=${process.execPath} cwd=${root} entry=${entry}`);

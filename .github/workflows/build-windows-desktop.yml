@@ -26,12 +26,24 @@ jobs:
       # better-sqlite3 13 already ships the N-API binary used by this app. Avoid
       # an unnecessary node-gyp rebuild, then install Electron explicitly.
       - run: npm ci --ignore-scripts
+        id: dependencies
       - run: node node_modules/electron/install.js
       # Production vulnerabilities at high or critical severity must stop distribution.
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
-      - run: npm test
       - run: npx tsc --noEmit
+      - name: Exercise general workflows on isolated synthetic data
+        run: node --import tsx --test scripts/payroll-ui-smoke.mjs
+      - name: Upload general UI evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Offline-general-UI-${{ github.run_number }}
+          path: test-output/payroll-ui/
+          if-no-files-found: ignore
+          retention-days: 14
+      - run: npm test
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
       - run: npm run lint
       - run: npm run build
       - run: npm run test:production-legacy

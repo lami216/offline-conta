@@ -386,7 +386,7 @@ function ContaAppContent() {
   async function run(body: Record<string, unknown>, message: string, afterSuccess?: () => void) {
     const fingerprint=JSON.stringify(body), existing=inFlightCommands.current.get(fingerprint);
     if(existing)return existing as ReturnType<RunCommand>;
-    const operation=(async()=>{setError("");const r=await fetch("/api/command",{method:"POST",headers:{"content-type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)}),j=await r.json();if(!r.ok){redirectExpiredSession(r);const apiMessage=String(j.error??"تعذر تنفيذ العملية");if(j.code!=="OPENING_CORRECTION_BLOCKED"&&j.code!=="OPENING_STOCK_BLOCKED")setError(translateApiError(locale,apiMessage));throw Object.assign(new Error(apiMessage),{payload:j,status:r.status})}await finishSuccessfulCommand(afterSuccess,()=>reload({blocking:false}));setNotice(message);return j.disposition?j:j.id as string})();
+    const operation=(async()=>{setError("");const r=await fetch("/api/command",{method:"POST",headers:{"content-type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)}),j=await r.json();if(!r.ok){redirectExpiredSession(r);const apiMessage=String(j.error??"تعذر تنفيذ العملية");if(!["OPENING_CORRECTION_BLOCKED","OPENING_STOCK_BLOCKED","OPENING_INITIAL_HAS_CORRECTION"].includes(j.code))setError(translateApiError(locale,apiMessage));throw Object.assign(new Error(apiMessage),{payload:j,status:r.status})}await finishSuccessfulCommand(afterSuccess,()=>reload({blocking:false}));setNotice(message);return j.disposition?j:j.id as string})();
     inFlightCommands.current.set(fingerprint,operation);
     setSavingCommands(inFlightCommands.current.size);
     try{return await operation as Awaited<ReturnType<RunCommand>>}finally{inFlightCommands.current.delete(fingerprint);setSavingCommands(inFlightCommands.current.size)}
@@ -1632,7 +1632,12 @@ function Products({ data, run, sourceRequest, clearSourceRequest, openProductMov
   const remove = async (product: Product) => {
     const stocked=productArchiveStockQuantity(product)>0;
     const message=stocked?tr("هذا المنتج يحتوي على مخزون. عند المتابعة سيتم تصفير المخزون بتصحيح مخزون موثّق ثم أرشفة المنتج. هل تريد المتابعة؟"):tr("سيتم أرشفة المنتج مع الاحتفاظ بتاريخه. هل تريد المتابعة؟");
-    if(await confirmAction({message,confirmLabel:tr("حذف المنتج"),tone:"danger"}))await run({type:"product.delete",id:product.id,...(stocked?{zeroStock:true}:{})},tr("تم حذف المنتج بأمان"));
+    if(await confirmAction({message,confirmLabel:tr("product.archive"),tone:"danger"}))await run({type:"product.delete",id:product.id,...(stocked?{zeroStock:true}:{})},tr("product.archiveSuccess"));
+  };
+  const restore = async (product: Product) => {
+    const clearances = data.documents.filter(document => document.status === "posted" && isProductArchiveStockClearanceDocument(document) && document.lines.some(line => line.productId === product.id));
+    const message = clearances.length ? tr("product.restoreClearancesConfirm", { count: clearances.length }) : tr("product.restoreConfirm");
+    if (await confirmAction({ message, confirmLabel: tr("استعادة") })) await run({ type: "product.restore", id: product.id }, tr("تمت استعادة المنتج"));
   };
   const zeroArchivedStock=async(product:Product)=>{
     if(!await confirmAction({message:tr("سيتم تصفير مخزون المنتج المؤرشف وتسجيل تصحيح مخزون موثّق، وسيبقى المنتج مؤرشفًا. هل تريد المتابعة؟"),confirmLabel:tr("تصفير المخزون"),tone:"danger"}))return;
@@ -1641,7 +1646,7 @@ function Products({ data, run, sourceRequest, clearSourceRequest, openProductMov
   return <section className="workspace-page products-page">
     <div className="toolbar workspace-toolbar">
       <label className="search compact-search"><Search /><input value={query} onChange={event => setQuery(event.target.value)} placeholder={tr("بحث سريع بالاسم أو الرمز أو الباركود")} /></label>
-      <button className="soft selection-option" aria-pressed={showArchived} onClick={() => setShowArchived(value => !value)}>{showArchived ? tr("إخفاء المنتجات المحذوفة") : tr("المنتجات المحذوفة")}</button>
+      <button className="soft selection-option" aria-pressed={showArchived} onClick={() => setShowArchived(value => !value)}>{showArchived ? tr("product.hideArchived") : tr("product.archivedList")}</button>
       {(canCreate||canEdit||canDelete)&&<button className="soft" type="button" onClick={() => setCategoryDialogOpen(true)}><Plus /> {tr("إدارة الفئات")}</button>}
       {canCreate&&<button className="primary" onClick={() => openForm(null)}><Plus />  {tr("إضافة منتج")}</button>}
     </div>
@@ -1652,7 +1657,7 @@ function Products({ data, run, sourceRequest, clearSourceRequest, openProductMov
       </tr></thead><tbody>
         {products.map((product, index) => {
           const stock = Object.values(product.stocks).reduce((sum, value) => sum + Number(value), 0);
-          return <tr key={product.id}><td className="num-cell">{number(index + 1)}</td><td className="name-cell"><ProductName name={product.name}/>{product.isArchived&&<small>{tr("مؤرشف")}</small>}{isProductExpired(product)&&<small className="expired-badge">{tr("منتهي — غير قابل للبيع")}</small>}</td><td className="num-cell">{product.piecePrice == null ? "—" : money(product.piecePrice)}</td><td className="num-cell">{product.wholesalePrice == null ? "—" : money(product.wholesalePrice)}</td><td className="num-cell">{product.lastPurchaseCost == null ? "—" : money(product.lastPurchaseCost)}</td><td className="num-cell">{number(stock)}</td><td className="action-cell">{canEdit&&<button className="soft" onClick={() => openForm(product)}>{tr("تعديل")}</button>}<button className="soft" onClick={() => setViewing(product)}>{tr("عرض التفاصيل")}</button>{product.isArchived?<>{canEdit&&<button className="soft" onClick={()=>void run({type:"product.restore",id:product.id},tr("تمت استعادة المنتج"))}>{tr("استعادة")}</button>}{canDelete&&productArchiveStockQuantity(product)>0&&<button className="danger compact-delete" onClick={()=>void zeroArchivedStock(product)}>{tr("تصفير المخزون")}</button>}</>:(canDelete&&<button className="danger compact-delete" onClick={() => void remove(product)}>{tr("حذف")}</button>)}</td></tr>;
+          return <tr key={product.id}><td className="num-cell">{number(index + 1)}</td><td className="name-cell"><ProductName name={product.name}/>{product.isArchived&&<small>{tr("مؤرشف")}</small>}{isProductExpired(product)&&<small className="expired-badge">{tr("منتهي — غير قابل للبيع")}</small>}</td><td className="num-cell">{product.piecePrice == null ? "—" : money(product.piecePrice)}</td><td className="num-cell">{product.wholesalePrice == null ? "—" : money(product.wholesalePrice)}</td><td className="num-cell">{product.lastPurchaseCost == null ? "—" : money(product.lastPurchaseCost)}</td><td className="num-cell">{number(stock)}</td><td className="action-cell">{canEdit&&<button className="soft" onClick={() => openForm(product)}>{tr("تعديل")}</button>}<button className="soft" onClick={() => setViewing(product)}>{tr("عرض التفاصيل")}</button>{product.isArchived?<>{canEdit&&<button className="soft" onClick={()=>void restore(product)}>{tr("استعادة")}</button>}{canDelete&&productArchiveStockQuantity(product)>0&&<button className="danger compact-delete" onClick={()=>void zeroArchivedStock(product)}>{tr("تصفير المخزون")}</button>}</>:(canDelete&&<button className="danger compact-delete" onClick={() => void remove(product)}>{tr("product.archive")}</button>)}</td></tr>;
         })}
         {!products.length && <tr><td colSpan={7}><Empty text={tr("لا توجد منتجات مطابقة للبحث")} /></td></tr>}
       </tbody></table></div>

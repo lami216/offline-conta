@@ -556,6 +556,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const productId = text(body.id), product = await db.collection("products").findOne({ id: productId }, { session });
     if (!product) throw new CommandError("المنتج غير موجود", 404);
     if (product.isArchived !== true) throw new CommandError("تصفير المخزون بهذه العملية متاح للمنتج المؤرشف فقط", 409);
+    if (!productStockEntries(product).length) return productId;
     const clearanceGroupId = id("archive-clearance");
     await zeroProductStockForArchive(db, session, product, clearanceGroupId);
     await db.collection("products").updateOne({ id: productId, isArchived: true }, { $set: { archiveStockClearanceGroupId: clearanceGroupId, updatedAt: new Date() } }, { session });

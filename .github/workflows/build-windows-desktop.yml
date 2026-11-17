@@ -31,6 +31,8 @@ jobs:
       # Production vulnerabilities at high or critical severity must stop distribution.
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+      - name: Prove the original clearance defects on isolated synthetic data
+        run: node scripts/prove-clearance-baseline.mjs
       - run: npx tsc --noEmit
       - name: Exercise general workflows on isolated synthetic data
         run: node --import tsx --test scripts/payroll-ui-smoke.mjs

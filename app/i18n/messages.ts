@@ -1,4 +1,11 @@
 export const arMessages = {
+  "opening.latestCorrectionBlocker": "ألغِ تصحيح رصيد البداية الموضّح أدناه أولًا، ثم أعد محاولة إلغاء الرصيد الأصلي. الانتقال إلى المصدر يحدد سنده في سجل التصحيحات.",
+  "product.archive": "أرشفة المنتج",
+  "product.archiveSuccess": "تمت أرشفة المنتج مع حفظ تاريخه",
+  "product.archivedList": "المنتجات المؤرشفة",
+  "product.hideArchived": "إخفاء المنتجات المؤرشفة",
+  "product.restoreClearancesConfirm": "سيُعاد المنتج وتُعكس مستندات التصفير المعلّقة المرتبطة به ({count})، دون إلغاء المبيعات أو الحركات الأخرى أو محو التاريخ. هل تريد المتابعة؟",
+  "product.restoreConfirm": "سيُعاد المنتج إلى القائمة النشطة مع الاحتفاظ بمخزونه وتاريخه الحاليين. هل تريد المتابعة؟",
   "كل الفئات": "كل الفئات",
   "وحدة الرصيد": "وحدة الرصيد",
   "فلتر فئة المنتجات": "فلتر فئة المنتجات",
@@ -1149,6 +1156,13 @@ export type MessageKey = keyof typeof arMessages;
 export type TranslationParams = Record<string, string | number>;
 
 export const frMessages: Record<MessageKey, string> = {
+  "opening.latestCorrectionBlocker": "Annulez d’abord la correction du stock initial indiquée ci-dessous, puis réessayez d’annuler le stock initial. Le lien vers la source sélectionne son document dans l’historique des corrections.",
+  "product.archive": "Archiver le produit",
+  "product.archiveSuccess": "Le produit est archivé et son historique est conservé",
+  "product.archivedList": "Produits archivés",
+  "product.hideArchived": "Masquer les produits archivés",
+  "product.restoreClearancesConfirm": "Le produit sera restauré et ses documents de mise à zéro encore validés ({count}) seront annulés, sans annuler les ventes ni les autres mouvements et sans effacer l’historique. Continuer ?",
+  "product.restoreConfirm": "Le produit reviendra dans la liste active en conservant son stock et son historique actuels. Continuer ?",
   "كل الفئات": "Toutes les catégories",
   "وحدة الرصيد": "Unité du stock",
   "فلتر فئة المنتجات": "Filtrer par catégorie de produit",

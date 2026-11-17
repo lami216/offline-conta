@@ -40,9 +40,11 @@ export function isOperationalDocument(document: ReadModelDocument) {
 
 /** Coarse kind authorization, used before historical queries expose a kind. */
 export function canReadDocumentKind(kind: string, access: Pick<DocumentReadAccess, "can">) {
+  if (kind === "employee-accrual" || kind === "employee-payment") return access.can("employees.view");
   if (access.can("records.view")) return true;
   if (kind === "sale") return canAny(access.can, saleAccess) || canAny(access.can, customerAccess);
   if (kind === "purchase") return canAny(access.can, purchaseAccess) || canAny(access.can, supplierAccess);
+  if (kind === "party-opening") return canAny(access.can, customerAccess) || canAny(access.can, supplierAccess) || access.can("party.opening.manage");
   if (kind === "expense") return canAny(access.can, expenseAccess);
   if (kind === "transfer") return canAny(access.can, transferAccess);
   if (kind === "adjustment") return canAny(access.can, adjustmentAccess);
@@ -54,6 +56,7 @@ export function canReadDocumentKind(kind: string, access: Pick<DocumentReadAcces
 
 /** One authorization rule for both live documents and historical/audit reads. */
 export function canReadDocument(document: ReadModelDocument, access: DocumentReadAccess) {
+  if (["employee-accrual", "employee-payment"].includes(String(document.kind))) return access.can("employees.view");
   if (access.can("records.view")) return true;
 
   const kind = String(document.kind ?? ""), partyId = partyIdOf(document);
@@ -62,6 +65,7 @@ export function canReadDocument(document: ReadModelDocument, access: DocumentRea
 
   if (kind === "sale") return canAny(access.can, saleAccess) || (customerParty && canAny(access.can, customerAccess));
   if (kind === "purchase") return canAny(access.can, purchaseAccess) || (supplierParty && canAny(access.can, supplierAccess));
+  if (kind === "party-opening") return access.can("party.opening.manage") || (customerParty && canAny(access.can, customerAccess)) || (supplierParty && canAny(access.can, supplierAccess));
   if (kind === "expense") return canAny(access.can, expenseAccess);
   if (kind === "transfer") return canAny(access.can, transferAccess);
   if (kind === "adjustment") return canAny(access.can, adjustmentAccess);

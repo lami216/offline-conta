@@ -6,6 +6,10 @@ import { direction, LOCALE_COOKIE, normalizeLocale } from "./i18n/locale";
 import "./globals.css";
 import "./locale-layout.css";
 import "./printing.css";
+import "./payroll-reports.css";
+import "./party-compact.css";
+import "./expense-category-manager.css";
+import "./employees-compact.css";
 
 export async function generateMetadata(): Promise<Metadata> {
  const locale=normalizeLocale((await cookies()).get(LOCALE_COOKIE)?.value);

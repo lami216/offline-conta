@@ -66,7 +66,7 @@ function OpeningCorrectionEditor({ document, data, run, close, onBlocked }: { do
   const invalid = !Number.isInteger(quantityValue) || quantityValue < 0 || (quantityValue > 0 && (!warehouseId || costValue == null || !Number.isFinite(costValue) || costValue <= 0));
   const warehouseOptions = data.warehouses.filter(warehouse => !warehouse.isArchived || warehouse.id === currentWarehouseId);
 
-  return createPortal(<div className="modal-overlay section-adjustments" role="dialog" aria-modal="true" aria-label={tr("تعديل تصحيح رصيد البداية")}>
+  return createPortal(<div className="modal-overlay section-adjustments opening-correction-editor-overlay" role="dialog" aria-modal="true" aria-label={tr("تعديل تصحيح رصيد البداية")}>
     <form className="modal-card account-dialog opening-correction-editor" onSubmit={async event => {
       event.preventDefault();
       if (invalid) return;

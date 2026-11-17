@@ -101,8 +101,8 @@ export async function runOpeningClearanceScenarios({ cdp, origin, database, scre
   await until(()=>evaluate('Boolean(document.querySelector(".opening-correction-blockers"))'),"linked latest correction blocker");
   assert.equal(await evaluate('window.__smokeLastError.code'),"OPENING_INITIAL_HAS_CORRECTION");assert.equal(await evaluate('window.__smokeLastError.correctionDocumentId'),correction.id);
   assert((await evaluate('document.querySelector(".opening-correction-blocker-table").textContent')).includes(correction.number));await waitProduct(third,7,false);
-  layouts.push(...await captureControlLayouts({cdp,screenshot,scope:".opening-correction-blockers",name:"opening-latest-blocker-ar",widths:[1280,760]}));
-  await evaluate('window.__smokeSetLocale("fr")');layouts.push(...await captureControlLayouts({cdp,screenshot,scope:".opening-correction-blockers",name:"opening-latest-blocker-fr",widths:[760]}));await evaluate('window.__smokeSetLocale("ar")');
+  layouts.push(...await captureControlLayouts({cdp,screenshot,scope:".opening-correction-blockers",name:"opening-latest-blocker-ar",widths:[1280,760,480]}));
+  await evaluate('window.__smokeSetLocale("fr")');layouts.push(...await captureControlLayouts({cdp,screenshot,scope:".opening-correction-blockers",name:"opening-latest-blocker-fr",widths:[1280,760,480]}));await evaluate('window.__smokeSetLocale("ar")');
   await click(".opening-correction-blocker-table button");
   await until(()=>evaluate(`!document.querySelector(".opening-correction-blockers")&&document.activeElement?.closest("tr")?.id===${JSON.stringify("opening-stock-source-"+correction.id)}`),"exact correction source selected in native history");
   await screenshot("opening-correction-native-source-760",760);

@@ -69,7 +69,9 @@ export async function runOpeningClearanceScenarios({ cdp, origin, database, scre
   const first=await createOpened("رصيد افتتاحي فحص الاستعادة",10,100,150),firstSale=await sale(first,4);
   await archive(first,6);await voidSale(first,firstSale,4);await showProduct(first,true);await productAction(first,"استعادة");await confirm();await waitProduct(first,10,false);
   assert((await clearances(first)).every(document=>document.status==="voided"));
+  await showProduct(first);await screenshot("opening-restored-product10-1280",1280);
   await cancelOpening(first);
+  await screenshot("opening-original-canceled-history-1280",1280);
   await showProduct(first);await productAction(first,"أرشفة المنتج");await confirm();await waitProduct(first,0,true);
   assert.equal((await clearances(first)).length,1,"Archiving an empty product adds no clearance");
   await showProduct(first,true);await productAction(first,"استعادة");await confirm();await waitProduct(first,0,false);
@@ -85,7 +87,9 @@ export async function runOpeningClearanceScenarios({ cdp, origin, database, scre
     await evaluate(`(()=>{const row=[...document.querySelectorAll(${JSON.stringify(selector+" tbody tr")})].find(row=>row.children[2]?.textContent.trim()===${JSON.stringify(document.number)});if(row.querySelector(".lifecycle-row-actions button.soft"))throw Error("Archive clearance incorrectly editable");const button=row.querySelector(".compact-delete");if(!button)throw Error("Clearance void unavailable");button.click()})()`);
     await confirm();await waitProduct(second,stock,archived);assert.equal((await database.collection("documents").findOne({id:document.id})).status,"voided");
   }
+  await showProduct(second);await screenshot("opening-two-clearances-restored8-1280",1280);
   await cancelOpening(second);assert.deepEqual(await balances(),beforeBalances);
+  await screenshot("opening-two-clearances-canceled-history-1280",1280);
   checkpoints.push("Native archived-product zero runs after a sale return; both clearance groups remain separately visible and non-editable in Adjustment history, each native void reverses only its own amount, then OpeningHistory cancels the restored8 without changing cash");
 
   const third=await createOpened("رصيد افتتاحي فحص مصدر التصحيح",5,20,50);await showProduct(third);await productAction(third,"تعديل");

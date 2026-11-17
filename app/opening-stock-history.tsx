@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { displayDocumentNumber, formatDateTime, kindLabels, money, number, type BootstrapData, type DocumentKind, type DocumentRecord } from "./domain";
 import { useAppConfirm } from "./app-confirm";
 import { tr } from "./i18n/messages";
@@ -65,7 +66,7 @@ function OpeningCorrectionEditor({ document, data, run, close, onBlocked }: { do
   const invalid = !Number.isInteger(quantityValue) || quantityValue < 0 || (quantityValue > 0 && (!warehouseId || costValue == null || !Number.isFinite(costValue) || costValue <= 0));
   const warehouseOptions = data.warehouses.filter(warehouse => !warehouse.isArchived || warehouse.id === currentWarehouseId);
 
-  return <div className="modal-overlay" role="dialog" aria-modal="true" aria-label={tr("تعديل تصحيح رصيد البداية")}>
+  return createPortal(<div className="modal-overlay section-adjustments" role="dialog" aria-modal="true" aria-label={tr("تعديل تصحيح رصيد البداية")}>
     <form className="modal-card account-dialog opening-correction-editor" onSubmit={async event => {
       event.preventDefault();
       if (invalid) return;
@@ -92,7 +93,7 @@ function OpeningCorrectionEditor({ document, data, run, close, onBlocked }: { do
       <label>{tr("مخزن رصيد البداية")}<select required={quantityValue > 0} disabled={quantityValue === 0} value={warehouseId} onChange={event => setWarehouseId(event.target.value)}><option value="">{tr("اختر المخزن")}</option>{warehouseOptions.map(warehouse => <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}</select></label>
       <div className="dialog-actions"><button type="button" className="soft" onClick={close}>{tr("إلغاء")}</button><button className="primary" disabled={invalid}>{tr("حفظ التعديل")}</button></div>
     </form>
-  </div>;
+  </div>, window.document.body);
 }
 
 function OpeningCorrectionBlockers({ payload, data, openSource, openProductMovements, close }: { payload: OpeningCorrectionBlockedPayload; data: BootstrapData; openSource: (id: string) => void; openProductMovements: (productId: string) => void; close: () => void }) {
@@ -109,7 +110,7 @@ function OpeningCorrectionBlockers({ payload, data, openSource, openProductMovem
   const latestCorrection = payload.code === "OPENING_INITIAL_HAS_CORRECTION";
   const initialOpening = payload.code === "OPENING_STOCK_BLOCKED" || latestCorrection;
   const dialogTitle = initialOpening ? tr("تعذر حذف رصيد البداية") : tr("تعذر حذف تصحيح رصيد البداية");
-  return <div className="modal-overlay opening-correction-blockers-overlay" role="dialog" aria-modal="true" aria-label={dialogTitle}>
+  return createPortal(<div className="modal-overlay section-adjustments opening-correction-blockers-overlay" role="dialog" aria-modal="true" aria-label={dialogTitle}>
     <section className="modal-card opening-correction-blockers">
       <div className="modal-heading"><h3>{dialogTitle}</h3><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}>×</button></div>
       <div className="opening-correction-blocker-copy"><strong>{payload.productName || tr("المنتج")}</strong><p>{latestCorrection?tr("opening.latestCorrectionBlocker"):initialOpening?tr("تم التصرف في جزء من رصيد البداية. افتح حركات المنتج لمعرفة العمليات التي استهلكت أو نقلت الكمية، ثم ألغِ العمليات اللازمة وأعد المحاولة."):tr("تم التصرف في جزء من مخزون هذا المنتج بعد التصحيح. راجع العمليات التالية ثم حاول الحذف مرة أخرى.")}</p>{deficitSummary && <small>{deficitSummary}</small>}<div className="opening-blocker-actions"><button type="button" className="primary" onClick={()=>{close();openProductMovements(payload.productId)}}>{tr("عرض حركات المنتج")}</button></div></div>
@@ -122,7 +123,7 @@ function OpeningCorrectionBlockers({ payload, data, openSource, openProductMovem
       </table></div>
       <div className="dialog-actions"><button type="button" className="primary" onClick={close}>{tr("إغلاق")}</button></div>
     </section>
-  </div>;
+  </div>, window.document.body);
 }
 
 export default function OpeningStockHistory({ data, docs, openDoc, openSource, openOpeningSource, openProductMovements, run, canEdit, canDelete }: { data: BootstrapData; docs: DocumentRecord[]; openDoc: (id: string) => void; openSource: (id: string) => void; openOpeningSource: (productId: string) => void; openProductMovements: (productId: string) => void; run: RunCommand; canEdit: boolean; canDelete: boolean }) {

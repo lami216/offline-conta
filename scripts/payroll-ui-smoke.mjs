@@ -367,6 +367,9 @@ async function main() {
   const {runWorkerCorrectionScenarios}=await import("./worker-correction-ui-scenarios.mjs");
   result.workerCorrections=await runWorkerCorrectionScenarios({cdp,origin:base,command,database,screenshot});
   result.checkpoints.push(...result.workerCorrections.checkpoints);
+  const {runEmployeeOpeningScenarios}=await import("./employee-opening-ui-scenarios.mjs");
+  result.employeeOpenings=await runEmployeeOpeningScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.employeeOpenings.checkpoints);
   assert.deepEqual(cdp.errors, []);
   result.status = "passed";
 }

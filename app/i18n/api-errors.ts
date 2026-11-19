@@ -1,6 +1,16 @@
 import type { Locale } from "./locale";
 
 const exactFrench: Record<string, string> = {
+  "اتجاه رصيد بداية العامل غير صالح": "Le sens du solde initial du salarié est invalide.",
+  "يوجد أكثر من رصيد بداية معتمد للعامل": "Ce salarié possède plusieurs soldes initiaux validés.",
+  "تاريخ الحركة يسبق رصيد بداية العامل؛ عدّل تاريخ رصيد البداية أولًا ثم أعد المحاولة": "Le mouvement précède le solde initial du salarié. Corrigez d’abord sa date, puis réessayez.",
+  "اختر لنا أو علينا لرصيد بداية العامل": "Indiquez si le solde initial est à recevoir ou à payer au salarié.",
+  "يوجد رصيد بداية معتمد للعامل؛ عدّله أو ألغِه أولًا": "Ce salarié possède déjà un solde initial. Modifiez-le ou annulez-le d’abord.",
+  "تاريخ رصيد البداية يجب ألا يتجاوز اليوم أو أول حركة أو استحقاق للعامل": "La date du solde initial ne peut dépasser aujourd’hui, le premier mouvement ou le premier droit du salarié.",
+  "ملاحظة رصيد البداية طويلة جدًا": "La note du solde initial est trop longue.",
+  "تغير رصيد البداية أثناء العملية؛ حدّث الصفحة وأعد المحاولة": "Le solde initial a changé. Actualisez la page puis réessayez.",
+  "بيانات رصيد بداية العامل غير صالحة": "Les données du solde initial du salarié sont invalides.",
+  "رصيد بداية العامل غير موجود أو ملغى": "Le solde initial du salarié est introuvable ou déjà annulé.",
   "احذف آخر تصحيح لرصيد البداية أولًا ثم أعد محاولة حذف رصيد البداية الأصلي.": "Annulez d’abord la dernière correction du stock initial, puis réessayez d’annuler le stock initial.",
   "مجموع السطر غير صالح": "Le total de la ligne est invalide.",
   "مجموع السطر لا يطابق الكمية وسعر الوحدة": "Le total de la ligne ne correspond pas à la quantité et au prix unitaire.",

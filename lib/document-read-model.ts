@@ -40,7 +40,7 @@ export function isOperationalDocument(document: ReadModelDocument) {
 
 /** Coarse kind authorization, used before historical queries expose a kind. */
 export function canReadDocumentKind(kind: string, access: Pick<DocumentReadAccess, "can">) {
-  if (kind === "employee-accrual" || kind === "employee-payment" || kind === "employee-closure") return access.can("employees.view");
+  if (kind === "employee-opening" || kind === "employee-accrual" || kind === "employee-payment" || kind === "employee-closure") return access.can("employees.view");
   if (access.can("records.view")) return true;
   if (kind === "sale") return canAny(access.can, saleAccess) || canAny(access.can, customerAccess);
   if (kind === "purchase") return canAny(access.can, purchaseAccess) || canAny(access.can, supplierAccess);
@@ -56,7 +56,7 @@ export function canReadDocumentKind(kind: string, access: Pick<DocumentReadAcces
 
 /** One authorization rule for both live documents and historical/audit reads. */
 export function canReadDocument(document: ReadModelDocument, access: DocumentReadAccess) {
-  if (["employee-accrual", "employee-payment", "employee-closure"].includes(String(document.kind))) return access.can("employees.view");
+  if (["employee-opening", "employee-accrual", "employee-payment", "employee-closure"].includes(String(document.kind))) return access.can("employees.view");
   if (access.can("records.view")) return true;
 
   const kind = String(document.kind ?? ""), partyId = partyIdOf(document);

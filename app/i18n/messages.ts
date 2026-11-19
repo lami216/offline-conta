@@ -1,4 +1,5 @@
 export const arMessages = {
+  "رصيد بداية عامل": "رصيد بداية عامل",
   "workerOpening.title": "رصيد بداية",
   "workerOpening.add": "إضافة رصيد بداية",
   "workerOpening.edit": "تعديل رصيد البداية",
@@ -1179,6 +1180,7 @@ export type MessageKey = keyof typeof arMessages;
 export type TranslationParams = Record<string, string | number>;
 
 export const frMessages: Record<MessageKey, string> = {
+  "رصيد بداية عامل": "Solde initial du salarié",
   "workerOpening.title": "Solde initial",
   "workerOpening.add": "Ajouter un solde initial",
   "workerOpening.edit": "Modifier le solde initial",

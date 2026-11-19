@@ -95,7 +95,7 @@ test('real backup and restore endpoints round-trip audited opening and payment w
   const response = await backupGET(new Request(origin + '/api/settings/backup', { headers: { Cookie: cookie() } })); assert.equal(response.status, 200); assert.match(response.headers.get('content-type'), /application\/json/);
   const file = await response.text(), expected = await Promise.all(['employees', 'documents', 'financialMovements', 'paymentAccounts', 'auditEvents'].map(rows));
   await ok({ type: 'employee-opening.update', documentId, expectedRevision: 0, direction: 'receivable', amount: 50, occurredAt: '2026-01-01', reason: 'Temporary trial before restoring' });
-  const restored = await restorePOST(new Request(origin + '/api/settings/restore', { method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', Cookie: cookie() }, body: file }));
+  const restored = await restorePOST(new Request(origin + '/api/settings/restore', { method: 'POST', headers: { Origin: origin, Host: '127.0.0.1:3286', 'Content-Type': 'application/json', Cookie: cookie() }, body: file }));
   const result = await restored.json(); assert.equal(restored.status, 200, JSON.stringify(result)); assert.equal(result.restored, true); assert.equal(result.sessionReset, true);
   assert.deepEqual(await Promise.all(['employees', 'documents', 'financialMovements', 'paymentAccounts', 'auditEvents'].map(rows)), expected);
   assert.equal((await db.collection('employees').findOne({ id: employeeId })).balance, 300); assert.equal((await db.collection('paymentAccounts').findOne({ id: 'cash' })).balance, 9800);

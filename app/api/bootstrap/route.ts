@@ -4,7 +4,7 @@ import { getDatabase } from "../../../lib/sqlite";
 import { resolvePartyType } from "../../domain";
 import { log } from "../../../lib/log";
 import { getPrincipalFromRequest, hasCapability, type Capability } from "../../../lib/auth";
-import { peekNextDocumentSequence } from "../../../lib/document-sequences";
+import { peekNextDocumentSequence, ensureStockSettlementNumberingReady, displayStockMovementDocumentNumber } from "../../../lib/document-sequences";
 import { calculatePartyFinancialSummaries } from "../../party-metrics";
 import { productsWithCurrentCosts } from "../../../lib/product-cost.ts";
 import { getInvoiceBranding } from "../../../lib/invoice-branding";
@@ -16,6 +16,7 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
   const principal=await getPrincipalFromRequest(request);if(!principal)return Response.json({error:"غير مصرح"},{status:401});
   try {
     const db = await getDatabase();
+    await ensureStockSettlementNumberingReady(db);
     await db.transaction(session => accrueDueEmployees(db, session));
 
     const [parties, warehouses, products, categories, documents, movements, financialMovements, paymentAccounts, accountTransfers, productCounter, nextSale, nextPurchase, nextExpense, branding, currency] = await Promise.all([
@@ -33,7 +34,7 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
     const cleanProducts = clean(await productsWithCurrentCosts(db, products, postedCostDocuments)).map(product => ({ ...product, wholesalePrice: (product as Record<string, unknown>).wholesalePrice ?? null, expiryDate: (product as Record<string, unknown>).expiryDate ?? null, note: (product as Record<string, unknown>).note ?? null, categoryId: (product as Record<string, unknown>).categoryId ?? null }));
     const cleanCategories = clean(categories).map(category => { const item = category as Record<string, unknown>; return { id: String(item.id ?? ""), name: String(item.name ?? "") }; }).filter(category => category.id && category.name);
     const documentHints = new Map(documents.map(document => [String(document.id ?? document._id ?? ""), document]));
-    const cleanMovements = collapseLegacyStockEditMovements(clean(movements as Array<Record<string, unknown>>).map((movement: Record<string, unknown>) => ({ ...movement, type: classifyStockMovementType(movement.type, documentHints.get(String(movement.documentId ?? ""))) })));
+    const cleanMovements = collapseLegacyStockEditMovements(clean(movements as Array<Record<string, unknown>>).map((movement: Record<string, unknown>) => ({ ...movement, documentReference: movement.documentNumber, documentNumber: displayStockMovementDocumentNumber(movement, documentHints.get(String(movement.documentId ?? ""))), type: classifyStockMovementType(movement.type, documentHints.get(String(movement.documentId ?? ""))) })));
     const effectiveFinancialMovements=(financialMovements as Array<Record<string,unknown>>).filter(isEffectiveFinancialMovement);
     const partyMetricDocuments=(documents as Array<Record<string,unknown>>).filter(document=>["sale","return","purchase"].includes(String(document.kind)));
     const effectivePartyMetricMovements=effectiveFinancialMovements.filter(movement=>typeof movement.partyId==="string");
@@ -66,6 +67,6 @@ export async function GET(request: Request) {const licenseDenied=await requireVa
     const visiblePartyIds=new Set(cleanParties.filter(party=>(resolvePartyType(party)==="customer"&&hasCapability(principal,"customers.view"))||(resolvePartyType(party)==="supplier"&&hasCapability(principal,"suppliers.view"))).map(party=>String(party.id)));
     const partyFinancialSummaries=partyAdmin?calculatePartyFinancialSummaries(partyMetricDocuments as never[],effectivePartyMetricMovements as never[]).filter(summary=>visiblePartyIds.has(summary.partyId)):[];
     const effectiveTransfers=(accountTransfers as Array<Record<string,unknown>>).filter(transfer=>transfer.status!=="voided");
-    return Response.json({ branding, currency, employees:hasCapability(principal,"employees.view")?clean(await db.collection("employees").find().sort({name:1}).toArray()):[], principal:{principalType:principal.principalType,name:principal.name,permissions:principal.permissions}, parties:exposedParties, warehouses:clean(warehouses), products:exposedProducts, categories:cleanCategories, expenseCategories:clean(await db.collection("expenseCategories").find().sort({name:1}).toArray()), documents:allowedDocuments, movements:hasCapability(principal,"warehouses.inventory.view")?cleanMovements:[], financialMovements:bankAccess?clean(effectiveFinancialMovements):[], partyFinancialSummaries, paymentAccounts:selectorAccounts, accountTransfers:bankAccess?clean(effectiveTransfers):[], nextProductCode, nextDocumentSequences:{sale:nextSale,purchase:nextPurchase,expense:nextExpense} });
+    return Response.json({ branding, currency, employees:hasCapability(principal,"employees.view")?clean(await db.collection("employees").find({isDeleted:{$ne:true}}).sort({name:1}).toArray()):[], principal:{principalType:principal.principalType,name:principal.name,permissions:principal.permissions}, parties:exposedParties, warehouses:clean(warehouses), products:exposedProducts, categories:cleanCategories, expenseCategories:clean(await db.collection("expenseCategories").find().sort({name:1}).toArray()), documents:allowedDocuments, movements:hasCapability(principal,"warehouses.inventory.view")?cleanMovements:[], financialMovements:bankAccess?clean(effectiveFinancialMovements):[], partyFinancialSummaries, paymentAccounts:selectorAccounts, accountTransfers:bankAccess?clean(effectiveTransfers):[], nextProductCode, nextDocumentSequences:{sale:nextSale,purchase:nextPurchase,expense:nextExpense} });
   } catch (error) { log("error", "api.bootstrap.failed", { error }); return Response.json({ error: "تعذر تحميل البيانات" }, { status: 500 }); }
 }

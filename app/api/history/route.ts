@@ -4,7 +4,9 @@ import { getPrincipalFromRequest, hasCapability, type Capability } from "../../.
 import { canReadDocument, canReadDocumentKind, resolveCurrentPartyName } from "../../../lib/document-read-model.ts";
 import { resolvePartyType } from "../../domain.ts";
 import { validateRequiredDateRange } from "../../date-range-validation.ts";
-import { collapseLegacyStockEditMovements } from "../../stock-movement.ts";
+import { classifyStockMovementType, collapseLegacyStockEditMovements } from "../../stock-movement.ts";
+
+import { ensureStockSettlementNumberingReady, displayStockMovementDocumentNumber } from "../../../lib/document-sequences.ts";
 
 const bounded = (value:string|null, fallback:number, max:number) => {
   const parsed=Number(value);return Number.isInteger(parsed)&&parsed>0?Math.min(parsed,max):fallback;
@@ -39,7 +41,7 @@ export async function GET(request:Request){
    if(validateRequiredDateRange(start,end))return Response.json({error:"الفترة غير صالحة"},{status:400});
    query.occurredAt={...(from?{$gte:`${start}T00:00:00.000Z`}:{}),...(to?{$lte:`${end}T23:59:59.999Z`}:{})};
  }
- const db=await getDatabase(),collection=db.collection(resource);
+ const db=await getDatabase();await ensureStockSettlementNumberingReady(db);const collection=db.collection(resource);
  if(resource==="documents"){
    const [parties,candidates]=await Promise.all([
      db.collection("parties").find().toArray(),
@@ -50,12 +52,15 @@ export async function GET(request:Request){
    const currentPartyNames=new Map(parties.map(party=>[String(party.id??party._id??""),String(party.name??"")] as const));
    const access={...coarseAccess,customerPartyIds,supplierPartyIds};
    const authorized=candidates.filter(document=>reportDocumentLookup||canReadDocument(document,access)).map(document=>resolveCurrentPartyName(document,currentPartyNames));
-   const visible=search?authorized.filter(document=>[document.number,document.sequence,document.legacyBillCode,document.partyName,document.title,document.kind,document.status].map(value=>String(value??"")).join(" ").toLocaleLowerCase().includes(search)):authorized;
+   const visible=search?authorized.filter(document=>[document.number,document.sequence,document.settlementSequence,document.legacyBillCode,document.partyName,document.title,document.kind,document.status].map(value=>String(value??"")).join(" ").toLocaleLowerCase().includes(search)):authorized;
    const total=visible.length,rows=visible.slice((page-1)*pageSize,page*pageSize);
    return Response.json({resource,page,pageSize,total,totalPages:Math.ceil(total/pageSize),rows:rows.map(({_id,...row})=>({id:row.id??String(_id),...row}))});
  }
  if(resource==="stockMovements"){
-   const candidates=await collection.find(query).sort({occurredAt:-1,id:-1}).toArray(),presented=collapseLegacyStockEditMovements(candidates.map(({_id,...row})=>({id:row.id??String(_id),...row})));
+   const candidates=await collection.find(query).sort({occurredAt:-1,id:-1}).toArray();
+   const documentIds=[...new Set(candidates.map(row=>String(row.documentId??"")).filter(Boolean))];
+   const documents=documentIds.length?await db.collection("documents").find({id:{$in:documentIds}}).toArray():[],documentMap=new Map(documents.map(document=>[String(document.id),document]));
+   const presented=collapseLegacyStockEditMovements(candidates.map(({_id,...row})=>({id:row.id??String(_id),...row,documentReference:row.documentNumber,documentNumber:displayStockMovementDocumentNumber(row,documentMap.get(String(row.documentId))),type:classifyStockMovementType(row.type,documentMap.get(String(row.documentId)))})));
    const total=presented.length,rows=presented.slice((page-1)*pageSize,page*pageSize);
    return Response.json({resource,page,pageSize,total,totalPages:Math.ceil(total/pageSize),rows});
  }

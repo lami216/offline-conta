@@ -114,7 +114,7 @@ async function main() {
     import{tr}from"./app/i18n/messages";
     function Shell(){
       const[data,setData]=useState(null),[sourceId,setSourceId]=useState(${JSON.stringify(employeeId)}),[view,setView]=useState("employees");
-      const[selectedPartyId,setSelectedPartyId]=useState(null),editorGuard=useRef(null),pending=useRef(false);
+      const[selectedPartyId,setSelectedPartyId]=useState(null),[expenseEditId,setExpenseEditId]=useState(null),editorGuard=useRef(null),pending=useRef(false);
       const{setLocale}=useI18n(),confirmAction=useAppConfirm();
       const register=useCallback(guard=>{editorGuard.current=guard},[]);
       const prepare=()=>requestEditorReplacement({hasPendingCommands:()=>pending.current,getGuard:()=>editorGuard.current,confirmDiscard:()=>confirmAction({message:tr("لديك تعديلات غير محفوظة. هل تريد تجاهلها والانتقال؟")}),onPending:()=>{window.__smokePendingBlocked=true}});
@@ -123,7 +123,8 @@ async function main() {
       useEffect(()=>{
         window.__smokeSetView=async next=>{if(!await prepare())return false;await refresh();setView(next);document.getElementById("root").className="app-shell section-"+(["party-ledger","expense-report","overview","stock-report"].includes(next)?"reports":next==="party-detail"?"customers":next==="sale"?"pos":next==="purchase"?"purchases":next);return true};
         window.__smokeSetLocale=setLocale;
-        return()=>{delete window.__smokeSetView;delete window.__smokeSetLocale};
+        window.__smokeEditExpense=async id=>{if(!await prepare())return false;await refresh();setView("expenses");setExpenseEditId(id);document.getElementById("root").className="app-shell section-expenses";return true};
+        return()=>{delete window.__smokeSetView;delete window.__smokeSetLocale;delete window.__smokeEditExpense};
       },[setLocale]);
       const run=async(body,_message,afterSuccess)=>{
         window.__smokeCommandCount=(window.__smokeCommandCount||0)+1;
@@ -142,7 +143,7 @@ async function main() {
       if(view==="records")return <Records data={data} openDoc={openDoc}/>;
       if(view==="stock-report")return <Reports data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type="stock" sourceRequest={null} clearSourceRequest={()=>{}}/>;
       if(view==="party-ledger")return <Reports data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type="party-ledger" sourceRequest={null} clearSourceRequest={()=>{}}/>;
-      if(view==="expenses")return <Expenses data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} registerEditorGuard={register} canEdit canDelete/>;
+      if(view==="expenses")return <Expenses data={data} run={run} openDoc={openDoc} editRequest={expenseEditId} clearEditRequest={()=>setExpenseEditId(null)} registerEditorGuard={register} canEdit canDelete/>;
       if(view==="expense-report"||view==="overview")return <Reports key={view} data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type={view==="overview"?"overview":"expenses"} sourceRequest={null} clearSourceRequest={()=>{}}/>;
       if(view==="sale")return <Pos data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} requestPrint={id=>{window.__printedInvoice=id}} openStockAdjustment={()=>{throw new Error("Unexpected inventory editor in invoice smoke")}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
       if(view==="purchase")return <Purchases data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} requestPrint={id=>{window.__printedInvoice=id}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
@@ -370,6 +371,9 @@ async function main() {
   const {runEmployeeOpeningScenarios}=await import("./employee-opening-ui-scenarios.mjs");
   result.employeeOpenings=await runEmployeeOpeningScenarios({cdp,origin:base,command,database,screenshot});
   result.checkpoints.push(...result.employeeOpenings.checkpoints);
+  const {runExpenseTimeScenarios}=await import("./expense-time-ui-scenarios.mjs");
+  result.expenseTimes=await runExpenseTimeScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.expenseTimes.checkpoints);
   assert.deepEqual(cdp.errors, []);
   result.status = "passed";
 }

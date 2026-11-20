@@ -1,6 +1,8 @@
 import type { Locale } from "./locale";
 
 const exactFrench: Record<string, string> = {
+  "لا يمكن تعديل المصروف لأن وقت السند الأصلي غير صالح": "Impossible de modifier cette dépense : l’heure du document d’origine est invalide.",
+  "وقت تسجيل المصروف غير صالح": "L’heure d’enregistrement de la dépense est invalide.",
   "اتجاه رصيد بداية العامل غير صالح": "Le sens du solde initial du salarié est invalide.",
   "يوجد أكثر من رصيد بداية معتمد للعامل": "Ce salarié possède plusieurs soldes initiaux validés.",
   "تاريخ الحركة يسبق رصيد بداية العامل؛ عدّل تاريخ رصيد البداية أولًا ثم أعد المحاولة": "Le mouvement précède le solde initial du salarié. Corrigez d’abord sa date, puis réessayez.",

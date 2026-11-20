@@ -162,6 +162,8 @@ export interface DocumentRecord {
   partyBalanceAfter?: number;
   occurredAt: string;
   businessDate?: string;
+  recordedAt?: string;
+  createdAt?: string;
   dailySequence?: number;
   recurringId?: string;
   legacyKey?: string;

@@ -1,0 +1,30 @@
+name: Refresh security lockfile
+on:
+  push:
+    branches:
+      - chore/security-lock-refresh-20261121
+permissions:
+  contents: read
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with: {node-version: 22}
+      - name: Resolve only security overrides without lifecycle scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Validate reproducible install without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Audit the complete resolved dependency graph
+        run: npm audit --audit-level=moderate
+      - name: Save exact lockfile evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Security-lockfile
+          path: |
+            package.json
+            package-lock.json
+          retention-days: 14

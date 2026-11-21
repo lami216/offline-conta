@@ -135,6 +135,7 @@ test("a phone opening-account correction stays historical while new native corre
   source.state.accounts[0].openingBalance = 1050;
   await h.db.transaction(session => restoreNativeBackup(h.db, parseAndValidateBackup(JSON.stringify(source)), session));
   const original = await h.db.collection("documents").findOne({ id: "mobile23:record:106" });
+  assert.equal(original.legacyKey, original.id, "The historical document uses the existing read-only source UI");
   const movement = await h.db.collection("financialMovements").findOne({ documentId: original.id, type: "opening-balance-correction" });
   assert.ok(movement);
   const command = body => h.db.transaction(session => execute(h.db, session, body));

@@ -301,7 +301,7 @@ export function convertMobileBackup(value: unknown): ImportedBackup {
     }
     if (r.kind === 'transfer') { doc.transferId = docId; doc.fromAccountId = id('account', r.account); doc.toAccountId = id('account', r.to); collections.accountTransfers.push({ id: docId, documentId: docId, number: reference, fromAccountId: doc.fromAccountId, toAccountId: doc.toAccountId, amount: r.total, note: doc.note, occurredAt: doc.occurredAt, status: doc.status, revision: doc.revision, importedFrom: 'mobile-v23' }); }
     if (r.kind === 'adjustment' && (r.openingStock || r.openingCorrection)) { doc.legacyKey = docId; doc.mobileOpening = jsonClone(r); if (r.openingCorrection === true) doc.openingCorrection = true; }
-    if (r.openingAccountCorrection) doc.mobileOpeningAccountCorrection = { before: r.openingBalanceBefore, after: r.openingBalanceAfter };
+    if (r.openingAccountCorrection) { doc.legacyKey = docId; doc.mobileOpeningAccountCorrection = { before: r.openingBalanceBefore, after: r.openingBalanceAfter }; }
     if (r.kind === 'offset') {
       doc.legacyKey = docId; doc.partyBalanceDelta = -r.total; doc.paidTotal = 0; doc.cashAmount = 0; doc.dueTotal = 0;
       const peerId = `${docId}:counterparty`; doc.mobileOffsetPeerId = peerId;

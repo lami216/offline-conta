@@ -1,4 +1,4 @@
-import { planStockChange, stockBalanceAfter } from "./stock-numbers.ts";
+import { planStockChange, stockBalanceAfter, stockNumber } from "./stock-numbers.ts";
 import { currentProductCost } from "./product-cost.ts";
 import { reportCostNumber } from "./report-commerce.ts";
 import type { SqliteDatabase as Db, SqliteSession as ClientSession } from "./sqlite.ts";
@@ -174,6 +174,17 @@ function sameLegacyClearanceBatch(left: Stored, right: Stored) {
     : String(left.id ?? "") === String(right.id ?? "");
 }
 
+function archiveClearanceFailure(document: Stored, reason: string) {
+  return new LifecycleCommandError(`لا يمكن عكس تصفير الأرشفة للسند ${text(document.number) || text(document.id)} (${text(document.id)}) في المخزن ${text(document.warehouseId) || "غير محدد"}: ${reason}`, 409);
+}
+
+function archiveClearanceGroupId(document: Stored) {
+  const raw = document.productArchiveStockClearanceGroupId;
+  if (raw !== undefined && raw !== null && typeof raw !== "string") throw archiveClearanceFailure(document, "مرجع مجموعة التصفير غير صالح");
+  if (typeof raw === "string" && raw !== raw.trim()) throw archiveClearanceFailure(document, "مرجع مجموعة التصفير غير صالح");
+  return text(raw);
+}
+
 export async function restoreProductArchiveStockClearance(
   db: Db,
   session: ClientSession,
@@ -186,74 +197,124 @@ export async function restoreProductArchiveStockClearance(
     : null;
   if (requestedDocumentId && !selected) throw new LifecycleCommandError("تصحيح تصفير مخزون الأرشفة غير موجود أو ملغى", 404);
 
-  const productId = requestedProductId || (selected ? archiveClearanceProductId(selected) : "");
+  const selectedProductId = selected ? archiveClearanceProductId(selected) : "";
+  if (selected && requestedProductId && selectedProductId !== requestedProductId) throw archiveClearanceFailure(selected, "مرجع المنتج لا يطابق طلب الاستعادة");
+  const productId = requestedProductId || selectedProductId;
   if (!productId) {
     if (requestedDocumentId) throw new LifecycleCommandError("سند تصفير المخزون لا يحتوي مرجع المنتج", 409);
     return null;
   }
   const product = await db.collection("products").findOne({ id: productId }, { session });
   if (!product) throw new LifecycleCommandError("المنتج المرتبط بتصفير المخزون غير موجود", 409);
-  if (product.isArchived !== true) {
-    if (requestedDocumentId) throw new LifecycleCommandError("المنتج مستعاد بالفعل؛ لا يمكن عكس تصفير الأرشفة مرة أخرى", 409);
-    return null;
-  }
-
+  // Posted source documents are authoritative. The product pointer can be stale
+  // after an older partial restore or a zero-stock request from a previous build.
   const all = await db.collection("documents").find({
     kind: "adjustment",
     status: "posted",
     productArchiveStockClearance: true,
-    "lines.productId": productId,
+    $or: [{ "lines.productId": productId }, { productArchiveProductId: productId }],
   }, { session }).toArray();
   if (!all.length) return null;
 
-  const configuredGroup = text(selected?.productArchiveStockClearanceGroupId ?? product.archiveStockClearanceGroupId);
-  let anchor = selected;
-  if (!anchor) {
-    anchor = [...all].sort((a, b) => {
-      const byDate = String(b.occurredAt ?? "").localeCompare(String(a.occurredAt ?? ""));
-      return byDate || String(b.id ?? "").localeCompare(String(a.id ?? ""));
-    })[0] ?? null;
-  }
-  if (!anchor) return null;
+  const selectedGroup = selected ? archiveClearanceGroupId(selected) : "";
+  const group = selected
+    ? all.filter(document => selectedGroup ? archiveClearanceGroupId(document) === selectedGroup
+      : !archiveClearanceGroupId(document) && sameLegacyClearanceBatch(document, selected))
+    : all;
+  if (!group.length || (selected && !group.some(document => document.id === selected.id))) throw archiveClearanceFailure(selected ?? all[0], "تعذر تحديد السندات المرتبطة بمجموعة التصفير");
 
-  const group = configuredGroup
-    ? all.filter(document => text(document.productArchiveStockClearanceGroupId) === configuredGroup)
-    : all.filter(document => sameLegacyClearanceBatch(document, anchor!));
-  if (!group.length) throw new LifecycleCommandError("تعذر تحديد مجموعة تصفير المخزون المرتبطة بالأرشفة", 409);
+  // A named native group cannot silently contain another product's clearance.
+  const groupIds = [...new Set(group.map(archiveClearanceGroupId).filter(Boolean))];
+  if (groupIds.length) {
+    const linked = await db.collection("documents").find({ kind: "adjustment", status: "posted", productArchiveStockClearance: true, productArchiveStockClearanceGroupId: { $in: groupIds } }, { session }).toArray();
+    const known = new Set(group.map(document => text(document.id)));
+    const foreign = linked.find(document => !known.has(text(document.id)));
+    if (foreign) throw archiveClearanceFailure(foreign, "مجموعة التصفير تحتوي مرجع منتج آخر أو سندًا غير متطابق");
+  }
+
+  const documentIds = group.map(document => text(document.id));
+  if (documentIds.some((documentId, index) => !documentId || documentId !== group[index].id) || new Set(documentIds).size !== documentIds.length) throw archiveClearanceFailure(group[0], "مراجع سندات التصفير مفقودة أو مكررة");
+  const movements = await db.collection("stockMovements").find({ documentId: { $in: documentIds } }, { session }).toArray();
+  const documentsById = new Map(group.map(document => [text(document.id), document]));
+  const movementsByDocument = new Map<string, Stored[]>(), movementIds = new Set<string>();
+  for (const movement of movements) {
+    const sourceId = text(movement.documentId), movementId = text(movement.id);
+    const source = documentsById.get(sourceId) ?? group[0];
+    if (!movementId || movementIds.has(movementId)) throw archiveClearanceFailure(source, "مراجع حركات التصفير مفقودة أو مكررة");
+    movementIds.add(movementId);
+    const rows = movementsByDocument.get(sourceId) ?? [];
+    rows.push(movement); movementsByDocument.set(sourceId, rows);
+  }
+  const preview: Stored = { ...product, stocks: product.stocks && typeof product.stocks === "object" && !Array.isArray(product.stocks) ? { ...(product.stocks as Stored) } : product.stocks };
+  const prepared: Array<{ document: Stored; warehouse: Stored; delta: number; revision: number }> = [];
+  const seenCells = new Set<string>(), legacyCells = new Map<string, Array<{ time: number; document: Stored }>>();
+  for (const document of group) {
+    const warehouseId = text(document.warehouseId), sourceProduct = document.productArchiveProductId;
+    const lines = Array.isArray(document.lines) ? document.lines as Stored[] : [];
+    if (!warehouseId || document.warehouseId !== warehouseId || lines.length !== 1 || !lines[0] || lines[0].productId !== productId || (sourceProduct !== undefined && sourceProduct !== null && sourceProduct !== productId)) throw archiveClearanceFailure(document, "سجل التصفير لا يحتوي مرجع منتج ومخزن وحيدًا ومتطابقًا");
+    if ([document.total, document.dueTotal, document.paidTotal, document.cashAmount, lines[0].lineTotal].some(value => value !== undefined && stockNumber(value) !== 0) || (document.paymentMethod != null && document.paymentMethod !== "")) throw archiveClearanceFailure(document, "سند التصفير يحتوي أثرًا ماليًا لا يطابق الأرشفة");
+    const quantity = stockNumber(lines[0].quantity), before = stockNumber(lines[0].balanceBefore), after = stockNumber(lines[0].balanceAfter);
+    if (quantity === null || quantity >= 0 || before === null || before <= 0 || after !== 0 || stockBalanceAfter(before, quantity) !== 0) throw archiveClearanceFailure(document, "كمية التصفير أو أرصدة السند غير متطابقة");
+    const originalRevision = document.revision === undefined ? 0 : stockNumber(document.revision);
+    if (originalRevision !== 0 || (document.productArchiveStockClearanceRestored !== undefined && document.productArchiveStockClearanceRestored !== false)) throw archiveClearanceFailure(document, "السند معدل أو سبق عكسه ولا يمكن استعادته مرة أخرى");
+    const groupId = archiveClearanceGroupId(document);
+    if (groupId) {
+      const cell = `${groupId}\u0000${warehouseId}`;
+      if (seenCells.has(cell)) throw archiveClearanceFailure(document, "مجموعة التصفير تحتوي سندات متكررة للمخزن نفسه");
+      seenCells.add(cell);
+    } else {
+      const prior = legacyCells.get(warehouseId) ?? [];
+      const time = Date.parse(String(document.occurredAt ?? ""));
+      if (Number.isFinite(time)) prior.push({ time, document });
+      legacyCells.set(warehouseId, prior);
+    }
+    const warehouse = await db.collection("warehouses").findOne({ _id: warehouseId }, { session });
+    if (!warehouse) throw archiveClearanceFailure(document, "المخزن المرتبط بالتصفير غير موجود");
+    const sourceMovements = movementsByDocument.get(text(document.id)) ?? [];
+    if (sourceMovements.length) {
+      const movement = sourceMovements[0];
+      if (sourceMovements.length !== 1 || movement.type !== "adjustment" || movement.isReversal === true || movement.status === "reversed" || movement.reversalOfMovementId != null || movement.productId !== productId || movement.warehouseId !== warehouseId || (movement.documentNumber !== undefined && movement.documentNumber !== document.number) || stockNumber(movement.quantityDelta) !== quantity || stockNumber(movement.balanceBefore) !== before || stockNumber(movement.balanceAfter) !== after || (movement.documentRevision !== undefined && stockNumber(movement.documentRevision) !== originalRevision)) throw archiveClearanceFailure(document, "حركات المخزون لا تطابق سند التصفير أو تحتوي عكسًا سابقًا");
+    }
+    // An old coherent document may predate stock-movement persistence. For all
+    // sources, validate the entire additive inverse before writing any warehouse.
+    const delta = -quantity;
+    try {
+      const planned = planStockChange(preview, warehouseId, delta, document);
+      if (planned.after < 0) throw archiveClearanceFailure(document, "الرصيد الحالي لا يسمح بعكس التصفير");
+      const previewStocks = (preview.stocks ??= {}) as Stored;
+      previewStocks[warehouseId] = planned.after;
+    } catch (error) {
+      if (error instanceof LifecycleCommandError) throw error;
+      throw archiveClearanceFailure(document, "الرصيد الحالي أو ناتج استعادة الكمية غير صالح");
+    }
+    prepared.push({ document, warehouse, delta, revision: originalRevision + 1 });
+  }
+  for (const rows of legacyCells.values()) {
+    rows.sort((a, b) => a.time - b.time);
+    for (let index = 1; index < rows.length; index++) if (rows[index].time - rows[index - 1].time <= 5000) throw archiveClearanceFailure(rows[index].document, "سندات التصفير القديمة لا تحدد مجموعة واحدة للمخزن بأمان");
+  }
 
   const now = new Date();
-  for (const document of group) {
-    const warehouse = await db.collection("warehouses").findOne({ _id: String(document.warehouseId) }, { session });
-    if (!warehouse) throw new LifecycleCommandError("تعذر استعادة المنتج لأن أحد مخازن التصفير غير موجود", 409);
-    const lines = Array.isArray(document.lines) ? document.lines as Stored[] : [];
-    if (!lines.length || lines.some(line => String(line.productId ?? "") !== productId)) {
-      throw new LifecycleCommandError("سجل تصفير المخزون غير مكتمل ولا يمكن عكسه بأمان", 409);
-    }
-    const revision = Number(document.revision ?? 0) + 1;
-    const audit = stockAuditDocument(document, revision);
-    for (const line of lines) {
-      const delta = -Number(line.quantity ?? 0), expectedAfter = Number(line.balanceAfter ?? 0);
-      if (!Number.isFinite(delta) || delta <= 0) throw new LifecycleCommandError("كمية تصفير المخزون القديمة غير صالحة للاستعادة", 409);
-      const current = Number((product.stocks as Record<string, number> | undefined)?.[String(warehouse._id)] ?? 0);
-      if (!Number.isFinite(expectedAfter) || Math.abs(current - expectedAfter) > 1e-9) {
-        throw new LifecycleCommandError("لا يمكن استعادة تصفير الأرشفة لأن مخزون أحد المخازن تغير بعد عملية التصفير.", 409);
-      }
-      await changeStock(db, session, product, warehouse, delta, audit, "adjustment-void");
-    }
-    await db.collection("documents").updateOne(
-      { id: document.id, status: "posted" },
+  for (const { document, warehouse, delta, revision } of prepared) {
+    await changeStock(db, session, product, warehouse, delta, stockAuditDocument(document, revision), "adjustment-void");
+    const changed = await db.collection("documents").updateOne(
+      { id: document.id, status: "posted", revision: document.revision === undefined ? { $exists: false } : document.revision, productArchiveStockClearance: true },
       { $set: { status: "voided", voidedAt: now, updatedAt: now, revision, productArchiveStockClearanceRestored: true } },
       { session },
     );
+    if (!changed.matchedCount) throw archiveClearanceFailure(document, "تغير السند أثناء الاستعادة، أعد المحاولة");
   }
 
+  const reversedIds = new Set(documentIds), remaining = all.filter(document => !reversedIds.has(text(document.id)));
+  const nextGroup = [...remaining].reverse().map(archiveClearanceGroupId).find(Boolean) ?? null;
+  const wasArchived = product.isArchived === true;
   const restored = await db.collection("products").updateOne(
-    { id: productId, isArchived: true },
-    { $set: { isArchived: false, archivedAt: null, archiveStockClearanceGroupId: null, updatedAt: now } },
+    { id: productId, isArchived: Object.hasOwn(product, "isArchived") ? product.isArchived : { $exists: false } },
+    { $set: { ...(wasArchived && !remaining.length ? { isArchived: false, archivedAt: null } : {}), archiveStockClearanceGroupId: nextGroup, updatedAt: now } },
     { session },
   );
   if (!restored.matchedCount) throw new LifecycleCommandError("تغيرت حالة المنتج أثناء الاستعادة، أعد المحاولة", 409);
-  return { productId, documentIds: group.map(document => String(document.id)) };
+  return { productId, documentIds };
 }
 
 async function updateTransfer(db: Db, session: ClientSession, body: Input) {

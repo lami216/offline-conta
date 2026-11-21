@@ -4,6 +4,7 @@ import {createExpenseCategory,updateExpenseCategory,deleteExpenseCategory,expens
 import {postPartyOpening,updatePartyOpening,voidPartyOpening} from "../../../lib/party-opening.ts";
 import {handlePayrollCommand} from "../../../lib/payroll.ts";
 import {resolveInvoiceLineTotal,sumInvoiceLineTotals} from "../../invoice-line-amount.ts";
+import { expenseBusinessDate, expenseEditDateTime, expensePostDateTime } from "../../expense-date-time.ts";
 import { requireValidLicense } from "../../../lib/license.ts";
 import { serializeBusinessError } from "../../../lib/business-error.ts";
 import type { SqliteSession as ClientSession, SqliteDatabase as Db } from "../../../lib/sqlite.ts";
@@ -12,7 +13,7 @@ import { log } from "../../../lib/log.ts";
 import { getPrincipalFromRequest, hasCapability, requireCapability, validSameOrigin, type Capability } from "../../../lib/auth.ts";
 import { isProductExpired, resolvePartyType } from "../../domain.ts";
 import { normalizePartyNet, partyNet } from "../../party-balance.ts";
-import { nextDocumentSequence, type SequencedDocumentKind } from "../../../lib/document-sequences.ts";
+import { nextDocumentSequence, nextStockSettlementSequence, displayStockMovementDocumentNumber, type SequencedDocumentKind } from "../../../lib/document-sequences.ts";
 import { deriveOpeningStockState, planOpeningStockCorrection } from "../../../lib/opening-stock.ts";
 import { currentProductCost } from "../../../lib/product-cost.ts";
 import { executeLifecycleCommand, findActiveFinancialMovement, propagatePartyName, restoreProductArchiveStockClearance, reverseFinancialMovement } from "../../../lib/transaction-lifecycle.ts";
@@ -440,7 +441,8 @@ async function openingStockBlockingOperations(
     const document = documentMap.get(item.documentId);
     return {
       documentId: item.documentId,
-      documentNumber: String(document?.number ?? item.documentNumber),
+      documentReference: String(document?.number ?? item.documentNumber),
+      documentNumber: displayStockMovementDocumentNumber({documentNumber:document?.number??item.documentNumber},document),
       kind: String(document?.kind ?? ""),
       title: String(document?.title ?? ""),
       status: String(document?.status ?? ""),
@@ -470,7 +472,7 @@ async function requireInitialOpeningDocument(db: Db, session: ClientSession, doc
 
 export async function execute(db: Db, session: ClientSession, body: Input) {
   const type = text(body.type);
-  if(type.startsWith("employee.")||type.startsWith("employee-payment.")||type.startsWith("employee-accrual."))return handlePayrollCommand(db,session,body);
+  if(type.startsWith("employee.")||type.startsWith("employee-payment.")||type.startsWith("employee-accrual.")||type.startsWith("employee-opening."))return handlePayrollCommand(db,session,body);
   if(type==="party-opening.post")return postPartyOpening(db,session,body);
   if(type==="party-opening.update")return updatePartyOpening(db,session,body);
   if(type==="party-opening.void")return voidPartyOpening(db,session,body);
@@ -556,6 +558,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const productId = text(body.id), product = await db.collection("products").findOne({ id: productId }, { session });
     if (!product) throw new CommandError("المنتج غير موجود", 404);
     if (product.isArchived !== true) throw new CommandError("تصفير المخزون بهذه العملية متاح للمنتج المؤرشف فقط", 409);
+    if (!productStockEntries(product).length) return productId;
     const clearanceGroupId = id("archive-clearance");
     await zeroProductStockForArchive(db, session, product, clearanceGroupId);
     await db.collection("products").updateOne({ id: productId, isArchived: true }, { $set: { archiveStockClearanceGroupId: clearanceGroupId, updatedAt: new Date() } }, { session });
@@ -935,7 +938,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     }
     const effectiveInput = input.filter(line => line.actualQuantity !== Number((map.get(line.productId)!.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0));
     if (!effectiveInput.length) throw new CommandError("لا يوجد تغيير في المخزون لاعتماده", 409);
-    const doc = { ...baseDocument("adjustment", "ADJ"), revision: 0, partyId: null, partyName: null, warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: null, title: reason, total: 0, dueTotal: 0, paidTotal: 0, lines: [] as Record<string, unknown>[] };
+    const doc = { ...baseDocument("adjustment", "ADJ"), settlementSequence: await nextStockSettlementSequence(db, session), revision: 0, partyId: null, partyName: null, warehouseId, warehouseName: warehouse.name, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: null, title: reason, total: 0, dueTotal: 0, paidTotal: 0, lines: [] as Record<string, unknown>[] };
     for (const line of effectiveInput) {
       const p = map.get(line.productId)!, before = Number((p.stocks as Record<string, number> | undefined)?.[warehouseId] ?? 0), after = line.actualQuantity!;
       await changeStock(db, session, p, warehouse, after - before, doc, "adjustment");
@@ -945,20 +948,33 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     return doc.id;
   }
   if (["payment.post","settlement.post","offset.post"].includes(type)) throw new CommandError("هذا المسار المحاسبي القديم متاح للقراءة فقط؛ استخدم دورة الحركات الحالية.",409);
-  if (type === "expense.post") { const title = text(body.title), amount = positive(body.amount, "المبلغ"), date = text(body.occurredAt), parsedDate = new Date(`${date}T12:00:00Z`); if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(parsedDate.valueOf()) || parsedDate.toISOString().slice(0,10) !== date) throw new CommandError("العنوان والتاريخ غير صالحين"); const method = text(body.paymentMethod); await paymentAccount(db, session, method); const doc = { ...await numberedDocument(db, session, "expense", "EXP"), revision: 0, occurredAt: parsedDate.toISOString(), partyId: null, partyName: null, warehouseId: null, warehouseName: null, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null, paymentMethod: method, title, ...await expenseCategorySnapshot(db,session,body), total: amount, dueTotal: 0, paidTotal: amount, cashAmount: amount, lines: [{ id: id("line"), productId: null, description: title, quantity: 1, unitPrice: amount, lineTotal: amount }] }; await financialMovement(db, session, doc, "out", amount, "expense"); await db.collection("documents").insertOne(doc, { session }); return doc.id; }
+  if (type === "expense.post") {
+    const title = text(body.title), amount = positive(body.amount, "المبلغ");
+    if (!title) throw new CommandError("العنوان والتاريخ غير صالحين");
+    const dateTime = expensePostDateTime(body.occurredAt), method = text(body.paymentMethod);
+    await paymentAccount(db, session, method);
+    const doc = { ...await numberedDocument(db, session, "expense", "EXP"), revision: 0, ...dateTime,
+      partyId: null, partyName: null, warehouseId: null, warehouseName: null, destinationWarehouseId: null, destinationWarehouseName: null, parentDocumentId: null,
+      paymentMethod: method, title, ...await expenseCategorySnapshot(db,session,body), total: amount, dueTotal: 0, paidTotal: amount, cashAmount: amount,
+      lines: [{ id: id("line"), productId: null, description: title, quantity: 1, unitPrice: amount, lineTotal: amount }] };
+    await financialMovement(db, session, doc, "out", amount, "expense");
+    await db.collection("documents").insertOne(doc, { session });
+    return doc.id;
+  }
   if (type === "expense.update") {
-    const documentId=text(body.documentId),title=text(body.title),amount=positive(body.amount,"المبلغ"),date=text(body.occurredAt),method=text(body.paymentMethod),parsedDate=new Date(`${date}T12:00:00Z`);
-    if(!title||!/^\d{4}-\d{2}-\d{2}$/.test(date)||Number.isNaN(parsedDate.valueOf())||parsedDate.toISOString().slice(0,10)!==date)throw new CommandError("العنوان والتاريخ غير صالحين");
+    const documentId=text(body.documentId),title=text(body.title),amount=positive(body.amount,"المبلغ"),date=expenseBusinessDate(body.occurredAt),method=text(body.paymentMethod);
+    if(!title)throw new CommandError("العنوان والتاريخ غير صالحين");
     const original=await db.collection("documents").findOne({id:documentId,kind:"expense",status:"posted"},{session});
     if(!original||original.legacyKey)throw new CommandError("المصروف غير موجود أو غير قابل للتعديل",404);
+    const dateTime=expenseEditDateTime(date,original);
     const category=await expenseCategorySnapshot(db,session,body,original);
     const historicalPayment=await paymentAccountForHistoricalEdit(db,session,method,original.paymentMethod);
     const movement=await findActiveFinancialMovement(db,session,{documentId,type:"expense"});
     if(!movement)throw new CommandError("تعذر العثور على حركة المصروف الأصلية",409);
     await reverseFinancialMovement(db,session,movement,"تعديل مصروف");
     await reactivateHistoricalPaymentAccount(db,session,historicalPayment.account,historicalPayment.sameOriginal);
-    const occurredAt=parsedDate.toISOString(),lineId=(original.lines as Line[]|undefined)?.[0]?.id??id("line");
-    const revised={title,...category,total:amount,dueTotal:0,paidTotal:amount,cashAmount:amount,paymentMethod:method,occurredAt,lines:[{id:lineId,productId:null,description:title,quantity:1,unitPrice:amount,lineTotal:amount}],updatedAt:new Date(),revision:Number(original.revision??0)+1};
+    const lineId=(original.lines as Line[]|undefined)?.[0]?.id??id("line");
+    const revised={title,...category,total:amount,dueTotal:0,paidTotal:amount,cashAmount:amount,paymentMethod:method,...dateTime,lines:[{id:lineId,productId:null,description:title,quantity:1,unitPrice:amount,lineTotal:amount}],revision:Number(original.revision??0)+1};
     await financialMovement(db,session,{...original,...revised},"out",amount,"expense");
     await db.collection("documents").updateOne({id:documentId,kind:"expense",status:"posted"},{$set:revised},{session});
     return documentId;
@@ -996,7 +1012,7 @@ async function executeAdmittedPost(request: Request, admission: CommandAdmission
   let type = "unknown";
   try {
     const body = await admission.readJson() as Input; type = text(body.type);
-    const map:Record<string,Capability>={"product.delete":"products.delete","product.stock-zero":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","legacy-party-document.void":"customers.collect.delete","party-opening.post":"party.opening.manage","party-opening.update":"party.opening.manage","party-opening.void":"party.opening.manage","employee.create":"employees.manage","employee.update":"employees.manage","employee.archive":"employees.manage","employee.restore":"employees.manage","employee-accrual.sync":"employees.manage","employee-accrual.update":"employees.manage","employee-accrual.void":"employees.manage","employee-payment.post":"employees.pay","employee-payment.update":"employees.pay","employee-payment.void":"employees.pay","expense-category.create":"expenses.create","expense-category.update":"expenses.edit","expense-category.delete":"expenses.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
+    const map:Record<string,Capability>={"product.delete":"products.delete","product.stock-zero":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","legacy-party-document.void":"customers.collect.delete","party-opening.post":"party.opening.manage","party-opening.update":"party.opening.manage","party-opening.void":"party.opening.manage","employee.create":"employees.manage","employee.update":"employees.manage","employee.archive":"employees.manage","employee.restore":"employees.manage","employee.delete":"employees.manage","employee-opening.post":"employees.manage","employee-opening.update":"employees.manage","employee-opening.void":"employees.manage","employee-accrual.sync":"employees.manage","employee-accrual.update":"employees.manage","employee-accrual.void":"employees.manage","employee-payment.post":"employees.pay","employee-payment.update":"employees.pay","employee-payment.void":"employees.pay","expense-category.create":"expenses.create","expense-category.update":"expenses.edit","expense-category.delete":"expenses.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
     let capability=map[type];
     if(["party-cash.post","party.update","party.delete","party.restore"].includes(type)){
       const party=await getDatabase().collection("parties").findOne({id:text(body.partyId??body.id)});

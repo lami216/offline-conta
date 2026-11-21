@@ -1,6 +1,6 @@
 {
   "name": "alkarna-desktop",
-  "version": "0.1.19",
+  "version": "0.1.25",
   "description": "Offline desktop accounting and inventory application.",
   "author": "lami216",
   "private": true,
@@ -29,7 +29,7 @@
     "better-sqlite3": "13.0.3",
     "bson": "^6.10.4",
     "lucide-react": "^0.468.0",
-    "next": "16.4.2",
+    "next": "16.4.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",
     "sql.js": "^1.13.0"
@@ -42,10 +42,10 @@
     "@types/react-dom": "19.2.3",
     "@types/sql.js": "^1.4.9",
     "concurrently": "^9.2.0",
-    "electron": "44.3.0",
+    "electron": "44.9.1",
     "electron-builder": "26.16.1",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.4.2",
+    "eslint-config-next": "16.4.6",
     "png-to-ico": "^3.0.1",
     "tailwindcss": "4.2.1",
     "tsx": "^4.23.12",
@@ -100,6 +100,18 @@
   },
   "overrides": {
     "sharp": "0.35.5",
-    "source-map-js": "1.2.2"
+    "source-map-js": "1.2.2",
+    "@electron/universal": {
+      "minimatch@>=7.0.0 <11.0.1": "11.0.1"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "minimatch@>=7.0.0 <11.0.1": "11.0.1"
+    },
+    "app-builder-lib": {
+      "minimatch@>=7.0.0 <11.0.1": "11.0.1"
+    },
+    "node-gyp": {
+      "undici": "6.29.1"
+    }
   }
 }

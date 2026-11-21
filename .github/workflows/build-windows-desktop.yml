@@ -28,9 +28,11 @@ jobs:
       - run: npm ci --ignore-scripts
         id: dependencies
       - run: node node_modules/electron/install.js
-      # Production vulnerabilities at high or critical severity must stop distribution.
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
+      # Audit the full lockfile, including Electron shipped by the desktop installer.
+      - name: Audit locked runtime and build dependencies
+        run: npm audit --audit-level=moderate
+      - name: Prove the original clearance defects on isolated synthetic data
+        run: node scripts/prove-clearance-baseline.mjs
       - run: npx tsc --noEmit
       - name: Exercise general workflows on isolated synthetic data
         run: node --import tsx --test scripts/payroll-ui-smoke.mjs

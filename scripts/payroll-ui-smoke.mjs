@@ -93,6 +93,7 @@ async function main() {
   const { GET } = await import("../app/api/bootstrap/route.ts");
   const { GET: historyGET } = await import("../app/api/history/route.ts");
   const { GET: reportsGET } = await import("../app/api/reports/route.ts");
+  const { GET: productOpeningGET } = await import("../app/api/product-opening/route.ts");
   const bootstrapCheck = await GET(new Request("http://127.0.0.1:3219/api/bootstrap"));
   assert.equal(bootstrapCheck.status, 200, await bootstrapCheck.text());
   const date = new Date().toISOString().slice(0, 10);
@@ -105,7 +106,7 @@ async function main() {
     import React,{useCallback,useEffect,useRef,useState} from "react";
     import{createRoot}from"react-dom/client";
     import EmployeesPage from "./app/employees-page";
-    import{Parties,PartyPage,Reports,Expenses,Pos,Purchases,Warehouses}from"./app/conta-app";
+    import{Parties,PartyPage,Reports,Expenses,Pos,Purchases,Warehouses,Products,Adjustment,Records}from"./app/conta-app";
     import{LocaleProvider,useI18n}from"./app/i18n/provider";
     import{ConfirmationProvider,useAppConfirm}from"./app/app-confirm";
     import{requestEditorReplacement}from"./app/editor-replacement";
@@ -113,23 +114,24 @@ async function main() {
     import{tr}from"./app/i18n/messages";
     function Shell(){
       const[data,setData]=useState(null),[sourceId,setSourceId]=useState(${JSON.stringify(employeeId)}),[view,setView]=useState("employees");
-      const[selectedPartyId,setSelectedPartyId]=useState(null),editorGuard=useRef(null),pending=useRef(false);
+      const[selectedPartyId,setSelectedPartyId]=useState(null),[expenseEditId,setExpenseEditId]=useState(null),editorGuard=useRef(null),pending=useRef(false);
       const{setLocale}=useI18n(),confirmAction=useAppConfirm();
       const register=useCallback(guard=>{editorGuard.current=guard},[]);
       const prepare=()=>requestEditorReplacement({hasPendingCommands:()=>pending.current,getGuard:()=>editorGuard.current,confirmDiscard:()=>confirmAction({message:tr("لديك تعديلات غير محفوظة. هل تريد تجاهلها والانتقال؟")}),onPending:()=>{window.__smokePendingBlocked=true}});
       const refresh=async()=>{const response=await fetch("/api/bootstrap"),value=await response.json();if(!response.ok)throw new Error(value.error||"Bootstrap failed");setData(value)};
       useEffect(()=>{void refresh().catch(error=>{window.__smokeError=error.stack;console.error(error)})},[]);
       useEffect(()=>{
-        window.__smokeSetView=async next=>{if(!await prepare())return false;await refresh();setView(next);document.getElementById("root").className="app-shell section-"+(["party-ledger","expense-report","overview"].includes(next)?"reports":next==="party-detail"?"customers":next==="sale"?"pos":next==="purchase"?"purchases":next);return true};
+        window.__smokeSetView=async next=>{if(!await prepare())return false;await refresh();setView(next);document.getElementById("root").className="app-shell section-"+(["party-ledger","expense-report","overview","stock-report"].includes(next)?"reports":next==="party-detail"?"customers":next==="sale"?"pos":next==="purchase"?"purchases":next);return true};
         window.__smokeSetLocale=setLocale;
-        return()=>{delete window.__smokeSetView;delete window.__smokeSetLocale};
+        window.__smokeEditExpense=async id=>{if(!await prepare())return false;await refresh();setView("expenses");setExpenseEditId(id);document.getElementById("root").className="app-shell section-expenses";return true};
+        return()=>{delete window.__smokeSetView;delete window.__smokeSetLocale;delete window.__smokeEditExpense};
       },[setLocale]);
       const run=async(body,_message,afterSuccess)=>{
         window.__smokeCommandCount=(window.__smokeCommandCount||0)+1;
         window.__payrollBusy=true;pending.current=true;
         try{
           const response=await fetch("/api/command",{method:"POST",headers:{"content-type":"application/json","Idempotency-Key":crypto.randomUUID()},body:JSON.stringify(body)});
-          const value=await response.json();if(!response.ok)throw new Error(value.error);
+          const value=await response.json();if(!response.ok){window.__smokeLastError=value;throw Object.assign(new Error(value.error),{payload:value,status:response.status})}
           await finishSuccessfulCommand(afterSuccess,refresh);
           window.__lastPayrollResult=value;return value.id;
         }finally{window.__payrollBusy=false;pending.current=false}
@@ -138,12 +140,16 @@ async function main() {
       const openDoc=id=>{window.__openedPayrollDocument=id};
       if(view==="customers"||view==="suppliers")return <Parties key={view} partyType={view==="customers"?"customer":"supplier"} data={data} run={run} openParty={party=>{window.__openedParty=party.id;setSelectedPartyId(party.id);setView("party-detail")}} canEdit canDelete registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
       if(view==="party-detail"){const party=data.parties.find(row=>row.id===selectedPartyId);return party?<PartyPage key={party.id} party={party} data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>:<p>Missing synthetic party</p>}
+      if(view==="records")return <Records data={data} openDoc={openDoc}/>;
+      if(view==="stock-report")return <Reports data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type="stock" sourceRequest={null} clearSourceRequest={()=>{}}/>;
       if(view==="party-ledger")return <Reports data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type="party-ledger" sourceRequest={null} clearSourceRequest={()=>{}}/>;
-      if(view==="expenses")return <Expenses data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} registerEditorGuard={register} canEdit canDelete/>;
+      if(view==="expenses")return <Expenses data={data} run={run} openDoc={openDoc} editRequest={expenseEditId} clearEditRequest={()=>setExpenseEditId(null)} registerEditorGuard={register} canEdit canDelete/>;
       if(view==="expense-report"||view==="overview")return <Reports key={view} data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type={view==="overview"?"overview":"expenses"} sourceRequest={null} clearSourceRequest={()=>{}}/>;
       if(view==="sale")return <Pos data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} requestPrint={id=>{window.__printedInvoice=id}} openStockAdjustment={()=>{throw new Error("Unexpected inventory editor in invoice smoke")}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
       if(view==="purchase")return <Purchases data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} requestPrint={id=>{window.__printedInvoice=id}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
       if(view==="warehouses")return <Warehouses data={data} run={run} openDoc={openDoc}/>;
+      if(view==="products")return <Products data={data} run={run} openProductMovements={id=>{window.__openedProductMovements=id}}/>;
+      if(view==="adjustments")return <Adjustment data={data} run={run} openDoc={openDoc} openSource={id=>{window.__openedStockSource=id}} openOpeningSource={id=>{window.__openedOpeningProduct=id}} openProductMovements={id=>{window.__openedProductMovements=id}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
       return <EmployeesPage data={data} run={run} openDoc={id=>{window.__openedPayrollDocument=id}} sourceId={sourceId} clearSource={()=>setSourceId(null)} registerEditorGuard={register}/>;
     }
     createRoot(document.getElementById("root")).render(<LocaleProvider initialLocale="ar"><ConfirmationProvider><Shell/></ConfirmationProvider></LocaleProvider>);
@@ -151,7 +157,7 @@ async function main() {
   const bundled = await build({
     absWorkingDir: source, stdin: { contents: entry, resolveDir: source, loader: "tsx" },
     bundle: true, platform: "browser", format: "iife", write: false, jsx: "automatic",
-    plugins:[{name:"ci-only-component-exports",setup(builder){builder.onLoad({filter:/[\\/]app[\\/]conta-app\.tsx$/},args=>({contents:fs.readFileSync(args.path,"utf8")+"\nexport { Parties, PartyPage, Reports, Expenses, Pos, Purchases, Warehouses };\n",loader:"tsx",resolveDir:path.dirname(args.path)}))}}],
+    plugins:[{name:"ci-only-component-exports",setup(builder){builder.onLoad({filter:/[\\/]app[\\/]conta-app\.tsx$/},args=>({contents:fs.readFileSync(args.path,"utf8")+"\nexport { Parties, PartyPage, Reports, Expenses, Pos, Purchases, Warehouses, Products, Adjustment, Records };\n",loader:"tsx",resolveDir:path.dirname(args.path)}))}}],
     define: { "process.env.NODE_ENV": JSON.stringify("production") },
   });
   const script = bundled.outputFiles[0].contents;
@@ -183,6 +189,7 @@ async function main() {
       const value = request.url === "/api/bootstrap" ? await GET(webRequest) :
         request.url.startsWith("/api/history?") ? await historyGET(webRequest) :
         request.url.startsWith("/api/reports?") ? await reportsGET(webRequest) :
+        request.url?.startsWith("/api/product-opening?") ? await productOpeningGET(webRequest) :
         request.url === "/api/command" ? await POST(webRequest) : new Response("Not found", { status: 404 });
       response.writeHead(value.status, Object.fromEntries(value.headers));
       response.end(Buffer.from(await value.arrayBuffer()));
@@ -352,6 +359,24 @@ async function main() {
   const {runInventoryScenarios}=await import("./inventory-ui-scenarios.mjs");
   result.inventory=await runInventoryScenarios({cdp,origin:base,command,database,screenshot,output});
   result.checkpoints.push(...result.inventory.checkpoints);
+  const {runOpeningClearanceScenarios}=await import("./opening-clearance-ui-scenarios.mjs");
+  result.openingClearance=await runOpeningClearanceScenarios({cdp,origin:base,database,screenshot});
+  result.checkpoints.push(...result.openingClearance.checkpoints);
+  const {runStockSettlementScenarios}=await import("./stock-settlement-ui-scenarios.mjs");
+  result.stockSettlements=await runStockSettlementScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.stockSettlements.checkpoints);
+  const {runWorkerCorrectionScenarios}=await import("./worker-correction-ui-scenarios.mjs");
+  result.workerCorrections=await runWorkerCorrectionScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.workerCorrections.checkpoints);
+  const {runEmployeeOpeningScenarios}=await import("./employee-opening-ui-scenarios.mjs");
+  result.employeeOpenings=await runEmployeeOpeningScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.employeeOpenings.checkpoints);
+  const {runExpenseTimeScenarios}=await import("./expense-time-ui-scenarios.mjs");
+  result.expenseTimes=await runExpenseTimeScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.expenseTimes.checkpoints);
+  const {runPayrollPaymentBalanceScenarios}=await import("./payroll-payment-balance-ui-scenarios.mjs");
+  result.payrollPaymentBalances=await runPayrollPaymentBalanceScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.payrollPaymentBalances.checkpoints);
   assert.deepEqual(cdp.errors, []);
   result.status = "passed";
 }

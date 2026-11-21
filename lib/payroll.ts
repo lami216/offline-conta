@@ -26,13 +26,24 @@ export function employeePaymentDirection(document: Row): "withdraw" | "deposit" 
   if (value !== "withdraw" && value !== "deposit") throw fail("نوع حركة حساب العامل غير صالح");
   return value;
 }
-const accountSign = (document: Row) => document.kind === "employee-accrual" || employeePaymentDirection(document) === "deposit" ? 1 : -1;
+export function employeeOpeningDirection(document: Row): "payable" | "receivable" {
+  const value = document.employeeOpeningDirection;
+  if (value !== "payable" && value !== "receivable") throw fail("اتجاه رصيد بداية العامل غير صالح");
+  return value;
+}
+const accountSign = (document: Row) => document.kind === "employee-opening" ? employeeOpeningDirection(document) === "payable" ? 1 : -1 : document.kind === "employee-closure" ? -1 : document.kind === "employee-accrual" || employeePaymentDirection(document) === "deposit" ? 1 : -1;
 function money(value: unknown, allowZero = false) {
   if ((typeof value !== "number" && typeof value !== "string") || text(String(value)) === "" ||
       (typeof value === "string" && !/^\d+(?:\.\d{1,2})?$/.test(value.trim()))) throw fail("المبلغ يجب أن يكون رقمًا صالحًا بخانتين عشريتين على الأكثر");
   const number = Number(value), cents = Math.round(number * 100);
   if (!Number.isFinite(number) || !Number.isSafeInteger(cents) || (allowZero ? cents < 0 : cents <= 0) || Math.abs(number * 100 - cents) > 1e-7) throw fail("المبلغ يجب أن يكون رقمًا موجبًا صالحًا");
   return cents;
+}
+/** Match ordinary cash movements: balances may be negative and retain sub-cent precision. */
+function assertPaymentAccountBalance(account: Row) {
+  const raw = account.balance;
+  const balance = typeof raw === "number" ? raw : typeof raw === "string" && /^[+-]?\d+(?:\.\d+)?$/.test(raw.trim()) ? Number(raw) : NaN;
+  if (!Number.isFinite(balance)) throw fail("بيانات رصيد الحساب غير صالحة", 409);
 }
 function day(value: unknown) {
   const input = text(value), date = new Date(`${input}T00:00:00.000Z`);
@@ -69,6 +80,7 @@ const agreements = (employee: Employee) => employee.agreements.filter(row => !ro
 function periods(employee: Employee, asOf: string) {
   const result: Period[] = [], schedule = agreements(employee);
   for (const [index, agreement] of schedule.entries()) {
+    if (money(agreement.amount, true) === 0) continue;
     if (agreement.startDate < employee.startDate) continue;
     const nextAgreement = schedule[index + 1]?.startDate;
     for (let startDate = agreement.startDate; startDate <= asOf && (!nextAgreement || startDate < nextAgreement);) {
@@ -112,6 +124,7 @@ async function audit(db: SqliteDatabase, action: string, before: Row | null, aft
 async function employeeById(db: SqliteDatabase, value: unknown) {
   const employee = await db.collection("employees").findOne({ id: text(value) }) as Employee | undefined;
   if (!employee || !Array.isArray(employee.agreements) || !employee.agreements.length) throw fail("الموظف غير موجود أو اتفاقه غير صالح", 404);
+  if (employee.isDeleted === true) throw fail("العامل محذوف نهائيًا؛ لا يمكن تعديل سجله أو استعادته", 409);
   return employee;
 }
 async function changeBalance(db: SqliteDatabase, employee: Employee, delta: number, now: Date) {
@@ -122,7 +135,7 @@ async function changeBalance(db: SqliteDatabase, employee: Employee, delta: numb
   employee.balance = amount(after);
 }
 async function state(db: SqliteDatabase, employee: Employee) {
-  const documents = await db.collection("documents").find({ employeeId: employee.id, kind: { $in: ["employee-accrual", "employee-payment"] } }).toArray();
+  const documents = await db.collection("documents").find({ employeeId: employee.id, kind: { $in: ["employee-accrual", "employee-payment", "employee-closure", "employee-opening"] } }).toArray();
   const accruals = documents.filter(row => row.kind === "employee-accrual"), allocated = new Map<string, number>();
   for (const payment of documents.filter(row => row.kind === "employee-payment" && row.status === "posted")) {
     if (!Array.isArray(payment.allocations)) throw fail("روابط دفعة الموظف غير صالحة", 409);
@@ -155,6 +168,10 @@ async function state(db: SqliteDatabase, employee: Employee) {
   for (const payment of documents.filter(row => row.kind === "employee-payment" && row.status === "posted")) {
     balance += accountSign(payment) * money(payment.total);
   }
+  for (const closure of documents.filter(row => row.kind === "employee-closure" && row.status === "posted")) balance -= money(closure.total);
+  const openings = documents.filter(row => row.kind === "employee-opening" && row.status === "posted");
+  if (openings.length > 1) throw fail("يوجد أكثر من رصيد بداية معتمد للعامل", 409);
+  for (const opening of openings) balance += accountSign(opening) * money(opening.total);
   if (balance !== signedMoney(employee.balance)) throw fail("رصيد الموظف لا يطابق سجل استحقاقاته ودفعاته", 409);
   return { documents, accruals, allocated };
 }
@@ -164,6 +181,7 @@ async function accrueEmployee(db: SqliteDatabase, employee: Employee, asOf: stri
   for (const period of periods(employee, asOf)) {
     const documentId = accrualId(employee.id, period.startDate), existing = byId.get(documentId);
     if (existing) continue;
+    assertAfterOpening(saved.documents, period.dueDate);
     const cents = money(period.agreement.amount);
     const document = { id: documentId, number: `EMP-${period.startDate}-${documentId.slice("employee-accrual-".length)}`, kind: "employee-accrual", status: "posted", revision: 0,
       employeeId: employee.id, employeeName: employee.name, periodStart: period.startDate, periodEnd: period.endDate, dueDate: period.dueDate,
@@ -182,7 +200,7 @@ export async function accrueDueEmployees(db: SqliteDatabase, session: SqliteSess
   const now = options.now ?? new Date(), asOf = day(options.asOf ?? today(now));
   if (asOf > today(now)) throw fail("لا يمكن اعتماد استحقاق قبل حلول تاريخه");
   return atomic(db, session, async () => {
-    const employees = await db.collection("employees").find({ isArchived: { $ne: true } }).toArray() as Employee[];
+    const employees = await db.collection("employees").find({ isArchived: { $ne: true }, isDeleted: { $ne: true } }).toArray() as Employee[];
     let created = 0, totalAccrued = 0;
     for (let employee of employees) {
       if (hasLegacyResumeShape(employee)) {
@@ -209,7 +227,7 @@ export async function accrueDueEmployees(db: SqliteDatabase, session: SqliteSess
 }
 
 function agreementFrom(input: Row, startDate: string, anchorDay: number): Agreement {
-  return { id: id("agreement"), startDate, amount: amount(money(input.amount)), intervalMonths: interval(input.intervalMonths), entitlement: timing(input.entitlement), anchorDay };
+  return { id: id("agreement"), startDate, amount: amount(money(input.amount, true)), intervalMonths: interval(input.intervalMonths), entitlement: timing(input.entitlement), anchorDay };
 }
 function validateSchedule(schedule: Agreement[]) {
   const active = schedule.filter(row => !row.canceledAt).sort((a, b) => a.startDate.localeCompare(b.startDate));
@@ -235,6 +253,83 @@ function hasLegacyResumeShape(employee: Employee) {
   return active.some((row, index) => row.startDate < employee.startDate || active[index - 1]?.stopDate === row.startDate);
 }
 const agreementTerms = ["id", "startDate", "amount", "intervalMonths", "entitlement", "anchorDay"] as const;
+function scheduleCorrectionEvents(employee: Employee, events: Row[]) {
+  return events.filter(event => event.action === "payroll.employee.schedule-correction" && event.status === "committed" && event.employeeId === employee.id &&
+    typeof event.createdAt === "string" && Number.isFinite(Date.parse(event.createdAt)) &&
+    event.before?.id === employee.id && event.after?.id === employee.id && Number.isSafeInteger(event.before.revision) &&
+    event.after.revision === event.before.revision + 1 && event.after.revision <= employee.revision &&
+    event.after.scheduleRecalculation?.version === 1 && Array.isArray(event.after.scheduleRecalculation.paymentIds));
+}
+function correctedHistoricalAgreement(employee: Employee, agreement: Agreement, events: Row[]) {
+  return scheduleCorrectionEvents(employee, events).some(event =>
+    Array.isArray(event.before.agreements) && Array.isArray(event.after.agreements) &&
+    event.before.agreements.some((row: Agreement) => agreementTerms.every(key => row[key] === agreement[key])) &&
+    event.after.agreements.some((row: Agreement) => agreementTerms.every(key => row[key] === agreement[key]) && row.canceledAt === agreement.canceledAt) &&
+    typeof agreement.canceledAt === "string" && agreement.canceledAt <= event.createdAt);
+}
+function correctedHistoricalPayment(employee: Employee, document: Row, events: Row[]) {
+  return scheduleCorrectionEvents(employee, events).some(event =>
+    event.after.scheduleRecalculation.paymentIds.includes(document.id) && document.businessDate >= event.before.startDate &&
+    typeof document.createdAt === "string" && document.createdAt <= event.createdAt);
+}
+function verifiedHistoricalRepayment(employee: Employee, document: Row, events: Row[]) {
+  const proof = document.employeeHistoricalRepayment;
+  if (!proof || proof.version !== 1 || employeePaymentDirection(document) !== "deposit" || typeof proof.beforeBalance !== "number" || proof.beforeBalance >= 0 ||
+      money(document.total) > -signedMoney(proof.beforeBalance) || !text(proof.withdrawalDocumentId)) return false;
+  const source = events.some(event => event.status === "committed" && event.employeeId === employee.id &&
+    ["payroll.employee-payment.post", "payroll.employee-payment.update"].includes(event.action) && event.after?.id === proof.withdrawalDocumentId &&
+    employeePaymentDirection(event.after) === "withdraw" && event.after.businessDate <= document.businessDate && event.createdAt <= document.createdAt);
+  return source && events.some(event => event.status === "committed" && event.employeeId === employee.id &&
+    ["payroll.employee-payment.post", "payroll.employee-payment.update"].includes(event.action) && event.after?.id === document.id &&
+    (event.after.revision === document.revision || (document.status === "voided" && event.after.revision + 1 === document.revision)) && event.after.total === document.total && event.after.businessDate === document.businessDate &&
+    event.after.employeeHistoricalRepayment?.version === 1 && event.after.employeeHistoricalRepayment.beforeBalance === proof.beforeBalance &&
+    event.after.employeeHistoricalRepayment.withdrawalDocumentId === proof.withdrawalDocumentId);
+}
+/** A retained cash entry can outlive an edited/voided opening. Only server
+ * posting audits prove that its early business date had a valid account anchor. */
+function verifiedOpeningPayment(employee: Employee, document: Row, events: Row[]) {
+  const openingId = text(document.employeeOpeningAnchor?.openingDocumentId);
+  if (!openingId || document.employeePaymentVersion !== 2) return false;
+  return events.some(event => event.status === "committed" && event.employeeId === employee.id &&
+    ["payroll.employee-payment.post", "payroll.employee-payment.update"].includes(event.action) && event.after?.id === document.id &&
+    (event.after.revision === document.revision || (document.status === "voided" && event.after.revision + 1 === document.revision)) &&
+    event.after.total === document.total && event.after.businessDate === document.businessDate && event.after.employeePaymentDirection === document.employeePaymentDirection &&
+    event.after.employeeOpeningAnchor?.openingDocumentId === openingId && typeof event.createdAt === "string" &&
+    events.some(source => source.status === "committed" && source.employeeId === employee.id &&
+      ["payroll.employee-opening.post", "payroll.employee-opening.update"].includes(source.action) && source.createdAt <= event.createdAt &&
+      source.after?.id === openingId && source.after.employeeId === employee.id && source.after.kind === "employee-opening" && source.after.status === "posted" && source.after.businessDate <= document.businessDate));
+}
+const openingDateFailure = () => fail("تاريخ الحركة يسبق رصيد بداية العامل؛ عدّل تاريخ رصيد البداية أولًا ثم أعد المحاولة", 409);
+function assertAfterOpening(documents: Row[], date: string) {
+  const opening = documents.find(document => document.kind === "employee-opening" && document.status === "posted");
+  if (opening && date < opening.businessDate) throw openingDateFailure();
+}
+async function saveEmployeeOpening(db: SqliteDatabase, employee: Employee, input: Row, now: Date, previous?: Row) {
+  const ledger = await state(db, employee), cents = money(input.amount ?? previous?.total);
+  const direction = input.direction ?? previous?.employeeOpeningDirection;
+  if (direction !== "payable" && direction !== "receivable") throw fail("اختر لنا أو علينا لرصيد بداية العامل");
+  if (ledger.documents.some(document => document.kind === "employee-opening" && document.status === "posted" && document.id !== previous?.id)) throw fail("يوجد رصيد بداية معتمد للعامل؛ عدّله أو ألغِه أولًا", 409);
+  const date = day(input.occurredAt ?? previous?.businessDate ?? today(now));
+  const bounds = [today(now), ...ledger.documents.filter(document => document.kind !== "employee-opening").map(document => day(document.businessDate)), ...periods(employee, today(now)).map(period => period.dueDate)];
+  if (bounds.some(bound => date > bound)) throw fail("تاريخ رصيد البداية يجب ألا يتجاوز اليوم أو أول حركة أو استحقاق للعامل", 409);
+  const note = input.note === undefined ? text(previous?.note) : text(input.note);
+  if (note.length > 1000) throw fail("ملاحظة رصيد البداية طويلة جدًا");
+  const delta = (direction === "payable" ? 1 : -1) * cents;
+  const document = { id: previous?.id ?? id("employee-opening"), number: previous?.number ?? `EMP-OPEN-${randomUUID()}`, kind: "employee-opening", status: "posted", revision: Number(previous?.revision ?? -1) + 1,
+    employeeId: employee.id, employeeName: employee.name, employeeOpeningDirection: direction,
+    employeeAccountOrder: previous?.employeeAccountOrder ?? Math.max(0, ...ledger.documents.map(row => Number(row.employeeAccountOrder ?? 0))) + 1,
+    total: amount(cents), amount: amount(cents), balanceDelta: amount(delta), businessDate: date, occurredAt: iso(date),
+    paymentMethod: null, cashAmount: 0, paidTotal: 0, dueTotal: 0, lines: [], note, createdAt: previous?.createdAt ?? now.toISOString(), ...(previous ? { updatedAt: now.toISOString(), correctionReason: reason(input) } : {}) };
+  await changeBalance(db, employee, delta - (previous ? accountSign(previous) * money(previous.total) : 0), now);
+  if (previous) {
+    const changed = await db.collection("documents").updateOne({ id: previous.id, status: "posted", revision: previous.revision }, { $set: document });
+    if (!changed.matchedCount) throw fail("تغير رصيد البداية أثناء العملية؛ حدّث الصفحة وأعد المحاولة", 409);
+  }
+  else await db.collection("documents").insertOne(document);
+  await audit(db, previous ? "employee-opening.update" : "employee-opening.post", previous ? structuredClone(previous) : null, document, now);
+  await state(db, employee);
+  return document;
+}
 function legacyAgreementEvent(employee: Employee, agreement: Agreement, events: Row[], action = "payroll.employee.restore", maxRevision = employee.revision) {
   return events.find(event => {
     if (!event) return false;
@@ -305,22 +400,44 @@ export function repairLegacyPayrollResume(employee: Employee, documents: Row[], 
   validateSchedule(schedule);
   return { ...employee, agreements: schedule.sort((a, b) => a.startDate.localeCompare(b.startDate)), revision: employee.revision + 1 };
 }
-async function paymentDate(input: Row, employee: Employee, now: Date) {
+async function paymentDate(db: SqliteDatabase, input: Row, employee: Employee, now: Date, previous?: Row) {
   const date = day(input.occurredAt ?? today(now));
-  if (date < employee.startDate || date > today(now)) throw fail("تاريخ الدفع يجب أن يكون بين بداية عمل الموظف واليوم");
+  assertAfterOpening(await db.collection("documents").find({ employeeId: employee.id, kind: "employee-opening", status: "posted" }).toArray(), date);
+  let historical = false;
+  if (previous && date === previous.businessDate && date < employee.startDate) {
+    const events = await db.collection("auditEvents").find({ employeeId: employee.id }).toArray();
+    historical = correctedHistoricalPayment(employee, previous, events) || verifiedHistoricalRepayment(employee, previous, events) || verifiedOpeningPayment(employee, previous, events);
+  }
+  if (!historical && date < employee.startDate) {
+    const opening = await db.collection("documents").findOne({ employeeId: employee.id, kind: "employee-opening", status: "posted" });
+    historical = Boolean(opening && opening.businessDate <= date);
+  }
+  if (!historical && date < employee.startDate && input.direction === "deposit" && signedMoney(employee.balance) < 0 && money(input.amount) <= -signedMoney(employee.balance)) {
+    const events = await db.collection("auditEvents").find({ employeeId: employee.id, action: "payroll.employee.schedule-correction" }).toArray();
+    const withdrawals = await db.collection("documents").find({ employeeId: employee.id, kind: "employee-payment", status: "posted" }).toArray();
+    historical = withdrawals.some(document => employeePaymentDirection(document) === "withdraw" && document.businessDate <= date && correctedHistoricalPayment(employee, document, events));
+  }
+  if ((date < employee.startDate && !historical) || date > today(now)) throw fail("تاريخ الدفع يجب أن يكون بين بداية عمل الموظف واليوم");
   return date;
 }
 async function postPayment(db: SqliteDatabase, session: SqliteSession, employee: Employee, input: Row, now: Date, previous?: Row) {
-  const cents = money(input.amount), date = await paymentDate(input, employee, now), ledger = await state(db, employee);
+  const cents = money(input.amount), date = await paymentDate(db, input, employee, now, previous), ledger = await state(db, employee);
   const direction = input.direction ?? previous?.employeePaymentDirection ?? "withdraw";
   if (direction !== "withdraw" && direction !== "deposit") throw fail("نوع حركة حساب العامل غير صالح");
-  const allowAdvance = input.direction !== undefined || previous?.employeePaymentVersion === 2;
-  const account = await db.collection("paymentAccounts").findOne({ $or: [{ id: text(input.paymentMethod) }, { code: text(input.paymentMethod) }], isActive: true, isArchived: { $ne: true } });
-  // Other commerce may leave sub-cent cash. Salary amounts are cents, but the
-  // existing bank balance must retain its precision rather than be rounded.
-  const balance = typeof account?.balance === "number" ? account.balance : typeof account?.balance === "string" && /^\d+(?:\.\d+)?$/.test(account.balance.trim()) ? Number(account.balance) : NaN;
-  const required = amount(cents), tolerance = Math.min(1e-7, Number.EPSILON * Math.max(1, Math.abs(balance), required));
-  if (!account || !Number.isFinite(balance) || (direction === "withdraw" && (balance < 0 || balance + tolerance < required))) throw fail("اختر حسابًا نشطًا برصيد يكفي مبلغ الصرف", 409);
+  const opening = ledger.documents.find(document => document.kind === "employee-opening" && document.status === "posted");
+  const allowAdvance = input.direction !== undefined || previous?.employeePaymentVersion === 2 || Boolean(opening);
+  const accountKey = text(input.paymentMethod);
+  if (!accountKey) throw fail("يجب اختيار وسيلة دفع صالحة", 409);
+  const account = await db.collection("paymentAccounts").findOne({ $or: [{ id: accountKey }, { code: accountKey }] });
+  const previousAccountKey = text(previous?.paymentMethod);
+  const sameOriginalAccount = Boolean(previousAccountKey && account && [account.id, account.code].includes(previousAccountKey));
+  if (!account || (!sameOriginalAccount && (account.isActive !== true || account.isArchived === true))) throw fail("يجب اختيار وسيلة دفع صالحة", 409);
+  assertPaymentAccountBalance(account);
+  // Historical corrections may retain their original stopped account, as other
+  // cash edits do. New movements and a different target still require an active account.
+  if (sameOriginalAccount && (account.isActive !== true || account.isArchived === true)) {
+    await db.collection("paymentAccounts").updateOne({ id: account.id }, { $set: { isActive: true, isArchived: false, archivedAt: null, updatedAt: now.toISOString() } });
+  }
   const allocations: Array<{ accrualId: string; amount: number }> = [];
   let remaining = cents;
   for (const accrual of ledger.accruals.filter(row => row.status === "posted" && row.dueDate <= date).sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)) || String(a.periodStart).localeCompare(String(b.periodStart)))) {
@@ -330,13 +447,29 @@ async function postPayment(db: SqliteDatabase, session: SqliteSession, employee:
     if (!remaining) break;
   }
   if (direction === "withdraw" && remaining && !allowAdvance) throw fail("المبلغ يتجاوز المستحق للموظف في تاريخ الدفع", 409);
-  const independent = input.direction !== undefined || direction === "deposit" || remaining > 0 || previous?.employeePaymentVersion === 2;
-  const document = { ...(previous ?? {}), id: previous?.id ?? id("employee-payment"), number: previous?.number ?? `EMP-PAY-${randomUUID()}`,
+  const independent = input.direction !== undefined || direction === "deposit" || remaining > 0 || previous?.employeePaymentVersion === 2 || Boolean(opening);
+  let openingAnchor: Row | undefined;
+  if (date < employee.startDate) {
+    if (opening && opening.businessDate <= date) openingAnchor = { openingDocumentId: opening.id };
+    else if (previous && date === previous.businessDate && verifiedOpeningPayment(employee, previous, await db.collection("auditEvents").find({ employeeId: employee.id }).toArray())) openingAnchor = previous.employeeOpeningAnchor;
+  }
+  let historicalRepayment: Row | undefined;
+  if (date < employee.startDate && direction === "deposit" && !openingAnchor) {
+    const events = await db.collection("auditEvents").find({ employeeId: employee.id }).toArray();
+    const existingHistorical = previous && date === previous.businessDate && correctedHistoricalPayment(employee, previous, events);
+    const source = ledger.documents.find(document => document.kind === "employee-payment" && document.status === "posted" && employeePaymentDirection(document) === "withdraw" && document.businessDate <= date && correctedHistoricalPayment(employee, document, events));
+    if (existingHistorical) historicalRepayment = previous.employeeHistoricalRepayment;
+    else if (source && signedMoney(employee.balance) < 0 && cents <= -signedMoney(employee.balance)) historicalRepayment = { version: 1, beforeBalance: employee.balance, withdrawalDocumentId: source.id };
+    else if (previous && verifiedHistoricalRepayment(employee, previous, events) && cents <= -signedMoney(previous.employeeHistoricalRepayment.beforeBalance)) historicalRepayment = previous.employeeHistoricalRepayment;
+    else throw fail("تعذر إثبات سداد الدين السابق لتاريخ البداية المصحح", 409);
+  }
+  const document: Row = { ...(previous ?? {}), id: previous?.id ?? id("employee-payment"), number: previous?.number ?? `EMP-PAY-${randomUUID()}`,
     kind: "employee-payment", status: "posted", revision: Number(previous?.revision ?? -1) + 1, employeeId: employee.id, employeeName: employee.name,
     employeeAccountOrder: previous?.employeeAccountOrder ?? Math.max(0, ...ledger.documents.map(row => Number(row.employeeAccountOrder ?? 0))) + 1,
     paymentMethod: account.id, total: amount(cents), amount: amount(cents), paidTotal: amount(cents), dueTotal: 0,
-    employeePaymentDirection: direction, ...(independent ? { employeePaymentVersion: 2 } : {}), balanceDelta: (direction === "deposit" ? 1 : -1) * amount(cents),
+    employeePaymentDirection: direction, ...(independent ? { employeePaymentVersion: 2 } : {}), ...(historicalRepayment ? { employeeHistoricalRepayment: historicalRepayment } : {}), ...(openingAnchor ? { employeeOpeningAnchor: openingAnchor } : {}), balanceDelta: (direction === "deposit" ? 1 : -1) * amount(cents),
     businessDate: date, occurredAt: iso(date), allocations: independent ? [] : allocations, note: text(input.note), lines: [], ...(previous ? { updatedAt: now.toISOString() } : { createdAt: now.toISOString() }) };
+  if (!openingAnchor) delete document.employeeOpeningAnchor;
   const movement = await postFinancialMovement(db, session, document, direction === "deposit" ? "in" : "out", amount(cents), "employee-payment");
   await db.collection("financialMovements").updateOne({ id: movement!.id }, { $set: { employeeId: employee.id, employeeName: employee.name } });
   await changeBalance(db, employee, (direction === "deposit" ? 1 : -1) * cents, now);
@@ -344,15 +477,66 @@ async function postPayment(db: SqliteDatabase, session: SqliteSession, employee:
   else await db.collection("documents").insertOne(document);
   return document;
 }
-async function undoPayment(db: SqliteDatabase, session: SqliteSession, employee: Employee, document: Row, why: string, now: Date, neutralDepositEdit = false) {
+async function undoPayment(db: SqliteDatabase, session: SqliteSession, employee: Employee, document: Row, why: string, now: Date) {
   const movement = await findActiveFinancialMovement(db, session, { documentId: document.id, type: "employee-payment" });
   if (!movement || money(movement.amount) !== money(document.total) || movement.direction !== (employeePaymentDirection(document) === "deposit" ? "in" : "out")) throw fail("حركة صرف الموظف الأصلية غير متطابقة", 409);
   const account = await db.collection("paymentAccounts").findOne({ id: document.paymentMethod });
-  if (!neutralDepositEdit && employeePaymentDirection(document) === "deposit" && (!account || Number(account.balance) < Number(document.total))) throw fail("رصيد وسيلة الدفع لا يكفي لعكس إيداع العامل", 409);
+  if (!account) throw fail("يجب اختيار وسيلة دفع صالحة", 409);
+  assertPaymentAccountBalance(account);
   const reverseId = await reverseFinancialMovement(db, session, movement, why);
   await db.collection("financialMovements").updateOne({ id: reverseId }, { $set: { employeeId: employee.id, employeeName: document.employeeName } });
   await changeBalance(db, employee, -accountSign(document) * money(document.total), now);
   await db.collection("documents").updateOne({ id: document.id }, { $set: { status: "voided" } });
+}
+
+/** Explicit profile correction changes entitlement, never the actual cash ledger.
+ * Original agreements/accruals remain in audits and canceled source records. */
+async function correctEmployeeSchedule(db: SqliteDatabase, employee: Employee, input: Row, asOf: string, now: Date) {
+  const startDate = day(input.startDate), prior = agreements(employee).at(-1) ?? employee.agreements.at(-1)!;
+  const next = agreementFrom({ amount: input.amount ?? prior.amount, intervalMonths: input.intervalMonths ?? prior.intervalMonths, entitlement: input.entitlement ?? prior.entitlement }, startDate, Number(startDate.slice(-2)));
+  if (startDate === employee.startDate && next.amount === prior.amount && next.intervalMonths === prior.intervalMonths && next.entitlement === prior.entitlement) return undefined;
+  if (employee.isArchived) throw fail("استأنف العامل قبل تصحيح تاريخ البداية أو اتفاق راتبه", 409);
+  const ledger = await state(db, employee), payments = ledger.documents.filter(document => document.kind === "employee-payment");
+  for (const period of periods({ ...employee, startDate, agreements: [next] }, asOf)) assertAfterOpening(ledger.documents, period.dueDate);
+  if (payments.length) employee.accountStartDate = payments.map(document => day(document.businessDate)).sort()[0];
+  let order = Math.max(0, ...ledger.documents.map(document => Number(document.employeeAccountOrder ?? 0)));
+  for (const payment of payments) {
+    if (payment.employeePaymentVersion === 2) continue;
+    // Old allocation-bound cash becomes an independent account movement. Its
+    // ID, date, amount, revision and every financial row remain byte-identical.
+    const revised = { ...payment, employeePaymentVersion: 2, employeePaymentDirection: "withdraw", allocations: [], employeeAccountOrder: payment.employeeAccountOrder ?? ++order, updatedAt: now.toISOString() };
+    await db.collection("documents").updateOne({ id: payment.id, revision: payment.revision }, { $set: revised });
+    await audit(db, "employee-payment.schedule-rebase", payment, revised, now);
+  }
+  const originals = new Map(ledger.accruals.map(document => [String(document.id), document]));
+  for (const document of ledger.accruals.filter(document => document.status === "posted")) {
+    const revised = { ...document, status: "voided", revision: Number(document.revision) + 1, voidedAt: now.toISOString(), updatedAt: now.toISOString(), employeeScheduleRecomputed: true, voidReason: text(input.reason) || "تصحيح تاريخ البداية أو اتفاق العامل" };
+    await db.collection("documents").updateOne({ id: document.id, status: "posted", revision: document.revision }, { $set: revised });
+    await changeBalance(db, employee, -money(document.total), now);
+    await audit(db, "employee-accrual.schedule-void", document, revised, now);
+  }
+  employee.startDate = startDate;
+  employee.agreements = [...employee.agreements.map(agreement => agreement.canceledAt ? agreement : { ...agreement, canceledAt: now.toISOString() }), next];
+  validateSchedule(employee.agreements);
+  for (const period of periods(employee, asOf)) {
+    const documentId = accrualId(employee.id, period.startDate), original = originals.get(documentId);
+    // A manually canceled entitlement remains canceled. A period canceled by
+    // this explicit correction may be recalculated under its stable ID.
+    if (original?.status === "voided" && original.employeeScheduleRecomputed !== true) continue;
+    const cents = money(period.agreement.amount);
+    const current = await db.collection("documents").findOne({ id: documentId });
+    const document: Row = { ...(current ?? {}), id: documentId, number: original?.number ?? `EMP-${period.startDate}-${documentId.slice("employee-accrual-".length)}`, kind: "employee-accrual", status: "posted", revision: current ? Number(current.revision) + 1 : 0,
+      employeeId: employee.id, employeeName: employee.name, periodStart: period.startDate, periodEnd: period.endDate, dueDate: period.dueDate,
+      businessDate: period.dueDate, occurredAt: iso(period.dueDate), total: amount(cents), amount: amount(cents), balanceDelta: amount(cents),
+      agreementSnapshot: structuredClone(period.agreement), lines: [], createdAt: original?.createdAt ?? now.toISOString(), updatedAt: now.toISOString(), context: "profile-correction", employeeScheduleRecomputed: true };
+    delete document.voidedAt; delete document.voidReason;
+    if (current) await db.collection("documents").updateOne({ id: documentId }, { $set: document, $unset: { voidedAt: "", voidReason: "" } });
+    else await db.collection("documents").insertOne(document);
+    await changeBalance(db, employee, cents, now);
+    await audit(db, "employee-accrual.schedule-recompute", original ?? null, document, now);
+  }
+  await state(db, employee);
+  return { version: 1, asOf, paymentIds: payments.map(document => String(document.id)), reason: text(input.reason) || "تصحيح بيانات اتفاق العامل" };
 }
 
 export async function handlePayrollCommand(db: SqliteDatabase, session: SqliteSession, input: Row, now = new Date()): Promise<string | { created: number; totalAccrued: number; employeeCount: number }> {
@@ -367,16 +551,52 @@ export async function handlePayrollCommand(db: SqliteDatabase, session: SqliteSe
       await db.collection("employees").insertOne(employee);
       await audit(db, type, null, employee, now);
       // Creating the card alone never materializes salary or bank movement.
+      if (input.openingBalance !== undefined) {
+        if (!input.openingBalance || typeof input.openingBalance !== "object" || Array.isArray(input.openingBalance)) throw fail("بيانات رصيد بداية العامل غير صالحة");
+        await saveEmployeeOpening(db, employee, input.openingBalance, now);
+      }
       return employee.id;
+    }
+    if (type === "employee-opening.post") {
+      const employee = await employeeById(db, input.employeeId);
+      return (await saveEmployeeOpening(db, employee, input, now)).id;
+    }
+    if (type === "employee-opening.update" || type === "employee-opening.void") {
+      const document = await db.collection("documents").findOne({ id: text(input.documentId), kind: "employee-opening", status: "posted" });
+      if (!document) throw fail("رصيد بداية العامل غير موجود أو ملغى", 404);
+      checkRevision(document, input); const why = reason(input), employee = await employeeById(db, document.employeeId);
+      if (type === "employee-opening.update") return (await saveEmployeeOpening(db, employee, input, now, document)).id;
+      await state(db, employee);
+      await changeBalance(db, employee, -accountSign(document) * money(document.total), now);
+      const revised = { ...document, status: "voided", revision: document.revision + 1, updatedAt: now.toISOString(), voidedAt: now.toISOString(), voidReason: why };
+      const changed = await db.collection("documents").updateOne({ id: document.id, status: "posted", revision: document.revision }, { $set: revised });
+      if (!changed.matchedCount) throw fail("تغير رصيد البداية أثناء العملية؛ حدّث الصفحة وأعد المحاولة", 409);
+      await audit(db, type, structuredClone(document), revised, now); await state(db, employee); return document.id;
     }
     if (type.startsWith("employee.")) {
       const employee = await employeeById(db, input.employeeId), before = structuredClone(employee);
+      let scheduleRecalculation: Row | undefined;
       checkRevision(employee, input);
       await state(db, employee);
-      if (type === "employee.archive") {
+      if (type === "employee.delete") {
+        if (!employee.isArchived) throw fail("الحذف النهائي متاح من أرشيف العمال فقط", 409);
+        const balance = signedMoney(employee.balance);
+        if (balance < 0) throw fail("لا يمكن حذف العامل نهائيًا لأن عليه دينًا للمحل؛ سوِّ حسابه أولًا", 409);
+        let closureId: string | null = null;
+        if (balance > 0) {
+          const ledger = await state(db, employee), summary = payrollSummary([employee], ledger.documents).rows[0];
+          const closure = { id: id("employee-closure"), number: `EMP-CLOSE-${randomUUID()}`, kind: "employee-closure", status: "posted", revision: 0,
+            employeeId: employee.id, employeeName: employee.name, employeeAccountOrder: Math.max(0, ...ledger.documents.map(document => Number(document.employeeAccountOrder ?? 0))) + 1,
+            total: amount(balance), amount: amount(balance), balanceDelta: -amount(balance), salaryReserveReleased: summary.currentUnpaidWages,
+            businessDate: asOf, occurredAt: iso(asOf), createdAt: now.toISOString(), lines: [], paymentMethod: null, cashAmount: 0, paidTotal: 0, dueTotal: 0,
+            note: text(input.reason) || "إغلاق حساب العامل عند الحذف النهائي من الأرشيف" };
+          await db.collection("documents").insertOne(closure); await changeBalance(db, employee, -balance, now); await audit(db, "employee-closure.post", null, closure, now); closureId = closure.id;
+        }
+        employee.isDeleted = true; employee.deletedAt = now.toISOString(); employee.deletionDocumentId = closureId;
+      } else if (type === "employee.archive") {
         if (employee.isArchived) throw fail("الموظف مؤرشف بالفعل", 409);
         await accrueEmployee(db, employee, asOf, now, "archive");
-        employee.agreements = employee.agreements.map(row => ({ ...row, ...(row.startDate > asOf ? { canceledAt: now.toISOString() } : { stopDate: row.stopDate && row.stopDate < asOf ? row.stopDate : asOf }) }));
+        employee.agreements = employee.agreements.map(row => row.canceledAt ? row : ({ ...row, ...(row.startDate > asOf ? { canceledAt: now.toISOString() } : { stopDate: row.stopDate && row.stopDate < asOf ? row.stopDate : asOf }) }));
         employee.isArchived = true; employee.archivedAt = now.toISOString();
       } else if (type === "employee.restore") {
         if (!employee.isArchived) throw fail("الموظف غير مؤرشف", 409);
@@ -394,7 +614,8 @@ export async function handlePayrollCommand(db: SqliteDatabase, session: SqliteSe
         const name = input.name === undefined ? employee.name : text(input.name), phone = input.phone === undefined ? employee.phone : text(input.phone);
         if (!name || name.length > 120 || phone.length > 40) throw fail("بيانات الموظف غير صالحة");
         employee.name = name; employee.phone = phone;
-        if (["amount", "intervalMonths", "entitlement", "effectiveFrom"].some(key => Object.hasOwn(input, key))) {
+        if (Object.hasOwn(input, "startDate")) scheduleRecalculation = await correctEmployeeSchedule(db, employee, input, asOf, now);
+        else if (["amount", "intervalMonths", "entitlement", "effectiveFrom"].some(key => Object.hasOwn(input, key))) {
           if (employee.isArchived) throw fail("استأنف الموظف قبل تعديل اتفاق راتبه", 409);
           const effective = day(input.effectiveFrom ?? nextPayrollAgreementStart(employee, asOf));
           if (effective <= asOf || effective < employee.startDate) throw fail("تعديل الاتفاق يطبق على فترة مستقبلية تبدأ من تاريخ بداية العامل أو بعده", 409);
@@ -410,6 +631,7 @@ export async function handlePayrollCommand(db: SqliteDatabase, session: SqliteSe
       const changed = await db.collection("employees").updateOne({ id: employee.id, revision: before.revision }, { $set: employee });
       if (!changed.matchedCount) throw fail("تغير الموظف أثناء العملية", 409);
       await audit(db, type, before, employee, now);
+      if (scheduleRecalculation) await audit(db, "employee.schedule-correction", before, { ...employee, scheduleRecalculation }, now);
       return employee.id;
     }
     if (type === "employee-payment.post") {
@@ -426,15 +648,7 @@ export async function handlePayrollCommand(db: SqliteDatabase, session: SqliteSe
       const employee = await employeeById(db, document.employeeId), ledger = await state(db, employee);
       if (kind === "employee-payment") {
         const originalAccount = type.endsWith("update") ? await db.collection("paymentAccounts").findOne({ id: document.paymentMethod }) : null;
-        const targetAccount = type.endsWith("update") ? await db.collection("paymentAccounts").findOne({
-          $or: [{ id: text(input.paymentMethod ?? document.paymentMethod) }, { code: text(input.paymentMethod ?? document.paymentMethod) }],
-        }) : null;
-        const sameDepositAccount = type.endsWith("update") && employeePaymentDirection(document) === "deposit" &&
-          (input.direction ?? "deposit") === "deposit" && Boolean(originalAccount && targetAccount && originalAccount.id === targetAccount.id);
-        if (sameDepositAccount && Number(originalAccount!.balance) + amount(money(input.amount)) - Number(document.total) < 0) {
-          throw fail("رصيد وسيلة الدفع لا يكفي لعكس إيداع العامل", 409);
-        }
-        await undoPayment(db, activeSession, employee, document, why, now, sameDepositAccount);
+        await undoPayment(db, activeSession, employee, document, why, now);
         if (type.endsWith("update")) {
           const revised = await postPayment(db, activeSession, employee, { ...input, occurredAt: input.occurredAt ?? document.businessDate, paymentMethod: input.paymentMethod ?? document.paymentMethod, note: input.note ?? document.note }, now, document);
           if (originalAccount?.isArchived === true && revised.paymentMethod === originalAccount.id) {
@@ -452,6 +666,7 @@ export async function handlePayrollCommand(db: SqliteDatabase, session: SqliteSe
           throw new PayrollError(`الاستحقاق مرتبط بدفعات ${blockers.map(row => String(row.number)).join("، ")}. عالج الدفعات المرتبطة أولًا`, 409, blockers.map(row => ({ documentId: row.id, number: row.number })));
         }
         const revisedAmount = type.endsWith("void") ? 0 : money(input.amount), date = input.occurredAt === undefined ? document.businessDate : day(input.occurredAt);
+        if (type.endsWith("update")) assertAfterOpening(ledger.documents, date);
         if (revisedAmount < allocated) throw fail("الاستحقاق المعدل لا يمكن أن يقل عن المبلغ المصروف منه", 409);
         const recordedEarlyDate = date === document.businessDate && document.agreementSnapshot?.startDate < employee.startDate;
         if ((date < employee.startDate && !recordedEarlyDate) || date > asOf) throw fail("تاريخ الاستحقاق يجب أن يكون بين بداية الموظف واليوم");
@@ -463,7 +678,7 @@ export async function handlePayrollCommand(db: SqliteDatabase, session: SqliteSe
           await audit(db, type, before, revised, now); return document.id;
         }
       }
-      const revised = { ...document, status: "voided", revision: document.revision + 1, updatedAt: now.toISOString(), voidedAt: now.toISOString(), voidReason: why };
+      const revised = { ...document, status: "voided", revision: document.revision + 1, updatedAt: now.toISOString(), voidedAt: now.toISOString(), voidReason: why, ...(kind === "employee-accrual" ? { employeeScheduleRecomputed: false } : {}) };
       await db.collection("documents").updateOne({ id: document.id }, { $set: revised });
       await audit(db, type, before, revised, now); return document.id;
     }
@@ -475,13 +690,19 @@ export async function handlePayrollCommand(db: SqliteDatabase, session: SqliteSe
 export function payrollExpenseEntries(documents: Row[]) {
   const states = new Map<string, { earned: number; drawn: number; recognized: number }>();
   const entries: Array<{ documentId: string; employeeId: string; employeeName: string; businessDate: string; occurredAt: string; total: number }> = [];
-  const ordered = documents.filter(row => row.status === "posted" && ["employee-accrual", "employee-payment"].includes(row.kind))
+  const ordered = documents.filter(row => row.status === "posted" && ["employee-opening", "employee-accrual", "employee-payment"].includes(row.kind))
     .slice().sort((a, b) => String(a.businessDate).localeCompare(String(b.businessDate)) ||
+      (a.kind === b.kind ? 0 : a.kind === "employee-opening" ? -1 : b.kind === "employee-opening" ? 1 : 0) ||
       (a.kind === b.kind ? 0 : a.kind === "employee-accrual" ? -1 : 1) ||
       Number(a.employeeAccountOrder ?? 0) - Number(b.employeeAccountOrder ?? 0) ||
       String(a.createdAt ?? a.occurredAt).localeCompare(String(b.createdAt ?? b.occurredAt)));
   for (const document of ordered) {
     const state = states.get(document.employeeId) ?? { earned: 0, drawn: 0, recognized: 0 }, cents = money(document.total);
+    if (document.kind === "employee-opening") {
+      state.drawn -= accountSign(document) * cents;
+      if (!Number.isSafeInteger(state.drawn)) throw fail("مجموع حركات العامل يتجاوز النطاق المسموح");
+      states.set(document.employeeId, state); continue;
+    }
     if (document.kind === "employee-accrual") state.earned += cents;
     else state.drawn += employeePaymentDirection(document) === "deposit" ? -cents : cents;
     if (!Number.isSafeInteger(state.earned) || !Number.isSafeInteger(state.drawn)) throw fail("مجموع حركات العامل يتجاوز النطاق المسموح");
@@ -499,16 +720,19 @@ export function payrollSummary(employees: Row[], documents: Row[], period: { fro
   if (from && to && from > to) throw fail("بداية الفترة تتجاوز نهايتها");
   const rows = employees.map(employee => ({ employeeId: String(employee.id), name: String(employee.name), currentOwed: 0, currentReceivable: 0, currentUnpaidWages: 0, closingBalance: 0, accrualPeriod: 0, paidPeriod: 0, reserveChange: 0 }));
   const byId = new Map(rows.map(row => [row.employeeId, row]));
+  const released = new Map<string, number>();
   for (const document of documents) {
-    if (document.status !== "posted" || !["employee-accrual", "employee-payment"].includes(document.kind)) continue;
+    if (document.status !== "posted" || !["employee-accrual", "employee-payment", "employee-closure", "employee-opening"].includes(document.kind)) continue;
     const row = byId.get(String(document.employeeId));
     if (!row) continue;
     const date = String(document.businessDate ?? document.occurredAt?.slice(0, 10)), cents = money(document.total), sign = accountSign(document);
     row.currentOwed += sign * cents;
     if (document.kind === "employee-accrual") row.currentUnpaidWages += cents;
+    if (document.kind === "employee-closure") row.currentUnpaidWages -= money(document.salaryReserveReleased, true);
     if (!to || date <= to) row.closingBalance += sign * cents;
     if ((!from || date >= from) && (!to || date <= to)) {
       if (document.kind === "employee-accrual") row.accrualPeriod += cents;
+      if (document.kind === "employee-closure") released.set(row.employeeId, (released.get(row.employeeId) ?? 0) + money(document.salaryReserveReleased, true));
     }
   }
   for (const entry of payrollExpenseEntries(documents)) {
@@ -523,7 +747,7 @@ export function payrollSummary(employees: Row[], documents: Row[], period: { fro
   for (const row of rows) {
     row.currentReceivable = Math.max(-row.currentOwed, 0);
     row.currentOwed = Math.max(row.currentOwed, 0);
-    row.reserveChange = row.accrualPeriod - row.paidPeriod;
+    row.reserveChange = row.accrualPeriod - row.paidPeriod - (released.get(row.employeeId) ?? 0);
     for (const key of Object.keys(totals) as Array<keyof typeof totals>) { totals[key] += row[key]; row[key] = amount(row[key]); }
   }
   return { ...Object.fromEntries(Object.entries(totals).map(([key, value]) => [key, amount(value)])) as typeof totals, rows };
@@ -539,7 +763,7 @@ export function validatePayrollSnapshot(employees: Row[], documents: Row[], fina
   const validAgreement = (row: Agreement) => {
     if (!row || !validId(row.id) || typeof row.amount !== "number" || !validRevision(row.anchorDay) || row.anchorDay < 1 || row.anchorDay > 31 ||
         typeof row.intervalMonths !== "number" || interval(row.intervalMonths) !== row.intervalMonths) throw invalid();
-    money(row.amount); day(row.startDate); timing(row.entitlement);
+    money(row.amount, true); day(row.startDate); timing(row.entitlement);
     if (row.stopDate !== undefined && day(row.stopDate) < row.startDate) throw invalid();
     if (row.canceledAt !== undefined && (typeof row.canceledAt !== "string" || !Number.isFinite(Date.parse(row.canceledAt)))) throw invalid();
   };
@@ -548,12 +772,15 @@ export function validatePayrollSnapshot(employees: Row[], documents: Row[], fina
         typeof employee.balance !== "number" || !validRevision(employee.revision) || typeof employee.isArchived !== "boolean" ||
         (employee.phone !== undefined && (typeof employee.phone !== "string" || employee.phone.length > 40)) || !Array.isArray(employee.agreements) || !employee.agreements.length) throw invalid();
     signedMoney(employee.balance); day(employee.startDate);
+    if (employee.accountStartDate !== undefined) day(employee.accountStartDate);
+    if (employee.isDeleted !== undefined && typeof employee.isDeleted !== "boolean") throw invalid();
+    if (employee.isDeleted === true && (employee.isArchived !== true || employee.balance !== 0 || typeof employee.deletedAt !== "string" || !Number.isFinite(Date.parse(employee.deletedAt)))) throw invalid();
     const map = new Map<string, Agreement>();
     for (const agreement of employee.agreements) {
       validAgreement(agreement);
       if (map.has(agreement.id)) throw invalid();
       if (agreement.startDate < employee.startDate) {
-        if (!agreement.canceledAt || !legacyEarlyAgreement(employee as Employee, agreement, events)) throw invalid();
+        if (!agreement.canceledAt || (!legacyEarlyAgreement(employee as Employee, agreement, events) && !correctedHistoricalAgreement(employee as Employee, agreement, events))) throw invalid();
         verifiedEarlyAgreements.add(JSON.stringify([employee.id, agreement.id]));
       }
       map.set(agreement.id, agreement);
@@ -562,7 +789,7 @@ export function validatePayrollSnapshot(employees: Row[], documents: Row[], fina
     validateSchedule(employee.agreements);
     employeeMap.set(employee.id, employee); agreementMaps.set(employee.id, map);
   }
-  const payroll = documents.filter(row => ["employee-accrual", "employee-payment"].includes(row.kind));
+  const payroll = documents.filter(row => ["employee-accrual", "employee-payment", "employee-closure", "employee-opening"].includes(row.kind));
   const documentMap = new Map<string, Row>(), accruals = new Map<string, Row>(), allocations = new Map<string, number>(), balances = new Map<string, number>();
   const movementOrders = new Set<string>();
   for (const document of payroll) {
@@ -577,12 +804,22 @@ export function validatePayrollSnapshot(employees: Row[], documents: Row[], fina
       movementOrders.add(key);
     }
     const legacyEarlyAccrual = document.kind === "employee-accrual" && verifiedEarlyAgreements.has(JSON.stringify([document.employeeId, document.agreementSnapshot?.id]));
+    const historicalPayment = document.kind === "employee-payment" && (correctedHistoricalPayment(employeeMap.get(document.employeeId)! as Employee, document, events) || verifiedHistoricalRepayment(employeeMap.get(document.employeeId)! as Employee, document, events) || verifiedOpeningPayment(employeeMap.get(document.employeeId)! as Employee, document, events));
     if (typeof document.occurredAt !== "string" || !Number.isFinite(Date.parse(document.occurredAt)) || document.occurredAt.slice(0, 10) !== date ||
-        (date < employeeMap.get(document.employeeId)!.startDate && !legacyEarlyAccrual)) throw invalid();
+        (date < employeeMap.get(document.employeeId)!.startDate && !legacyEarlyAccrual && !historicalPayment && !["employee-closure", "employee-opening"].includes(document.kind))) throw invalid();
     const sign = accountSign(document);
     if (document.balanceDelta !== amount(sign * cents)) throw invalid();
     if (document.status === "posted") balances.set(document.employeeId, (balances.get(document.employeeId) ?? 0) + sign * cents);
     documentMap.set(document.id, document);
+    if (document.kind === "employee-opening") {
+      if (document.paymentMethod != null || document.cashAmount !== 0 || document.paidTotal !== 0 || document.dueTotal !== 0 || typeof document.note !== "string" || document.note.length > 1000 ||
+          financialMovements.some(movement => movement.documentId === document.id)) throw invalid();
+      const proof = events.some(event => event.status === "committed" && event.employeeId === document.employeeId &&
+        ["payroll.employee-opening.post", "payroll.employee-opening.update", "payroll.employee-opening.void"].includes(event.action) &&
+        event.after?.id === document.id && event.after.kind === "employee-opening" && event.after.status === document.status && event.after.revision === document.revision &&
+        event.after.businessDate === date && event.after.total === document.total && event.after.balanceDelta === document.balanceDelta && event.after.employeeOpeningDirection === document.employeeOpeningDirection);
+      if (!proof) throw invalid();
+    }
     if (document.kind === "employee-accrual") {
       const start = day(document.periodStart), end = day(document.periodEnd), snapshot = document.agreementSnapshot as Agreement;
       validAgreement(snapshot);
@@ -594,9 +831,27 @@ export function validatePayrollSnapshot(employees: Row[], documents: Row[], fina
       if (months < 0 || months % snapshot.intervalMonths !== 0 || boundary(snapshot.startDate, months, snapshot.anchorDay) !== start) throw invalid();
       accruals.set(document.id, document);
     }
+    if (document.kind === "employee-closure") {
+      const employee = employeeMap.get(document.employeeId)!;
+      if (document.status !== "posted" || document.revision !== 0 || employee.isDeleted !== true || employee.deletionDocumentId !== document.id ||
+          document.paymentMethod != null || document.cashAmount !== 0 || document.paidTotal !== 0 || document.dueTotal !== 0 || money(document.salaryReserveReleased, true) > cents) throw invalid();
+    }
   }
   for (const employee of employees) {
     if ((balances.get(employee.id) ?? 0) !== signedMoney(employee.balance)) throw invalid();
+    const opening = payroll.filter(document => document.employeeId === employee.id && document.kind === "employee-opening" && document.status === "posted");
+    if (opening.length > 1 || (opening.length && payroll.some(document => document.employeeId === employee.id && document.kind !== "employee-opening" && document.businessDate < opening[0].businessDate))) throw invalid();
+    if (opening.length && periods(employee as Employee, opening[0].businessDate).some(period => period.dueDate < opening[0].businessDate)) throw invalid();
+    const closures = payroll.filter(document => document.employeeId === employee.id && document.kind === "employee-closure");
+    if (closures.length > 1 || (employee.deletionDocumentId != null && !closures.some(document => document.id === employee.deletionDocumentId))) throw invalid();
+    if (closures.length) {
+      const summary = payrollSummary([employee], payroll.filter(document => document.kind !== "employee-closure")).rows[0];
+      if (closures[0].total !== summary.currentOwed || closures[0].salaryReserveReleased !== summary.currentUnpaidWages) throw invalid();
+      const proof = events.find(event => event.action === "payroll.employee.delete" && event.status === "committed" && event.employeeId === employee.id && event.before?.id === employee.id && event.before.isArchived === true && event.before.balance === closures[0].total && event.after?.isDeleted === true && event.after.balance === 0 && event.after.deletionDocumentId === closures[0].id);
+      if (!proof) throw invalid();
+    }
+    if (employee.isDeleted === true && !closures.length && !events.some(event => event.action === "payroll.employee.delete" && event.status === "committed" && event.employeeId === employee.id &&
+        event.before?.id === employee.id && event.before.isArchived === true && event.before.balance === 0 && event.after?.id === employee.id && event.after.isDeleted === true && event.after.balance === 0 && event.after.deletionDocumentId === null)) throw invalid();
     let previousEnd = "";
     for (const row of [...accruals.values()].filter(item => item.employeeId === employee.id && item.status === "posted").sort((a, b) => a.periodStart.localeCompare(b.periodStart))) {
       if (previousEnd && row.periodStart <= previousEnd) throw invalid();
@@ -605,6 +860,10 @@ export function validatePayrollSnapshot(employees: Row[], documents: Row[], fina
   }
   for (const payment of payroll.filter(row => row.kind === "employee-payment")) {
     if (!validId(payment.paymentMethod) || !Array.isArray(payment.allocations)) throw invalid();
+    if (payment.employeeOpeningAnchor !== undefined) {
+      const source = documentMap.get(text(payment.employeeOpeningAnchor?.openingDocumentId));
+      if (!source || source.kind !== "employee-opening" || source.employeeId !== payment.employeeId || !verifiedOpeningPayment(employeeMap.get(payment.employeeId)! as Employee, payment, events)) throw invalid();
+    }
     if (payment.employeePaymentVersion === 2) {
       if (payment.allocations.length || payment.employeeAccountOrder === undefined || !["withdraw", "deposit"].includes(payment.employeePaymentDirection)) throw invalid();
       continue;

@@ -1,6 +1,21 @@
 import type { Locale } from "./locale";
 
 const exactFrench: Record<string, string> = {
+  "يجب اختيار وسيلة دفع صالحة": "Choisissez un moyen de paiement valide.",
+  "بيانات رصيد الحساب غير صالحة": "Le solde du compte est invalide.",
+  "لا يمكن تعديل المصروف لأن وقت السند الأصلي غير صالح": "Impossible de modifier cette dépense : l’heure du document d’origine est invalide.",
+  "وقت تسجيل المصروف غير صالح": "L’heure d’enregistrement de la dépense est invalide.",
+  "اتجاه رصيد بداية العامل غير صالح": "Le sens du solde initial du salarié est invalide.",
+  "يوجد أكثر من رصيد بداية معتمد للعامل": "Ce salarié possède plusieurs soldes initiaux validés.",
+  "تاريخ الحركة يسبق رصيد بداية العامل؛ عدّل تاريخ رصيد البداية أولًا ثم أعد المحاولة": "Le mouvement précède le solde initial du salarié. Corrigez d’abord sa date, puis réessayez.",
+  "اختر لنا أو علينا لرصيد بداية العامل": "Indiquez si le solde initial est à recevoir ou à payer au salarié.",
+  "يوجد رصيد بداية معتمد للعامل؛ عدّله أو ألغِه أولًا": "Ce salarié possède déjà un solde initial. Modifiez-le ou annulez-le d’abord.",
+  "تاريخ رصيد البداية يجب ألا يتجاوز اليوم أو أول حركة أو استحقاق للعامل": "La date du solde initial ne peut dépasser aujourd’hui, le premier mouvement ou le premier droit du salarié.",
+  "ملاحظة رصيد البداية طويلة جدًا": "La note du solde initial est trop longue.",
+  "تغير رصيد البداية أثناء العملية؛ حدّث الصفحة وأعد المحاولة": "Le solde initial a changé. Actualisez la page puis réessayez.",
+  "بيانات رصيد بداية العامل غير صالحة": "Les données du solde initial du salarié sont invalides.",
+  "رصيد بداية العامل غير موجود أو ملغى": "Le solde initial du salarié est introuvable ou déjà annulé.",
+  "احذف آخر تصحيح لرصيد البداية أولًا ثم أعد محاولة حذف رصيد البداية الأصلي.": "Annulez d’abord la dernière correction du stock initial, puis réessayez d’annuler le stock initial.",
   "مجموع السطر غير صالح": "Le total de la ligne est invalide.",
   "مجموع السطر لا يطابق الكمية وسعر الوحدة": "Le total de la ligne ne correspond pas à la quantité et au prix unitaire.",
   "إجمالي الفاتورة غير صالح": "Le total de la facture est invalide.",
@@ -39,10 +54,32 @@ const exactFrench: Record<string, string> = {
   "تعذر حفظ العملة": "Impossible d’enregistrer la devise",
 };
 
+const clearanceReasonsFrench: Record<string,string> = {
+  "مرجع مجموعة التصفير غير صالح":"référence du groupe de mise à zéro invalide",
+  "مرجع المنتج لا يطابق طلب الاستعادة":"le produit ne correspond pas à la demande de restauration",
+  "تعذر تحديد السندات المرتبطة بمجموعة التصفير":"les documents du groupe ne peuvent pas être identifiés",
+  "مجموعة التصفير تحتوي مرجع منتج آخر أو سندًا غير متطابق":"le groupe contient un autre produit ou un document incohérent",
+  "مراجع سندات التصفير مفقودة أو مكررة":"références des documents manquantes ou dupliquées",
+  "مراجع حركات التصفير مفقودة أو مكررة":"références des mouvements manquantes ou dupliquées",
+  "سجل التصفير لا يحتوي مرجع منتج ومخزن وحيدًا ومتطابقًا":"le document ne désigne pas un produit et un entrepôt uniques et cohérents",
+  "سند التصفير يحتوي أثرًا ماليًا لا يطابق الأرشفة":"le document contient un effet financier incompatible avec l’archivage",
+  "كمية التصفير أو أرصدة السند غير متطابقة":"la quantité et les soldes du document sont incohérents",
+  "السند معدل أو سبق عكسه ولا يمكن استعادته مرة أخرى":"le document a été modifié ou déjà annulé",
+  "مجموعة التصفير تحتوي سندات متكررة للمخزن نفسه":"le groupe contient plusieurs documents pour le même entrepôt",
+  "المخزن المرتبط بالتصفير غير موجود":"l’entrepôt du document est introuvable",
+  "حركات المخزون لا تطابق سند التصفير أو تحتوي عكسًا سابقًا":"les mouvements de stock sont incohérents ou comportent une annulation antérieure",
+  "الرصيد الحالي لا يسمح بعكس التصفير":"le stock actuel ne permet pas l’annulation",
+  "الرصيد الحالي أو ناتج استعادة الكمية غير صالح":"le stock actuel ou le résultat de la restauration est invalide",
+  "سندات التصفير القديمة لا تحدد مجموعة واحدة للمخزن بأمان":"les anciens documents ne permettent pas d’identifier un groupe unique par entrepôt",
+  "تغير السند أثناء الاستعادة، أعد المحاولة":"le document a changé pendant la restauration, veuillez réessayer",
+};
+
 export function translateApiError(locale: Locale, message: string): string {
   if (locale === "ar") return message;
   const exact = exactFrench[message];
   if (exact) return exact;
+  const clearance = message.match(/^لا يمكن عكس تصفير الأرشفة للسند (.+) \((.*)\) في المخزن (.+): (.+)$/);
+  if (clearance) return `Impossible d’annuler la mise à zéro du document ${clearance[1]} (${clearance[2]}) dans l’entrepôt ${clearance[3]} : ${clearanceReasonsFrench[clearance[4]] ?? "les données du document doivent être vérifiées"}.`;
   const invalidHistory = message.match(/^لا يمكن إلغاء المستند (.+) \((.*)\): كمية السطر (\d+) غير صالحة؛ راجع بيانات السند الأصلي$/);
   if (invalidHistory) return `Impossible d’annuler le document ${invalidHistory[1]} (${invalidHistory[2]}) : quantité invalide à la ligne ${invalidHistory[3]}. Vérifiez le document d’origine.`;
   const invalidStock = message.match(/^رصيد المخزون المسجل للمنتج (.+) في المخزن (.+) غير صالح؛ راجع بيانات المخزون$/);

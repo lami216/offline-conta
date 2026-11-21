@@ -8,7 +8,7 @@ import type { SqliteDatabase as Db, DbDocument as Document } from "./sqlite.ts";
 type FindCursor<T> = ReturnType<Db["collection"]>["find"] extends (...args:any[])=>infer R ? R : never;
 import type { ReportFilters, ReportResponse, ReportRow, ReportType } from "../app/report-types.ts";
 import { inventoryUnitCost, isProductExpired, resolvePartyType } from "../app/domain.ts";
-import { displayDocumentNumber } from "./document-sequences.ts";
+import { displayDocumentNumber, displayStockMovementDocumentNumber } from "./document-sequences.ts";
 import { classifyStockMovementType, collapseLegacyStockEditMovements, stockMovementMatchesFilter } from "../app/stock-movement.ts";
 
 const TYPES: ReportType[] = ["overview", "sales", "purchases", "product-sales", "stock", "profit", "debts", "party-ledger", "financial", "expenses"];
@@ -175,7 +175,7 @@ async function directDocuments(db: Db, f: ReportFilters, kind: string, categoryS
 
 export async function buildReport(db: Db, f: ReportFilters): Promise<ReportResponse> {
   const payrollDocuments = ["overview", "expenses"].includes(f.type)
-    ? await db.collection("documents").find({ kind: { $in: ["employee-accrual", "employee-payment"] } }).toArray()
+    ? await db.collection("documents").find({ kind: { $in: ["employee-opening", "employee-accrual", "employee-payment", "employee-closure"] } }).toArray()
     : [];
   const salaryExpenses = payrollExpenseDocuments(payrollDocuments, f);
 
@@ -247,10 +247,10 @@ export async function buildReport(db: Db, f: ReportFilters): Promise<ReportRespo
   if (f.type === "stock") {
     const query:Document=matchDate(f);if(constraint)query.productId=constraint;
     const stored=await db.collection("stockMovements").find(query).toArray() as Array<Record<string,unknown>>,documentIds=[...new Set(stored.map(row=>String(row.documentId??"")).filter(Boolean))];
-    const documents=(documentIds.length?await db.collection("documents").find({id:{$in:documentIds}}).project({id:1,number:1,kind:1,title:1,openingCorrection:1,openingStockBefore:1,openingStockAfter:1}).toArray():[]) as Array<Record<string,unknown>>,documentMap=new Map(documents.map(document=>[String(document.id),document]));
-    const classified:Array<Record<string,unknown>&{type:string}>=collapseLegacyStockEditMovements(stored.map(row=>({...row,type:classifyStockMovementType(row.type,documentMap.get(String(row.documentId??"")))}))),all=f.movementType?classified.filter(row=>stockMovementMatchesFilter(row.type,f.movementType)):classified,ordered=[...all].sort((a,b)=>String(b.occurredAt).localeCompare(String(a.occurredAt)));
+    const documents=(documentIds.length?await db.collection("documents").find({id:{$in:documentIds}}).project({id:1,number:1,settlementSequence:1,kind:1,title:1,openingCorrection:1,openingStockBefore:1,openingStockAfter:1,productArchiveStockClearance:1}).toArray():[]) as Array<Record<string,unknown>>,documentMap=new Map(documents.map(document=>[String(document.id),Object.fromEntries(Object.entries(document).filter(([,value])=>value!==undefined))]));
+    const classified:Array<Record<string,unknown>&{type:string}>=collapseLegacyStockEditMovements(stored.map(row=>({...row,documentReference:row.documentNumber,documentNumber:displayStockMovementDocumentNumber(row,documentMap.get(String(row.documentId??""))),type:classifyStockMovementType(row.type,documentMap.get(String(row.documentId??"")))}))),all=f.movementType?classified.filter(row=>stockMovementMatchesFilter(row.type,f.movementType)):classified,ordered=[...all].sort((a,b)=>String(b.occurredAt).localeCompare(String(a.occurredAt)));
     const products=await db.collection("products").find({id:{$in:ordered.map(row=>row.productId)}}).project({id:1,sku:1,name:1}).toArray(),identities=new Map(products.map(product=>[String(product.id),product]));
-    const allRows:ReportRow[]=ordered.map(row=>({id:String(row.id),documentId:String(row.documentId),occurredAt:String(row.occurredAt),sku:String(identities.get(String(row.productId))?.sku??row.sku??"—")||"—",product:String(identities.get(String(row.productId))?.name??row.productName??"").trim()||"منتج غير متاح",productMissing:!String(identities.get(String(row.productId))?.name??row.productName??"").trim(),warehouse:String(row.warehouseName),movementType:String(row.type),before:n(row.balanceBefore),change:n(row.quantityDelta),after:n(row.balanceAfter),documentNumber:String(row.documentNumber)})),rows=pageReportRows(sortReportRows(allRows,f),f),totalRows=allRows.length;
+    const allRows:ReportRow[]=ordered.map(row=>({id:String(row.id),documentId:String(row.documentId),occurredAt:String(row.occurredAt),sku:String(identities.get(String(row.productId))?.sku??row.sku??"—")||"—",product:String(identities.get(String(row.productId))?.name??row.productName??"").trim()||"منتج غير متاح",productMissing:!String(identities.get(String(row.productId))?.name??row.productName??"").trim(),warehouse:String(row.warehouseName),movementType:String(row.type),before:n(row.balanceBefore),change:n(row.quantityDelta),after:n(row.balanceAfter),documentNumber:String(row.documentNumber),documentReference:String(row.documentReference??row.documentNumber??"")})),rows=pageReportRows(sortReportRows(allRows,f),f),totalRows=allRows.length;
     return {report:f.type,from:f.from!,to:f.to!,summary:{movements:totalRows,expiredInventoryLoss:expiryLoss,incoming:all.reduce((sum,row)=>sum+Math.max(0,n(row.quantityDelta)),0),outgoing:all.reduce((sum,row)=>sum+Math.abs(Math.min(0,n(row.quantityDelta))),0),netChange:all.reduce((sum,row)=>sum+n(row.quantityDelta),0)},rows,meta:pagination(totalRows,f)};
   }
   if (f.type === "financial") {
@@ -273,7 +273,7 @@ export async function buildReport(db: Db, f: ReportFilters): Promise<ReportRespo
         partyType, accountType:partyType==="customer"?"عميل":"مورد", balance:Math.abs(net),
         receivable:Math.max(net,0), payable:Math.max(-net,0), lastMovement:String(party.lastMovementAt??"") };
     });
-    const employeeRows = employees.filter(employee => employee.isArchived !== true || n(employee.balance) !== 0).map(employeeAccountRow).filter(account =>
+    const employeeRows = employees.filter(employee => employee.isDeleted !== true && (employee.isArchived !== true || n(employee.balance) !== 0)).map(employeeAccountRow).filter(account =>
       (f.debtSide !== "receivable" || n(account.receivable) > 0) &&
       (f.debtSide !== "payable" || n(account.payable) > 0) &&
       (f.debtSide !== "clear" || n(account.balance) === 0));
@@ -286,7 +286,7 @@ export async function buildReport(db: Db, f: ReportFilters): Promise<ReportRespo
       if (!f.partyId) throw new Error("يجب اختيار الطرف");
       const employee = await db.collection("employees").findOne({ id: f.partyId });
       if (!employee) throw new Error("العامل غير موجود");
-      const documents = await db.collection("documents").find({ employeeId: f.partyId, kind: { $in: ["employee-accrual", "employee-payment"] } }).toArray();
+      const documents = await db.collection("documents").find({ employeeId: f.partyId, kind: { $in: ["employee-opening", "employee-accrual", "employee-payment", "employee-closure"] } }).toArray();
       const ledger = buildEmployeeLedger(employee, documents, f.allTime ? {} : { from: f.from, to: f.to });
       return { report: f.type, from: f.from ?? null, to: f.to ?? null, summary: ledger.summary,
         rows: pageReportRows(sortReportRows(ledger.rows, f), f), meta: pagination(ledger.rows.length, f) };
@@ -330,7 +330,7 @@ export async function buildReport(db: Db, f: ReportFilters): Promise<ReportRespo
   const kindRank:Record<string,number>={sale:0,purchase:1,expense:2,"employee-payment":3,"employee-accrual":4};
   const invoices=commercial.filter(d=>d.kind!=="return").map(d=>{const kind=String(d.kind) as "sale"|"purchase"|"expense"|"employee-payment"|"employee-accrual",value=netValue(d),saleFact=factsByDocument.get(String(d.id)),saleLike=isSaleKind(kind);return{id:String(d.id),documentId:String(d.id),employeeId:d.employeeId?String(d.employeeId):undefined,kind,type:kind==="sale"?"فاتورة بيع":kind==="purchase"?"فاتورة شراء":kind==="employee-payment"?value<0?"استرداد مصروف عامل":"مصروف عامل":kind==="employee-accrual"?"استحقاق عامل":"فاتورة مصروفات",number:displayDocumentNumber(d),sequence:Number.isSafeInteger(Number(d.sequence))&&n(d.sequence)>0?n(d.sequence):null,occurredAt:String(d.occurredAt),invoiceValue:value,cost:saleLike?(saleFact?.cost??0):value,profit:saleLike?(saleFact?.profit??value):null,costKnown:saleLike?(saleFact?.costKnown??false):true,unknownRevenue:saleLike?(saleFact?.unknownRevenue??Math.abs(value)):0}}).sort((a,b)=>kindRank[a.kind]-kindRank[b.kind]||((a.sequence??Number.MAX_SAFE_INTEGER)-(b.sequence??Number.MAX_SAFE_INTEGER))||a.occurredAt.localeCompare(b.occurredAt)||a.id.localeCompare(b.id));
   const typedParties=parties.map(p=>({...p,partyType:resolvePartyType(p)} as Document & {partyType:"customer"|"supplier"}));
-  const employeeRows = employees.filter(employee => employee.isArchived !== true || n(employee.balance) !== 0).map(employeeAccountRow);
+  const employeeRows = employees.filter(employee => employee.isDeleted !== true && (employee.isArchived !== true || n(employee.balance) !== 0)).map(employeeAccountRow);
   const partyRows=groupAccountRows([...employeeRows,...typedParties.map(p=>({id:String(p.id),partyId:String(p.id),name:String(p.name),partyType:p.partyType,receivable:Math.max(n(p.receivable)-n(p.payable),0),payable:Math.max(n(p.payable)-n(p.receivable),0)}))]);
   const bankAccounts=accounts.map(a=>({id:String(a.id??a._id),name:String(a.name),balance:n(a.balance)}));
   const currentAccountsBalance=bankAccounts.reduce((v,a)=>v+a.balance,0);

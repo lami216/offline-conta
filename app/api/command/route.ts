@@ -472,6 +472,16 @@ async function requireInitialOpeningDocument(db: Db, session: ClientSession, doc
 
 export async function execute(db: Db, session: ClientSession, body: Input) {
   const type = text(body.type);
+  if (["account-opening-balance-correction.update", "account-opening-balance-correction.void"].includes(type)) {
+    const source = await db.collection("financialMovements").findOne({ id: text(body.movementId ?? body.documentId), type: "opening-balance-correction", importedFrom: "mobile-v23" }, { session });
+    if (source) throw new CommandError("تصحيح بداية الهاتف محفوظ كسجل تاريخي للعرض فقط؛ يمكن تسجيل تصحيح جديد لرصيد البداية.", 409);
+  }
+  if (["adjustment.update", "adjustment.void", "opening-stock-initial.void", "opening-stock-correction.update", "opening-stock-correction.void"].includes(type)) {
+    const source = await db.collection("documents").findOne({ id: text(body.documentId), kind: "adjustment" }, { session });
+    if (source?.importedFrom === "mobile-v23" && (source.mobileBaseline === true || source.mobileOpening)) {
+      throw new CommandError("رصيد بداية الهاتف محفوظ كسجل تاريخي للعرض فقط؛ يمكن تصحيح الكمية من تصحيح المخزون.", 409);
+    }
+  }
   if(type.startsWith("employee.")||type.startsWith("employee-payment.")||type.startsWith("employee-accrual.")||type.startsWith("employee-opening."))return handlePayrollCommand(db,session,body);
   if(type==="party-opening.post")return postPartyOpening(db,session,body);
   if(type==="party-opening.update")return updatePartyOpening(db,session,body);

@@ -269,6 +269,7 @@ export interface PaymentAccount {
 }
 export function activePaymentAccounts<T extends Pick<PaymentAccount, "isActive" | "isArchived">>(accounts: T[]) { return accounts.filter(account => account.isActive !== false && account.isArchived !== true); }
 export interface FinancialMovement {
+  importedFrom?: string;
   employeeId?: string;
   employeeName?: string;
   id: string;

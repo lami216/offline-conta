@@ -44,17 +44,31 @@ jobs:
           path: test-output/payroll-ui/
           if-no-files-found: ignore
           retention-days: 14
+      - name: Prove the original Mobile 23 exporter on synthetic source data
+        run: node scripts/prove-mobile23-export.mjs
+      - name: Restore Mobile 23 backups through the actual desktop UI on isolated data
+        run: node --import tsx --test scripts/mobile-backup-ui-smoke.mjs
       - run: npm test
         if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
       - run: npm run lint
       - run: npm run build
       - run: npm run test:production-legacy
+      - name: Verify Mobile 23 restore in the compiled production server
+        run: node --test scripts/test-production-mobile-backup.mjs
       - run: npm run desktop:prepare
       - run: npm run desktop:rebuild-native
       - run: npm run desktop:test-native
       - run: npm run desktop:test-server
       - run: npm run desktop:dist:win
       - run: npm run desktop:test-packaged
+      - name: Upload mobile restore evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Offline-mobile-backup-UI-${{ github.run_number }}
+          path: test-output/mobile-backup-ui/
+          if-no-files-found: error
+          retention-days: 14
       - name: Verify Windows artifacts
         shell: pwsh
         run: |

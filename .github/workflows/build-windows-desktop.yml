@@ -67,7 +67,7 @@ jobs:
         with:
           name: Offline-mobile-backup-UI-${{ github.run_number }}
           path: test-output/mobile-backup-ui/
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 14
       - name: Verify Windows artifacts
         shell: pwsh

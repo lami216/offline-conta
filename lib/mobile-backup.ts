@@ -26,7 +26,7 @@ const jsonClone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 function jsonData(value: unknown, seen = new Set<object>(), depth = 0): void {
   if (depth > 80) fail('بنية متداخلة أكثر من الصيغة المدعومة');
   if (value === null || typeof value === 'string' || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) return;
-  if (typeof value !== 'object' || seen.has(value)) fail('بيانات غير قابلة للحفظ بصيغة JSON');
+  if (typeof value !== 'object' || seen.has(value)) return fail('بيانات غير قابلة للحفظ بصيغة JSON');
   const prototype = Object.getPrototypeOf(value);
   if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) fail('كائن غير مدعوم في النسخة');
   seen.add(value);

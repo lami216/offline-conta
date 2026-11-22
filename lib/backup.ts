@@ -8,13 +8,14 @@ import { resolvePartyType } from "../app/domain.ts";
 import { backupBuildInfo, type BackupApplication, type BackupBuild } from "./build-info.ts";
 import { repairLegacyPayrollResume, validatePayrollSnapshot, type PayrollEmployee } from "./payroll.ts";
 import { invoiceAmountNumber, resolveInvoiceLineTotal, sumInvoiceLineTotals } from "../app/invoice-line-amount.ts";
+import { convertMobileBackup } from "./mobile-backup.ts";
 
 export const BACKUP_SCHEMA_VERSION = 1;
 export const BACKUP_COLLECTIONS = ["employees", "parties", "warehouses", "products", "productCategories", "expenseCategories", "documents", "stockMovements", "financialMovements", "paymentAccounts", "recurringExpenses", "accountTransfers", "counters", "auditEvents", "appSettings", "users", "importMappings"] as const;
 // Backups are local, user-selected files. Do not impose an artificial size or record-count cap;
 // validation below still enforces the accounting and reference invariants before restore.
 type BackupCollection = typeof BACKUP_COLLECTIONS[number];
-export type ContaBackup = { format: "conta-backup"; schemaVersion: 1; createdAt: string; appVersion: string; application?: BackupApplication; build?: BackupBuild; encoding: "json-v2"|"mongodb-extended-json-v2"; collections: Record<BackupCollection, Document[]>; counts: Record<BackupCollection, number> };
+export type ContaBackup = { format: "conta-backup"; schemaVersion: 1; createdAt: string; appVersion: string; application?: BackupApplication; build?: BackupBuild; encoding: "json-v2"|"mongodb-extended-json-v2"; collections: Record<BackupCollection, Document[]>; counts: Record<BackupCollection, number>; mobileImport?: { sourceFormat: "alkarna-web-backup"; schemaVersion: 1 } };
 
 export async function createNativeBackup(db: Db): Promise<ContaBackup> {
   const pairs = await Promise.all(BACKUP_COLLECTIONS.map(async name => [name, await db.collection(name).find().toArray()] as const));
@@ -23,7 +24,10 @@ export async function createNativeBackup(db: Db): Promise<ContaBackup> {
 }
 export function stringifyBackup(value: ContaBackup) { return value.encoding==="mongodb-extended-json-v2" ? EJSON.stringify(value,{relaxed:false}) : JSON.stringify(value); }
 export function parseAndValidateBackup(input: string): ContaBackup {
-  let value: unknown; try { const raw=JSON.parse(input) as Record<string,unknown>;value=raw.encoding==="mongodb-extended-json-v2"?EJSON.parse(input,{relaxed:true}):raw; } catch { throw new Error("ملف النسخة ليس JSON صالحًا"); }
+  let value: unknown; try { const raw=JSON.parse(input) as Record<string,unknown>;value=raw?.encoding==="mongodb-extended-json-v2"?EJSON.parse(input,{relaxed:true}):raw; } catch { throw new Error("ملف النسخة ليس JSON صالحًا"); }
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("هذا الملف ليس نسخة الكرنه");
+  if ((value as Record<string,unknown>).format === "alkarna-web-backup") value = convertMobileBackup(value);
+  else delete (value as Record<string,unknown>).mobileImport;
   const b = value as Partial<ContaBackup>;
   if (b.format !== "conta-backup") throw new Error("هذا الملف ليس نسخة الكرنه");
   if (b.schemaVersion !== BACKUP_SCHEMA_VERSION) throw new Error(Number(b.schemaVersion) > BACKUP_SCHEMA_VERSION ? "إصدار النسخة أحدث من هذا التطبيق" : "إصدار النسخة غير مدعوم");
@@ -39,6 +43,8 @@ export function parseAndValidateBackup(input: string): ContaBackup {
   const keys = Object.keys(b.collections);
   if (keys.some(k => !BACKUP_COLLECTIONS.includes(k as BackupCollection))) throw new Error("تحتوي النسخة على collection غير مسموح");
   for (const name of BACKUP_COLLECTIONS) if (!Array.isArray(b.collections[name])) throw new Error(`collection مفقود: ${name}`);
+  // Preview describes the validated rows, including empty collections added for older backups.
+  b.counts = Object.fromEntries(BACKUP_COLLECTIONS.map(name => [name, b.collections![name].length])) as ContaBackup["counts"];
   const backup = b as ContaBackup;
   validateInvariants(repairBackupPayroll(backup)); return backup;
 }
@@ -66,7 +72,7 @@ export function validateInvariants(b: ContaBackup) {
   const parties=new Set(b.collections.parties.map(party=>String(party.id??party._id??"")).filter(Boolean));
   if(b.collections.warehouses.filter(w=>w.isSalesDefault===true).length!==1)throw new Error("يجب أن تحتوي النسخة على مخزن بيع افتراضي واحد");
   unique(b.collections.products,"sku","رمز المنتج");unique(b.collections.products,"barcode","باركود المنتج",true);unique(b.collections.documents,"id","معرف الفاتورة");unique(b.collections.documents,"number","رقم الفاتورة");
-  for(const p of b.collections.products){if(p.categoryId&&!categories.has(String(p.categoryId)))throw new Error("منتج يشير إلى فئة غير موجودة");for(const key of Object.keys((p.stocks??{}) as object))if(!warehouses.has(key))throw new Error("مخزون يشير إلى مخزن غير موجود")}
+  for(const p of b.collections.products){if(p.categoryId&&!categories.has(String(p.categoryId)))throw new Error("منتج يشير إلى فئة غير موجودة");for(const key of Object.keys((p.stocks??{}) as object))if(!warehouses.has(key))throw new Error("مخزون يشير إلى مخزن غير موجود");if(p.mobileImportedCurrentCost!==undefined&&(p.mobileSource?.format!=="alkarna-web-backup"||typeof p.mobileImportedCurrentCost!=="number"||!Number.isFinite(p.mobileImportedCurrentCost)||p.mobileImportedCurrentCost<0||typeof p.mobileImportedCostBasis!=="string"||!/^[a-f0-9]{64}$/.test(p.mobileImportedCostBasis)))throw new Error("أساس تكلفة المنتج المستورد من الهاتف غير صالح")}
   const employees=unique(b.collections.employees??[],"id","معرف العامل");
   for(const employee of b.collections.employees??[]){if(typeof employee.name!=="string"||!employee.name.trim()||!Number.isFinite(Number(employee.balance))||!Array.isArray(employee.agreements))throw new Error("بيانات العامل غير صالحة");}
   const accruals=new Set(b.collections.documents.filter(d=>d.kind==="employee-accrual").map(d=>String(d.id)));
@@ -117,6 +123,9 @@ export async function restoreNativeBackup(db: Db, backup: ContaBackup, session: 
   const repaired = repairBackupPayroll(backup);
   validateInvariants(repaired);
   for (const name of BACKUP_COLLECTIONS) {
+    // Mobile passwords and roles use a different authentication model. Keep the
+    // destination's existing credentials; imported phone users remain inert source evidence.
+    if (name === "users" && backup.mobileImport) continue;
     const collection = db.collection(name);
     await collection.deleteMany({}, { session });
     const rows = repaired.collections[name] ?? [];

@@ -72,7 +72,7 @@ async function connectCdp(url) {
 
 async function main() {
   const { mobileBackupV23 } = await import('../tests/fixtures/mobile-backup-v23.mjs');
-  const sourceFixture = mobileBackupV23();
+  const sourceFixture = mobileBackupV23({ repeatedCommercialLines: true });
   const actualExportPath = path.join(output, 'mobile23-export.conta.json');
   assert(fs.existsSync(actualExportPath), 'Run the exact Mobile23 exporter proof before this UI step');
   const fixtureText = fs.readFileSync(actualExportPath, 'utf8'), fixture = JSON.parse(fixtureText);
@@ -104,16 +104,18 @@ async function main() {
   const initialLicenseState = fs.existsSync(process.env.ALKARNA_LICENSE_STATE_PATH) ? fs.readFileSync(process.env.ALKARNA_LICENSE_STATE_PATH) : null;
   const entry = `
     import React,{useEffect,useState}from'react';import{createRoot}from'react-dom/client';
-    import{DataSettings,Records,Warehouses,Parties,Banks,Reports}from'./app/conta-app';
+    import{DataSettings,Records,Warehouses,Parties,Banks,Reports,DocumentDetail}from'./app/conta-app';
     import{LoginForm}from'./app/login/login-form';import{LocaleProvider,useI18n}from'./app/i18n/provider';
     import{ConfirmationProvider}from'./app/app-confirm';
-    function Shell(){const[data,setData]=useState(null),[login,setLogin]=useState(false),[view,setView]=useState('settings');const{setLocale}=useI18n();
+    function Shell(){const[data,setData]=useState(null),[login,setLogin]=useState(false),[view,setView]=useState('settings'),[documentId,setDocumentId]=useState(null);const{setLocale}=useI18n();
       const refresh=async()=>{const response=await fetch('/api/bootstrap');if(response.status===401){setData(null);setLogin(true);return}const value=await response.json();if(!response.ok)throw Error(value.error);setData(value);setLogin(false)};
       useEffect(()=>{void refresh().catch(error=>{window.__mobileError=error.stack;console.error(error)})},[]);
-      useEffect(()=>{window.__mobileSetView=async next=>{await refresh();setView(next);document.getElementById('root').className='app-shell section-'+(next==='settings'?'settings':next==='records'?'records':next==='warehouses'?'warehouses':next==='banks'?'banks':next==='sales-report'?'reports':next)};window.__mobileSetLocale=setLocale;return()=>{delete window.__mobileSetView;delete window.__mobileSetLocale}},[setLocale]);
+      useEffect(()=>{window.__mobileSetView=async next=>{await refresh();setDocumentId(null);setView(next);document.getElementById('root').className='app-shell section-'+(next==='settings'?'settings':next==='records'?'records':next==='warehouses'?'warehouses':next==='banks'?'banks':next==='sales-report'?'reports':next)};window.__mobileSetLocale=setLocale;return()=>{delete window.__mobileSetView;delete window.__mobileSetLocale}},[setLocale]);
       if(login)return <main className='login'><div className='login-card'><h1>تسجيل الدخول</h1><LoginForm exitButton={null}/></div></main>;
       if(!data)return <p>Loading</p>;
-      if(view==='records')return <Records data={data} openDoc={id=>{window.__mobileOpenedDocument=id}}/>;
+      const selectedDocument=data.documents.find(row=>row.id===documentId);
+      if(selectedDocument)return <DocumentDetail document={selectedDocument} data={data} close={()=>setDocumentId(null)} onSource={()=>{throw Error('A historical source must remain unavailable')}}/>;
+      if(view==='records')return <Records data={data} openDoc={id=>{window.__mobileOpenedDocument=id;if(window.__mobileInspectRecords)setDocumentId(id)}}/>;
       if(view==='warehouses')return <Warehouses data={data} run={()=>{throw Error('Unexpected inventory mutation')}} openDoc={id=>{window.__mobileOpenedDocument=id}}/>;
       if(view==='customers'||view==='suppliers')return <Parties key={view} partyType={view==='customers'?'customer':'supplier'} data={data} run={()=>{throw Error('Unexpected party mutation')}} openParty={party=>{window.__mobileOpenedParty=party.id}} canEdit={false} canDelete={false} registerEditorGuard={()=>()=>{}} prepareEditorReplacement={async()=>true}/>;
       if(view==='banks')return <Banks data={data} run={()=>{throw Error('Unexpected account mutation')}} openDoc={id=>{window.__mobileOpenedDocument=id}} openSource={()=>{}} tab='accounts' sourceRequest={null} clearSourceRequest={()=>{}} registerEditorGuard={()=>()=>{}} prepareEditorReplacement={async()=>true}/>;
@@ -125,7 +127,7 @@ async function main() {
   `;
   const bundle = await build({ absWorkingDir: source, stdin: { contents: entry, resolveDir: source, loader: 'tsx' }, bundle: true, platform: 'browser', format: 'iife', write: false, jsx: 'automatic',
     plugins: [{ name: 'ci-only-existing-components', setup(builder) {
-      builder.onLoad({ filter: /[\\/]app[\\/]conta-app\.tsx$/ }, args => ({ contents: fs.readFileSync(args.path, 'utf8') + '\nexport {DataSettings,Records,Warehouses,Parties,Banks,Reports};\n', loader: 'tsx', resolveDir: path.dirname(args.path) }));
+      builder.onLoad({ filter: /[\\/]app[\\/]conta-app\.tsx$/ }, args => ({ contents: fs.readFileSync(args.path, 'utf8') + '\nexport {DataSettings,Records,Warehouses,Parties,Banks,Reports,DocumentDetail};\n', loader: 'tsx', resolveDir: path.dirname(args.path) }));
       builder.onResolve({ filter: /^next\/navigation$/ }, () => ({ path: 'router', namespace: 'ci-navigation' }));
       builder.onLoad({ filter: /.*/, namespace: 'ci-navigation' }, () => ({ contents: "export function useRouter(){return{replace:href=>window.location.assign(href),refresh:()=>{}}}", loader: 'js' }));
     } }], define: { 'process.env.NODE_ENV': JSON.stringify('production') } });
@@ -303,6 +305,54 @@ async function main() {
   await evaluate(`(()=>{const row=[...document.querySelectorAll('.records-workspace .recent-table tbody tr')].find(row=>row.children[2]?.textContent.trim()===${JSON.stringify(sourceSaleNumber)});row.click()})()`);
   assert.equal(await evaluate('window.__mobileOpenedDocument'), 'mobile23:record:117', 'Actual history opens the original mobile invoice identity');
   await screenshot('mobile-restored-invoices-ar-1280');
+  result.repeatedCommercialRecords = [];
+  await evaluate('window.__mobileInspectRecords=true');
+  for (const [sourceId, locale, width] of [[102, 'ar', 1280], [114, 'fr', 480]]) {
+    const original = sourceFixture.state.records.find(row => row.id === sourceId), documentId = 'mobile23:record:' + sourceId;
+    const actual = await database.collection('documents').findOne({ id: documentId });
+    assert.equal(original.lines.length, 2); assert.equal(actual.lines.length, 2);
+    assert.equal(actual.lines[0].productId, actual.lines[1].productId, 'Repeated product identity is retained, not merged');
+    assert.deepEqual(actual.lines.map(line => line.id), [documentId + ':line:1', documentId + ':line:2'], 'Each historical row receives a separate stable index identity');
+    assert.equal(actual.legacyKey, documentId); assert(actual.mobileReadOnlyReason, 'Repeated history explicitly records why native replay is unavailable');
+    assert.deepEqual(actual.lines.map(line => [line.quantity, line.unitPrice, line.lineTotal]), original.lines.map(line => [line.qty, line.price, line.qty * line.price]));
+    if (original.kind === 'sale') {
+      assert.deepEqual(actual.lines.map(line => line.costAtSale), original.lines.map(line => line.costAtSale));
+      assert.equal(actual.lines.reduce((sum, line) => sum + line.grossProfit, 0), original.profit, 'Per-row saved COGS and original profit remain intact');
+    }
+    for (const operation of ['update', 'void']) {
+      const response = await browserRequest('/api/command', { method: 'POST', headers: { 'content-type': 'application/json', 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ type: original.kind + '.' + operation, documentId, expectedRevision: actual.revision ?? 0, reason: 'اختبار حماية سجل تاريخي متعدد السطور', warehouseId: actual.warehouseId, paymentMethod: actual.paymentMethod, partyId: actual.partyId, lines: actual.lines.map(line => ({ productId: line.productId, quantity: line.quantity, piecePrice: line.unitPrice })) }) });
+      assert.equal(response.status, 409, 'Native edit and void reject historical repeated rows before any posting');
+      assert.match(JSON.parse(response.text).error, /الفواتير المرحلة متاحة للعرض فقط/);
+    }
+    await evaluate(`window.__mobileSetLocale(${JSON.stringify(locale)})`);
+    await until(() => evaluate(`document.documentElement.lang===${JSON.stringify(locale)}`), 'repeated invoice locale ' + locale);
+    await evaluate('window.__mobileSetView("records")');
+    await until(() => evaluate('Boolean(document.querySelector(".records-workspace .compact-date-range button"))'), 'real repeated invoice history');
+    await click('.records-workspace .compact-date-range button');
+    await evaluate(`(()=>{const select=document.querySelector('.records-kind-filter');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(select,${JSON.stringify(original.kind)});select.dispatchEvent(new Event('change',{bubbles:true}))})()`);
+    const kindWord = original.kind === 'sale' ? 'بيع' : 'achat';
+    const rowQuery = `[...document.querySelectorAll('.records-workspace .recent-table tbody tr')].find(row=>row.children[2]?.textContent.trim()===${JSON.stringify(String(original.number))}&&row.children[3]?.textContent.includes(${JSON.stringify(kindWord)}))`;
+    await until(() => evaluate(`Boolean(${rowQuery})`), 'exact repeated ' + original.kind + ' row');
+    await evaluate(`(${rowQuery}).click()`);
+    await until(() => evaluate('Boolean(document.querySelector(".official-document-layout .official-record-table"))'), 'real repeated invoice preview');
+    assert.equal(await evaluate('window.__mobileOpenedDocument'), documentId);
+    const visibleRows = await evaluate("[...document.querySelectorAll('.official-document-scroll .official-record-table tbody tr')].map(row=>[...row.children].map(cell=>cell.textContent.trim()))");
+    assert.equal(visibleRows.length, 2, 'Actual native invoice preview renders both historical rows');
+    for (const [index, line] of original.lines.entries()) {
+      assert.equal(visibleRows[index][1], line.name, 'Both rows retain the original product name');
+      assert.equal(Number(visibleRows[index][2]), line.qty);
+      assert.equal(Number(visibleRows[index][3].replace(/[^\d.-]/g, '')), line.price);
+      assert.equal(Number(visibleRows[index][4].replace(/[^\d.-]/g, '')), line.qty * line.price);
+    }
+    const warning = locale === 'ar' ? 'سجل تاريخي — المصدر غير متاح' : 'Historique en lecture seule — source indisponible';
+    assert.equal(await evaluate(`Boolean([...document.querySelectorAll('.official-document-toolbar button:disabled')].find(button=>button.textContent.trim()===${JSON.stringify(warning)}))`), true, 'The real historical source warning is visible');
+    assert.equal(await evaluate('document.querySelectorAll(".official-document-toolbar .primary,.official-document-toolbar .danger").length'), 0, 'Unavailable financial actions are not offered in the historical viewer');
+    result.layouts.push(...await captureControlLayouts({ cdp, screenshot, scope: '.official-document-layout', name: 'mobile-repeated-' + original.kind + '-' + locale, widths: [width] }));
+    result.repeatedCommercialRecords.push({ id: documentId, kind: original.kind, lineIds: actual.lines.map(line => line.id), quantities: actual.lines.map(line => line.quantity), total: actual.total, savedSaleCost: original.kind === 'sale' ? actual.lines.map(line => line.costAtSale) : null, readOnly: true, nativePreviewRows: visibleRows.length });
+  }
+  await evaluate('window.__mobileInspectRecords=false;window.__mobileSetLocale("ar")');
+  await until(() => evaluate('document.documentElement.lang==="ar"'), 'restore original Arabic inspection locale');
+  assert.deepEqual(await businessSnapshot(), restoredBusiness, 'Historical previews and rejected replay never change restored cash, debt, stock, costs or invoices');
   await evaluate('window.__mobileSetView("warehouses")');
   await until(() => evaluate('Boolean(document.querySelector(".warehouse-workspace"))'), 'real restored inventory');
   await click('.warehouse-workspace .compact-date-range button:last-child');
@@ -371,9 +421,12 @@ async function main() {
   assert.deepEqual(sortRows(await database.collection('users').find().toArray()), desktopUsersBefore);
   for (let index = 0; index < result.timeline.length; index++) if (result.timeline[index].type === 'restore-start') assert.equal(result.timeline[index - 1]?.type, 'native-backup-saved', 'Every full restore has a completed safety save');
   assert.equal(sha256(fs.readFileSync(fixturePath)), result.fixtureSha256, 'Original synthetic mobile file is untouched');
+  assert.equal(sha256(fs.readFileSync(actualExportPath)), result.fixtureSha256, 'Hash-verified original Mobile23 exporter bytes remain unchanged');
   assert.deepEqual(cdp.errors, []);
   result.invariants = { previewNoMutation: true, canceledRestoreNoMutation: true, safetyFileBeforeEveryRestore: true, desktopUsersPreserved: true, desktopCredentialsReauthenticated: true, licenseStateUnchanged: true, originalMobileFileUnchanged: true, mobileStockCashDebtAndSavedCostPreserved: true, nativeRoundTripReportsUnchanged: true, newSaleVoidRestoresFinancialBalances: true };
   result.checkpoints.push('A real sale after restoration saves the restored purchase cost, updates cash and stock once, and its real void restores balances while retaining all original mobile invoices and report totals');
+  result.invariants.repeatedCommercialRowsPreservedReadOnly = true;
+  result.checkpoints.push('The exact Mobile23 export restores repeated sale and purchase rows with distinct stable line identities and saved costs, shows both in the native historical invoice viewer, safely blocks native edit/void, and preserves them through native re-export and restore');
   result.status = 'passed';
 }
 

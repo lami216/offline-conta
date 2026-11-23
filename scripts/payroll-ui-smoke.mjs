@@ -389,6 +389,10 @@ async function main() {
   result.documentNotes=await runDocumentNotesMatrix({cdp,command,database,screenshot});
   result.checkpoints.push(...result.documentNotes.checkpoints);
   assert.deepEqual(cdp.errors, []);
+  const {runPartyOpeningNotesScenarios}=await import("./party-opening-notes-ui-scenarios.mjs");
+  result.partyOpeningNotes=await runPartyOpeningNotesScenarios({cdp,command,database,screenshot});
+  result.checkpoints.push(...result.partyOpeningNotes.checkpoints);
+  assert.deepEqual(cdp.errors, []);
   result.status = "passed";
 }
 

@@ -159,10 +159,12 @@ export function convertMobileBackup(value: unknown): ImportedBackup {
     for (const key of ['warehouse', 'from', 'toWarehouse']) if (r[key] != null && !warehouseNames.has(r[key])) fail(`مخزن السند ${r.id} غير موجود`);
     array(r.lines, `بنود السند ${r.id} غير صالحة`);
     const used = new Set<string>();
-    for (const l of r.lines) {
+    for (const [index, l] of r.lines.entries()) {
       record(l, `بند السند ${r.id} غير صالح`);
       const lineKey = r.kind === 'adjustment' && r.openingCorrection === true ? `${l.product}:${l.warehouse ?? r.warehouse}` : String(l.product);
-      if (!products.has(l.product) || used.has(lineKey)) fail(`منتج مكرر أو مفقود في السند ${r.id}`); used.add(lineKey);
+      if (!products.has(l.product)) fail(`مرجع منتج مفقود في السند ${r.id}، البند ${index + 1}، المنتج ${typeof l.product === 'number' ? l.product : 'غير صالح'}`);
+      if (!commercial(r.kind) && used.has(lineKey)) fail(`تكرار منتج غير مدعوم في السند ${r.id}، البند ${index + 1}، المنتج ${l.product}`);
+      used.add(lineKey);
       if (l.name != null) text(l.name, `اسم بند السند ${r.id} غير صالح`, true);
       numeric(l.qty, `كمية بند السند ${r.id} غير صالحة`); numeric(l.price, `سعر بند السند ${r.id} غير صالح`); unsupported(l, `بند السند ${r.id}`);
       if (l.warehouse !== undefined && !warehouseNames.has(l.warehouse)) fail(`مخزن بند السند ${r.id} غير موجود`);
@@ -289,6 +291,12 @@ export function convertMobileBackup(value: unknown): ImportedBackup {
       for (const line of doc.lines) {
         try { resolveInvoiceLineTotal(line.quantity, line.unitPrice, line.lineTotal, true); line.lineTotalMode = 'exact'; }
         catch { doc.legacyKey = docId; doc.mobileReadOnlyReason = 'Historical cent-rounded line total differs from quantity × original unit price; original unit price and total retained'; }
+      }
+      // Native invoice editing indexes by product. Keep these historical lines
+      // separate and use the existing read-only guard instead of merging costs.
+      if (new Set(r.lines.map((line: Row) => line.product)).size !== r.lines.length) {
+        doc.legacyKey = docId;
+        doc.mobileReadOnlyReason = [doc.mobileReadOnlyReason, 'Repeated product lines retain distinct quantities, prices and historical costs; imported invoice is read-only'].filter(Boolean).join('; ');
       }
     }
     if (commercial(r.kind)) doc.partyBalanceDelta = (r.kind === 'sale' ? 1 : -1) * (r.due ?? 0);

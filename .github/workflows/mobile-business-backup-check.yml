@@ -1,0 +1,46 @@
+name: Current Mobile business backup compatibility
+on:
+  push:
+    branches: [feat/mobile-business-interchange-20261123]
+  pull_request:
+    paths:
+      - lib/backup.ts
+      - lib/mobile-business-backup.ts
+      - tests/mobile-business-backup.test.mjs
+      - tests/fixtures/mobile-business-backup-v39*
+      - .github/workflows/mobile-business-backup-check.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mobile-business-backup-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  validate-and-restore:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Preserve native invariants, authentication and actual SQLite restore
+        env:
+          NODE_ENV: test
+          ALKARNA_TEST_LICENSE_BYPASS: '1'
+        run: |
+          set -euo pipefail
+          node --import tsx --test tests/mobile-*.test.mjs tests/backup-legacy.test.mjs tests/backup-restore-safety.test.mjs tests/invoice-line-amount-backup.test.mjs | tee mobile-business-backup-check.tap
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-business-backup-proof
+          path: mobile-business-backup-check.tap
+          if-no-files-found: error
+          retention-days: 30

@@ -1,0 +1,2644 @@
+{
+  "format": "alkarna-mobile-business-backup",
+  "schemaVersion": 1,
+  "createdAt": "2026-11-23T12:00:00.000Z",
+  "source": {
+    "application": "alkarna-mobile",
+    "featureSchema": 4,
+    "originId": "synthetic-mobile23-shop",
+    "businessOnly": true
+  },
+  "backup": {
+    "format": "conta-backup",
+    "schemaVersion": 1,
+    "createdAt": "2026-11-23T12:00:00.000Z",
+    "appVersion": "mobile-business-v1",
+    "encoding": "json-v2",
+    "collections": {
+      "employees": [
+        {
+          "id": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+          "name": "عامل / Employé",
+          "phone": "22001122",
+          "startDate": "2026-11-01",
+          "balance": 80,
+          "revision": 0,
+          "isArchived": false,
+          "agreements": [
+            {
+              "id": "agreement-013c1941-ef65-4127-8a77-ad27b660ffdf",
+              "startDate": "2026-11-01",
+              "amount": 100,
+              "intervalMonths": 1,
+              "entitlement": "beginning",
+              "anchorDay": 1
+            }
+          ],
+          "createdAt": "2026-11-19T12:00:00.000Z",
+          "updatedAt": "2026-11-19T12:00:00.000Z"
+        }
+      ],
+      "parties": [
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "name": "عميل تجريبي",
+          "phone": "",
+          "lastMovementAt": "2026-11-19T12:00:00.000Z",
+          "partyType": "customer",
+          "receivable": 135,
+          "payable": 0,
+          "isArchived": false
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "name": "مورد تجريبي",
+          "phone": "",
+          "partyType": "supplier",
+          "receivable": 0,
+          "payable": 190,
+          "isArchived": false
+        }
+      ],
+      "warehouses": [
+        {
+          "_id": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "name": "الرئيسي",
+          "isSalesDefault": true,
+          "isArchived": false
+        },
+        {
+          "_id": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:39d83f2fad34670cb88478cc",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:39d83f2fad34670cb88478cc",
+          "name": "الفرعي",
+          "isSalesDefault": false,
+          "isArchived": false
+        }
+      ],
+      "products": [
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "name": "سلعة تجريبية",
+          "openingCost": 10,
+          "categoryId": "mobile:9c79e8739bd5cad9af1d5f725781117d:category:1",
+          "sku": "mobile:9c79e8739bd5cad9af1d5f725781117d:sku:1",
+          "barcode": "001",
+          "note": null,
+          "piecePrice": 20,
+          "wholesalePrice": 18,
+          "pieceCost": 10,
+          "stocks": {
+            "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60": 10,
+            "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:39d83f2fad34670cb88478cc": 4
+          },
+          "isArchived": false,
+          "legacyOpeningCost": 10,
+          "mobileSource": {
+            "originId": "synthetic-mobile23-shop",
+            "id": 1,
+            "format": "alkarna-web-backup",
+            "interchangeFormat": "alkarna-mobile-business-backup"
+          },
+          "mobileImportedCurrentCost": 10,
+          "mobileImportedCostBasis": "47ce921b858cf22df51544430d57e58e2bdbfa7ed0b45cdb1778ec92f304ed62"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:2",
+          "name": "رصيد تجريبي",
+          "openingCost": 5,
+          "openingTotal": 5,
+          "openingWarehouse": "الرئيسي",
+          "categoryId": "mobile:9c79e8739bd5cad9af1d5f725781117d:category:1",
+          "sku": "mobile:9c79e8739bd5cad9af1d5f725781117d:sku:2",
+          "barcode": "002",
+          "note": null,
+          "piecePrice": 12,
+          "wholesalePrice": 11,
+          "pieceCost": 5,
+          "stocks": {
+            "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60": 4.25,
+            "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:39d83f2fad34670cb88478cc": 0
+          },
+          "isArchived": false,
+          "openingStock": 5,
+          "openingWarehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "legacyOpeningCost": 5,
+          "mobileSource": {
+            "originId": "synthetic-mobile23-shop",
+            "id": 2,
+            "format": "alkarna-web-backup",
+            "interchangeFormat": "alkarna-mobile-business-backup"
+          },
+          "mobileImportedCurrentCost": 5,
+          "mobileImportedCostBasis": "ee2de38162ac8fcf71b0ea77b560478216db4fac30a9e49639eb4372281ec2fc"
+        }
+      ],
+      "productCategories": [
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:category:1",
+          "name": "عام"
+        }
+      ],
+      "expenseCategories": [
+        {
+          "id": "expense-category-fixture",
+          "name": "نقل / Transport",
+          "normalizedName": "نقل / transport",
+          "kind": "nonrecurring",
+          "isArchived": false,
+          "revision": 0,
+          "createdAt": "2026-11-23T12:00:00.000Z"
+        }
+      ],
+      "documents": [
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:121",
+          "number": "POB-121",
+          "kind": "party-opening",
+          "status": "posted",
+          "revision": 0,
+          "occurredAt": "2026-11-19T12:00:00.000Z",
+          "createdAt": "2026-11-19T12:00:00.000Z",
+          "partyName": "عميل تجريبي",
+          "partyType": "customer",
+          "title": "رصيد بداية الحساب",
+          "note": "أصل رصيد البداية\nOuverture",
+          "total": 15,
+          "cashAmount": 0,
+          "lines": [],
+          "partyOpeningVersion": 1,
+          "partyOpeningDirection": "receivable",
+          "partyOpeningAmount": 15,
+          "partyOpeningContribution": 15,
+          "partyBalanceDelta": 15,
+          "partyOpeningBalanceBefore": 120,
+          "partyOpeningAppliedDelta": 15,
+          "partyOpeningBalanceAfter": 135,
+          "updatedBy": "owner",
+          "updatedByName": "Owner",
+          "paidTotal": 0,
+          "dueTotal": 0,
+          "paymentMethod": null,
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 121,
+            "number": "POB-121"
+          }
+        },
+        {
+          "id": "employee-payment-96bbbd37-7234-4205-bd7e-6a3659249cfd",
+          "number": "EMP-PAY-06bcb6b4-ff18-42fe-8455-045ac75e48f8",
+          "kind": "employee-payment",
+          "status": "posted",
+          "revision": 0,
+          "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+          "employeeName": "عامل / Employé",
+          "employeeAccountOrder": 1,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "total": 20,
+          "amount": 20,
+          "paidTotal": 20,
+          "dueTotal": 0,
+          "employeePaymentDirection": "withdraw",
+          "employeePaymentVersion": 2,
+          "balanceDelta": -20,
+          "businessDate": "2026-11-19",
+          "occurredAt": "2026-11-19T12:00:00.000Z",
+          "allocations": [],
+          "note": "صرف العامل\nSalaire",
+          "lines": [],
+          "createdAt": "2026-11-19T12:00:00.000Z",
+          "title": "عامل / Employé"
+        },
+        {
+          "id": "employee-accrual-5fa52879c7630216cf83d57818a15da3",
+          "number": "EMP-2026-11-01-5fa52879c7630216cf83d57818a15da3",
+          "kind": "employee-accrual",
+          "status": "posted",
+          "revision": 0,
+          "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+          "employeeName": "عامل / Employé",
+          "periodStart": "2026-11-01",
+          "periodEnd": "2026-11-30",
+          "dueDate": "2026-11-01",
+          "businessDate": "2026-11-01",
+          "occurredAt": "2026-11-01T12:00:00.000Z",
+          "total": 100,
+          "amount": 100,
+          "balanceDelta": 100,
+          "agreementSnapshot": {
+            "id": "agreement-013c1941-ef65-4127-8a77-ad27b660ffdf",
+            "startDate": "2026-11-01",
+            "amount": 100,
+            "intervalMonths": 1,
+            "entitlement": "beginning",
+            "anchorDay": 1
+          },
+          "lines": [],
+          "createdAt": "2026-11-19T12:00:00.000Z",
+          "context": "mobile-bootstrap",
+          "title": "عامل / Employé",
+          "paymentMethod": null,
+          "paidTotal": 0,
+          "dueTotal": 0
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:118",
+          "kind": "return",
+          "number": "RETURN-118",
+          "occurredAt": "2026-11-18T10:15:00.000Z",
+          "status": "posted",
+          "revision": 0,
+          "total": 3.08625,
+          "parentDocumentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:117",
+          "returnParentKind": "sale",
+          "lines": [
+            {
+              "id": "return-line-fixture",
+              "lineTotal": 3.08625,
+              "costAtSale": 5,
+              "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:2",
+              "description": "رصيد تجريبي",
+              "quantity": 0.25,
+              "unitPrice": 12.345
+            }
+          ],
+          "note": "مرتجع محفوظ\nRetour littéral",
+          "cashAmount": 3.08625,
+          "paidTotal": 3.08625,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": null,
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 118,
+            "number": "RETURN-118"
+          },
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "warehouseName": "الرئيسي",
+          "partyBalanceDelta": 0,
+          "legacyKey": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:118"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:117",
+          "kind": "sale",
+          "total": 12.345,
+          "lines": [
+            {
+              "costAtSale": 5,
+              "lineTotal": 12.345,
+              "lineTotalMode": "exact",
+              "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:117:line:1",
+              "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:2",
+              "description": "رصيد تجريبي",
+              "quantity": 1,
+              "unitPrice": 12.345,
+              "grossProfit": 7.345000000000001
+            }
+          ],
+          "title": "سند تجريبي 117",
+          "revision": 0,
+          "number": "3",
+          "sequence": 3,
+          "profit": 7.345,
+          "status": "posted",
+          "occurredAt": "2026-11-17T10:15:00.000Z",
+          "cashAmount": 12.345,
+          "paidTotal": 12.345,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": null,
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 117,
+            "number": "3"
+          },
+          "partyBalanceDelta": 0,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "warehouseName": "الرئيسي"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:116",
+          "kind": "payment",
+          "total": 20,
+          "lines": [],
+          "title": "سند تجريبي 116",
+          "revision": 0,
+          "number": "PAY-116",
+          "status": "posted",
+          "occurredAt": "2026-11-16T10:15:00.000Z",
+          "cashAmount": 20,
+          "paidTotal": 20,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 116,
+            "number": null
+          },
+          "partyName": "مورد تجريبي",
+          "partyCashDirection": "pay",
+          "partyBalanceDelta": 20
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:115",
+          "kind": "payment",
+          "total": 10,
+          "lines": [],
+          "title": "سند تجريبي 115",
+          "revision": 0,
+          "number": "RECEIVE-115",
+          "status": "posted",
+          "occurredAt": "2026-11-15T10:15:00.000Z",
+          "cashAmount": 10,
+          "paidTotal": 10,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 115,
+            "number": null
+          },
+          "partyName": "مورد تجريبي",
+          "partyCashDirection": "receive",
+          "partyBalanceDelta": -10
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:114",
+          "kind": "purchase",
+          "total": 20,
+          "lines": [
+            {
+              "costAtSale": 10,
+              "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:114:line:1",
+              "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+              "description": "سلعة تجريبية",
+              "quantity": 2,
+              "unitPrice": 10,
+              "lineTotal": 20
+            }
+          ],
+          "title": "سند تجريبي 114",
+          "revision": 0,
+          "number": "MOB-9c79e873-PURCHASE-114",
+          "sequence": 2,
+          "status": "posted",
+          "occurredAt": "2026-11-14T10:15:00.000Z",
+          "cashAmount": 0,
+          "paidTotal": 0,
+          "dueTotal": 20,
+          "paymentMethod": null,
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 114,
+            "number": "2"
+          },
+          "partyName": "مورد تجريبي",
+          "partyBalanceDelta": -20,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "warehouseName": "الرئيسي"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:113",
+          "kind": "sale",
+          "total": 20,
+          "lines": [
+            {
+              "costAtSale": 10,
+              "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:113:line:1",
+              "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+              "description": "سلعة تجريبية",
+              "quantity": 1,
+              "unitPrice": 20,
+              "lineTotal": 20,
+              "grossProfit": 10
+            }
+          ],
+          "title": "سند تجريبي 113",
+          "revision": 0,
+          "number": "MOB-9c79e873-SALE-113",
+          "sequence": 2,
+          "profit": 10,
+          "voided": true,
+          "status": "voided",
+          "occurredAt": "2026-11-13T10:15:00.000Z",
+          "cashAmount": 20,
+          "paidTotal": 20,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 113,
+            "number": "2"
+          },
+          "partyName": "عميل تجريبي",
+          "partyBalanceDelta": 0,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "warehouseName": "الرئيسي"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:112",
+          "kind": "adjustment",
+          "total": 0,
+          "lines": [
+            {
+              "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:112:line:1",
+              "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:2",
+              "description": "رصيد تجريبي",
+              "quantity": 5,
+              "unitPrice": 5,
+              "lineTotal": 0
+            }
+          ],
+          "title": "رصيد بداية",
+          "revision": 0,
+          "number": "OPEN-2",
+          "openingStock": true,
+          "newQty": 5,
+          "status": "posted",
+          "occurredAt": "2026-11-12T10:15:00.000Z",
+          "cashAmount": 0,
+          "paidTotal": 0,
+          "dueTotal": 0,
+          "paymentMethod": null,
+          "partyId": null,
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 112,
+            "number": "OPEN-2"
+          },
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "warehouseName": "الرئيسي",
+          "openingStockAfter": 5
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:111:counterparty",
+          "kind": "settlement",
+          "total": 20,
+          "lines": [],
+          "title": "سند تجريبي 111",
+          "revision": 0,
+          "note": "تقاص تاريخي غير نقدي",
+          "number": "OFFSET-111:counterparty",
+          "status": "posted",
+          "occurredAt": "2026-11-11T10:15:00.000Z",
+          "cashAmount": 0,
+          "paidTotal": 0,
+          "dueTotal": 0,
+          "paymentMethod": null,
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 111,
+            "number": null
+          },
+          "partyName": "مورد تجريبي",
+          "legacyKey": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:111:counterparty",
+          "partyBalanceDelta": 20,
+          "mobileOffsetPeerId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:111"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:111",
+          "kind": "settlement",
+          "total": 20,
+          "lines": [],
+          "title": "سند تجريبي 111",
+          "revision": 0,
+          "note": "تقاص تاريخي غير نقدي",
+          "number": "OFFSET-111",
+          "status": "posted",
+          "occurredAt": "2026-11-11T10:15:00.000Z",
+          "cashAmount": 0,
+          "paidTotal": 0,
+          "dueTotal": 0,
+          "paymentMethod": null,
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 111,
+            "number": null
+          },
+          "partyName": "عميل تجريبي",
+          "legacyKey": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:111",
+          "partyBalanceDelta": -20,
+          "mobileOffsetPeerId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:111:counterparty"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:110",
+          "kind": "adjustment",
+          "total": 10,
+          "lines": [
+            {
+              "actualQuantity": 8,
+              "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:110:line:1",
+              "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+              "description": "سلعة تجريبية",
+              "quantity": -1,
+              "unitPrice": 10,
+              "lineTotal": 0
+            }
+          ],
+          "title": "سند تجريبي 110",
+          "revision": 0,
+          "newQty": 8,
+          "note": "جرد تجريبي",
+          "settlementSequence": 1,
+          "number": "ADJUSTMENT-110",
+          "status": "posted",
+          "occurredAt": "2026-11-10T10:15:00.000Z",
+          "cashAmount": 0,
+          "paidTotal": 0,
+          "dueTotal": 0,
+          "paymentMethod": null,
+          "partyId": null,
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 110,
+            "number": null
+          },
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "warehouseName": "الرئيسي"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:109",
+          "kind": "transfer",
+          "total": 20,
+          "lines": [
+            {
+              "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:109:line:1",
+              "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+              "description": "سلعة تجريبية",
+              "quantity": 2,
+              "unitPrice": 10,
+              "lineTotal": 0
+            }
+          ],
+          "title": "سند تجريبي 109",
+          "revision": 0,
+          "number": "STOCKTRANSFER-109",
+          "status": "posted",
+          "occurredAt": "2026-11-09T10:15:00.000Z",
+          "cashAmount": 0,
+          "paidTotal": 0,
+          "dueTotal": 0,
+          "paymentMethod": null,
+          "partyId": null,
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 109,
+            "number": null
+          },
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "warehouseName": "الرئيسي",
+          "destinationWarehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:39d83f2fad34670cb88478cc",
+          "destinationWarehouseName": "الفرعي"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:108",
+          "kind": "account-transfer",
+          "total": 25,
+          "lines": [],
+          "title": "سند تجريبي 108",
+          "revision": 0,
+          "note": "تحويل بين حسابين",
+          "number": "TRANSFER-108",
+          "status": "posted",
+          "occurredAt": "2026-11-08T10:15:00.000Z",
+          "cashAmount": 25,
+          "paidTotal": 25,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": null,
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 108,
+            "number": null
+          },
+          "fromAccountId": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "toAccountId": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "transferId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:108"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:107",
+          "kind": "account-adjustment",
+          "total": 15,
+          "lines": [],
+          "title": "سند تجريبي 107",
+          "revision": 0,
+          "note": "سحب محفوظ",
+          "number": "WITHDRAW-107",
+          "status": "posted",
+          "occurredAt": "2026-11-07T10:15:00.000Z",
+          "cashAmount": 15,
+          "paidTotal": 15,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": null,
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 107,
+            "number": null
+          },
+          "accountAdjustmentDirection": "withdrawal"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:106",
+          "kind": "account-adjustment",
+          "total": 50,
+          "lines": [],
+          "title": "سند تجريبي 106",
+          "revision": 0,
+          "number": "DEPOSIT-106",
+          "status": "posted",
+          "occurredAt": "2026-11-06T10:15:00.000Z",
+          "cashAmount": 50,
+          "paidTotal": 50,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": null,
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 106,
+            "number": null
+          },
+          "accountAdjustmentDirection": "deposit"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:105",
+          "kind": "expense",
+          "total": 20,
+          "lines": [],
+          "title": "نقل تجريبي",
+          "revision": 0,
+          "number": "MOB-9c79e873-EXPENSE-105",
+          "sequence": 1,
+          "note": "مصروف محفوظ",
+          "expenseCategoryId": "expense-category-fixture",
+          "expenseCategoryName": "نقل / Transport",
+          "status": "posted",
+          "occurredAt": "2026-11-05T10:15:00.000Z",
+          "cashAmount": 20,
+          "paidTotal": 20,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": null,
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 105,
+            "number": "1"
+          }
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:104",
+          "kind": "payment",
+          "total": 10,
+          "lines": [],
+          "title": "سند تجريبي 104",
+          "revision": 0,
+          "note": "إرجاع للعميل",
+          "number": "PAY-104",
+          "status": "posted",
+          "occurredAt": "2026-11-04T10:15:00.000Z",
+          "cashAmount": 10,
+          "paidTotal": 10,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 104,
+            "number": null
+          },
+          "partyName": "عميل تجريبي",
+          "partyCashDirection": "pay",
+          "partyBalanceDelta": 10
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:103",
+          "kind": "payment",
+          "total": 30,
+          "lines": [],
+          "title": "سند تجريبي 103",
+          "revision": 0,
+          "note": "استلام عميل\nTexte littéral",
+          "number": "RECEIVE-103",
+          "status": "posted",
+          "occurredAt": "2026-11-03T10:15:00.000Z",
+          "cashAmount": 30,
+          "paidTotal": 30,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 103,
+            "number": null
+          },
+          "partyName": "عميل تجريبي",
+          "partyCashDirection": "receive",
+          "partyBalanceDelta": -30
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:102",
+          "kind": "sale",
+          "total": 60,
+          "lines": [
+            {
+              "costAtSale": 10,
+              "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:102:line:1",
+              "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+              "description": "سلعة تجريبية",
+              "quantity": 3,
+              "unitPrice": 20,
+              "lineTotal": 60,
+              "grossProfit": 30
+            }
+          ],
+          "title": "سند تجريبي 102",
+          "revision": 0,
+          "number": "MOB-9c79e873-SALE-102",
+          "sequence": 1,
+          "profit": 30,
+          "status": "posted",
+          "occurredAt": "2026-11-02T10:15:00.000Z",
+          "cashAmount": 0,
+          "paidTotal": 0,
+          "dueTotal": 60,
+          "paymentMethod": null,
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 102,
+            "number": "1"
+          },
+          "partyName": "عميل تجريبي",
+          "partyBalanceDelta": 60,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "warehouseName": "الرئيسي"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:101",
+          "kind": "purchase",
+          "total": 40,
+          "lines": [
+            {
+              "costAtSale": 9,
+              "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:101:line:1",
+              "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+              "description": "سلعة تجريبية",
+              "quantity": 4,
+              "unitPrice": 10,
+              "lineTotal": 40
+            }
+          ],
+          "title": "سند تجريبي 101",
+          "revision": 1,
+          "number": "MOB-9c79e873-PURCHASE-101",
+          "sequence": 1,
+          "createdAt": "2026-11-01T10:15:00.000Z",
+          "updatedAt": "2026-11-02T11:00:00.000Z",
+          "status": "posted",
+          "occurredAt": "2026-11-01T10:15:00.000Z",
+          "cashAmount": 40,
+          "paidTotal": 40,
+          "dueTotal": 0,
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "mobileSource": {
+            "format": "alkarna-mobile-business-backup",
+            "originId": "synthetic-mobile23-shop",
+            "id": 101,
+            "number": "1"
+          },
+          "partyName": "مورد تجريبي",
+          "partyBalanceDelta": 0,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "warehouseName": "الرئيسي"
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:party-baseline:mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "number": "MOB-9c79e873-BASE-P-1",
+          "kind": "settlement",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "partyName": "عميل تجريبي",
+          "total": 100,
+          "partyBalanceDelta": 100,
+          "paymentMethod": null,
+          "cashAmount": 0,
+          "paidTotal": 0,
+          "dueTotal": 0,
+          "lines": [],
+          "note": null,
+          "title": "رصيد مصدر سابق",
+          "status": "posted",
+          "revision": 0,
+          "occurredAt": "2026-11-01T00:00:00.000Z",
+          "legacyKey": "mobile:9c79e8739bd5cad9af1d5f725781117d:party-baseline:mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "mobileBaseline": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:party-baseline:mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "number": "MOB-9c79e873-BASE-P-2",
+          "kind": "settlement",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "partyName": "مورد تجريبي",
+          "total": 200,
+          "partyBalanceDelta": -200,
+          "paymentMethod": null,
+          "cashAmount": 0,
+          "paidTotal": 0,
+          "dueTotal": 0,
+          "lines": [],
+          "note": null,
+          "title": "رصيد مصدر سابق",
+          "status": "posted",
+          "revision": 0,
+          "occurredAt": "2026-11-01T00:00:00.000Z",
+          "legacyKey": "mobile:9c79e8739bd5cad9af1d5f725781117d:party-baseline:mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "mobileBaseline": true
+        }
+      ],
+      "stockMovements": [
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "legacy-1",
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": 10,
+          "type": "legacy-opening",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:0",
+          "occurredAt": "2026-11-01T00:00:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "legacy-1",
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:39d83f2fad34670cb88478cc",
+          "quantityDelta": 2,
+          "type": "legacy-opening",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:1",
+          "occurredAt": "2026-11-01T00:00:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:101",
+          "documentRevision": 1,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": 3,
+          "type": "purchase",
+          "at": "2026-11-01T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:2",
+          "occurredAt": "2026-11-01T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:101",
+          "documentRevision": 2,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": -3,
+          "type": "purchase-edit",
+          "at": "2026-11-01T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:3",
+          "occurredAt": "2026-11-01T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:101",
+          "documentRevision": 3,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": 4,
+          "type": "purchase-edit",
+          "at": "2026-11-01T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:4",
+          "occurredAt": "2026-11-01T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:102",
+          "documentRevision": 4,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": -3,
+          "type": "sale",
+          "at": "2026-11-02T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:5",
+          "occurredAt": "2026-11-02T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:109",
+          "documentRevision": 11,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": -2,
+          "type": "transfer-out",
+          "at": "2026-11-09T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:6",
+          "occurredAt": "2026-11-09T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:109",
+          "documentRevision": 11,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:39d83f2fad34670cb88478cc",
+          "quantityDelta": 2,
+          "type": "transfer-in",
+          "at": "2026-11-09T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:7",
+          "occurredAt": "2026-11-09T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:110",
+          "documentRevision": 12,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": -1,
+          "type": "adjustment",
+          "at": "2026-11-10T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:8",
+          "occurredAt": "2026-11-10T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:2",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:112",
+          "documentRevision": 14,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": 5,
+          "type": "opening",
+          "at": "2026-11-12T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:9",
+          "occurredAt": "2026-11-12T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:113",
+          "documentRevision": 15,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": -1,
+          "type": "sale",
+          "at": "2026-11-13T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:10",
+          "occurredAt": "2026-11-13T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:113",
+          "documentRevision": 16,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": 1,
+          "type": "sale-void",
+          "at": "2026-11-13T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:11",
+          "occurredAt": "2026-11-13T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:114",
+          "documentRevision": 17,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": 2,
+          "type": "purchase",
+          "at": "2026-11-14T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:12",
+          "occurredAt": "2026-11-14T10:15:00.000Z"
+        },
+        {
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:2",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:117",
+          "documentRevision": 20,
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "quantityDelta": -1,
+          "type": "sale",
+          "at": "2026-11-17T10:15:00.000Z",
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:stock-event:13",
+          "occurredAt": "2026-11-17T10:15:00.000Z"
+        },
+        {
+          "id": "return-event-fixture",
+          "productId": "mobile:9c79e8739bd5cad9af1d5f725781117d:product:2",
+          "warehouseId": "mobile:9c79e8739bd5cad9af1d5f725781117d:warehouse:9fa5525c694ee6b4f38d5c60",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:118",
+          "documentNumber": "RETURN-118",
+          "quantityDelta": 0.25,
+          "type": "return",
+          "occurredAt": "2026-11-18T10:15:00.000Z"
+        }
+      ],
+      "financialMovements": [
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:118:mobile-current-financial:0",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:118",
+          "documentNumber": "RETURN-118",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "direction": "out",
+          "amount": 3.08625,
+          "type": "return",
+          "occurredAt": "2026-11-18T10:15:00.000Z",
+          "partyId": null,
+          "partyName": null,
+          "transferId": null,
+          "note": "مرتجع محفوظ\nRetour littéral",
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:117:mobile-current-financial:0",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:117",
+          "documentNumber": "3",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "direction": "in",
+          "amount": 12.345,
+          "type": "sale",
+          "occurredAt": "2026-11-17T10:15:00.000Z",
+          "partyId": null,
+          "partyName": null,
+          "transferId": null,
+          "note": null,
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:116:mobile-current-financial:0",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:116",
+          "documentNumber": "PAY-116",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "direction": "out",
+          "amount": 20,
+          "type": "party-payment",
+          "occurredAt": "2026-11-16T10:15:00.000Z",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "partyName": "مورد تجريبي",
+          "transferId": null,
+          "note": null,
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:115:mobile-current-financial:0",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:115",
+          "documentNumber": "RECEIVE-115",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "direction": "in",
+          "amount": 10,
+          "type": "party-receipt",
+          "occurredAt": "2026-11-15T10:15:00.000Z",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "partyName": "مورد تجريبي",
+          "transferId": null,
+          "note": null,
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:108:mobile-current-financial:0",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:108",
+          "documentNumber": "TRANSFER-108",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "direction": "out",
+          "amount": 25,
+          "type": "transfer-out",
+          "occurredAt": "2026-11-08T10:15:00.000Z",
+          "partyId": null,
+          "partyName": null,
+          "transferId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:108",
+          "note": "تحويل بين حسابين",
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:108:mobile-current-financial:0:in",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:108",
+          "documentNumber": "TRANSFER-108",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "direction": "in",
+          "amount": 25,
+          "type": "transfer-in",
+          "occurredAt": "2026-11-08T10:15:00.000Z",
+          "partyId": null,
+          "partyName": null,
+          "transferId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:108",
+          "note": "تحويل بين حسابين",
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:107:mobile-current-financial:0",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:107",
+          "documentNumber": "WITHDRAW-107",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "direction": "out",
+          "amount": 15,
+          "type": "manual-withdrawal",
+          "occurredAt": "2026-11-07T10:15:00.000Z",
+          "partyId": null,
+          "partyName": null,
+          "transferId": null,
+          "note": "سحب محفوظ",
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:106:mobile-current-financial:0",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:106",
+          "documentNumber": "DEPOSIT-106",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "direction": "in",
+          "amount": 50,
+          "type": "manual-deposit",
+          "occurredAt": "2026-11-06T10:15:00.000Z",
+          "partyId": null,
+          "partyName": null,
+          "transferId": null,
+          "note": null,
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:105:mobile-current-financial:0",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:105",
+          "documentNumber": "MOB-9c79e873-EXPENSE-105",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "direction": "out",
+          "amount": 20,
+          "type": "expense",
+          "occurredAt": "2026-11-05T10:15:00.000Z",
+          "partyId": null,
+          "partyName": null,
+          "transferId": null,
+          "note": "مصروف محفوظ",
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:104:mobile-current-financial:0",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:104",
+          "documentNumber": "PAY-104",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "direction": "out",
+          "amount": 10,
+          "type": "party-payment",
+          "occurredAt": "2026-11-04T10:15:00.000Z",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "partyName": "عميل تجريبي",
+          "transferId": null,
+          "note": "إرجاع للعميل",
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:103:mobile-current-financial:0",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:103",
+          "documentNumber": "RECEIVE-103",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "direction": "in",
+          "amount": 30,
+          "type": "party-receipt",
+          "occurredAt": "2026-11-03T10:15:00.000Z",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:1",
+          "partyName": "عميل تجريبي",
+          "transferId": null,
+          "note": "استلام عميل\nTexte littéral",
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:101:mobile-current-financial:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:101",
+          "documentNumber": "MOB-9c79e873-PURCHASE-101",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "direction": "out",
+          "amount": 40,
+          "type": "purchase",
+          "occurredAt": "2026-11-01T10:15:00.000Z",
+          "partyId": "mobile:9c79e8739bd5cad9af1d5f725781117d:party:2",
+          "partyName": "مورد تجريبي",
+          "transferId": null,
+          "note": null,
+          "status": "posted",
+          "revision": 1,
+          "importedFrom": "mobile-business-v1",
+          "mobileCurrentEffect": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:account-baseline:mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:account-baseline:mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "documentNumber": "mobile:9c79e8739bd5cad9af1d5f725781117d:account-baseline:mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "partyId": null,
+          "direction": "in",
+          "amount": 1000,
+          "type": "opening-balance",
+          "occurredAt": "2026-11-01T00:00:00.000Z",
+          "note": null,
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileBaseline": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:account-baseline:mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:account-baseline:mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "documentNumber": "mobile:9c79e8739bd5cad9af1d5f725781117d:account-baseline:mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "partyId": null,
+          "direction": "out",
+          "amount": 20,
+          "type": "opening-balance",
+          "occurredAt": "2026-11-01T00:00:00.000Z",
+          "note": null,
+          "status": "posted",
+          "revision": 0,
+          "importedFrom": "mobile-business-v1",
+          "mobileBaseline": true
+        },
+        {
+          "id": "fin-f9d3d235-b470-48ee-8c47-d6b8d68c9092",
+          "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "paymentCode": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "direction": "out",
+          "amount": 20,
+          "documentId": "employee-payment-96bbbd37-7234-4205-bd7e-6a3659249cfd",
+          "documentNumber": "EMP-PAY-06bcb6b4-ff18-42fe-8455-045ac75e48f8",
+          "partyId": null,
+          "partyName": null,
+          "type": "employee-payment",
+          "occurredAt": "2026-11-19T12:00:00.000Z",
+          "transferId": null,
+          "note": "صرف العامل\nSalaire",
+          "status": "posted",
+          "revision": 0,
+          "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+          "employeeName": "عامل / Employé"
+        }
+      ],
+      "paymentAccounts": [
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "name": "نقدي تجريبي",
+          "openingBalance": 1000,
+          "code": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "balance": 959.2587500000001,
+          "isActive": true,
+          "isArchived": false,
+          "allowNegativeBalance": true
+        },
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "name": "بنك تجريبي",
+          "openingBalance": -20,
+          "code": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "balance": -5,
+          "isActive": true,
+          "isArchived": false,
+          "allowNegativeBalance": true
+        }
+      ],
+      "recurringExpenses": [],
+      "accountTransfers": [
+        {
+          "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:108",
+          "documentId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:108",
+          "number": "TRANSFER-108",
+          "fromAccountId": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+          "toAccountId": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:2",
+          "amount": 25,
+          "note": "تحويل بين حسابين",
+          "occurredAt": "2026-11-08T10:15:00.000Z",
+          "status": "posted",
+          "revision": 0
+        }
+      ],
+      "counters": [
+        {
+          "_id": "documentSequence:stock-settlement",
+          "value": 1
+        },
+        {
+          "_id": "documentSequence:sale",
+          "value": 3
+        },
+        {
+          "_id": "documentSequence:purchase",
+          "value": 2
+        },
+        {
+          "_id": "documentSequence:expense",
+          "value": 1
+        }
+      ],
+      "auditEvents": [
+        {
+          "id": "expense-category-audit-19104984-18ac-4b6f-a7cd-bc7c0436abb3",
+          "action": "expense-category.create",
+          "status": "committed",
+          "entityId": "expense-category-fixture",
+          "createdAt": "2026-11-23T12:00:00.000Z",
+          "at": "2026-11-23T12:00:00.000Z",
+          "before": null,
+          "after": {
+            "id": "expense-category-fixture",
+            "name": "نقل / Transport",
+            "normalizedName": "نقل / transport",
+            "kind": "nonrecurring",
+            "isArchived": false,
+            "revision": 0,
+            "createdAt": "2026-11-23T12:00:00.000Z"
+          },
+          "user": "owner"
+        },
+        {
+          "id": "payroll-audit-2bfbcd2a-686d-4edd-acec-b302b5e057a8",
+          "action": "payroll.employee.create",
+          "status": "committed",
+          "entityId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+          "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+          "createdAt": "2026-11-19T12:00:00.000Z",
+          "before": null,
+          "after": {
+            "id": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+            "name": "عامل / Employé",
+            "phone": "22001122",
+            "startDate": "2026-11-01",
+            "balance": 0,
+            "revision": 0,
+            "isArchived": false,
+            "agreements": [
+              {
+                "id": "agreement-013c1941-ef65-4127-8a77-ad27b660ffdf",
+                "startDate": "2026-11-01",
+                "amount": 100,
+                "intervalMonths": 1,
+                "entitlement": "beginning",
+                "anchorDay": 1
+              }
+            ],
+            "createdAt": "2026-11-19T12:00:00.000Z"
+          },
+          "actorId": "owner",
+          "actorName": "Owner"
+        },
+        {
+          "id": "payroll-audit-5461e9c7-8b78-4f35-8e10-db7b1d5d9eb5",
+          "action": "payroll.employee-accrual.automatic",
+          "status": "committed",
+          "entityId": "employee-accrual-5fa52879c7630216cf83d57818a15da3",
+          "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+          "createdAt": "2026-11-19T12:00:00.000Z",
+          "before": null,
+          "after": {
+            "id": "employee-accrual-5fa52879c7630216cf83d57818a15da3",
+            "number": "EMP-2026-11-01-5fa52879c7630216cf83d57818a15da3",
+            "kind": "employee-accrual",
+            "status": "posted",
+            "revision": 0,
+            "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+            "employeeName": "عامل / Employé",
+            "periodStart": "2026-11-01",
+            "periodEnd": "2026-11-30",
+            "dueDate": "2026-11-01",
+            "businessDate": "2026-11-01",
+            "occurredAt": "2026-11-01T12:00:00.000Z",
+            "total": 100,
+            "amount": 100,
+            "balanceDelta": 100,
+            "agreementSnapshot": {
+              "id": "agreement-013c1941-ef65-4127-8a77-ad27b660ffdf",
+              "startDate": "2026-11-01",
+              "amount": 100,
+              "intervalMonths": 1,
+              "entitlement": "beginning",
+              "anchorDay": 1
+            },
+            "lines": [],
+            "createdAt": "2026-11-19T12:00:00.000Z",
+            "context": "mobile-bootstrap"
+          }
+        },
+        {
+          "id": "payroll-audit-a1cb7e8d-92dd-4560-93fd-3c13f95fc354",
+          "action": "payroll.employee-payment.post",
+          "status": "committed",
+          "entityId": "employee-payment-96bbbd37-7234-4205-bd7e-6a3659249cfd",
+          "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+          "createdAt": "2026-11-19T12:00:00.000Z",
+          "before": null,
+          "after": {
+            "id": "employee-payment-96bbbd37-7234-4205-bd7e-6a3659249cfd",
+            "number": "EMP-PAY-06bcb6b4-ff18-42fe-8455-045ac75e48f8",
+            "kind": "employee-payment",
+            "status": "posted",
+            "revision": 0,
+            "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+            "employeeName": "عامل / Employé",
+            "employeeAccountOrder": 1,
+            "paymentMethod": "mobile:9c79e8739bd5cad9af1d5f725781117d:account:1",
+            "total": 20,
+            "amount": 20,
+            "paidTotal": 20,
+            "dueTotal": 0,
+            "employeePaymentDirection": "withdraw",
+            "employeePaymentVersion": 2,
+            "balanceDelta": -20,
+            "businessDate": "2026-11-19",
+            "occurredAt": "2026-11-19T12:00:00.000Z",
+            "allocations": [],
+            "note": "صرف العامل\nSalaire",
+            "lines": [],
+            "createdAt": "2026-11-19T12:00:00.000Z"
+          },
+          "actorId": "owner",
+          "actorName": "Owner"
+        },
+        {
+          "id": "party-opening-audit-9f00b16a-9a3b-4428-b9a1-654512a19830",
+          "action": "party-opening.post",
+          "entityId": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:121",
+          "partyId": 1,
+          "version": 1,
+          "status": "committed",
+          "createdAt": "2026-11-19T12:00:00.000Z",
+          "at": "2026-11-19T12:00:00.000Z",
+          "reason": "أصل رصيد البداية\nOuverture",
+          "beforeDocument": null,
+          "afterDocument": {
+            "id": "mobile:9c79e8739bd5cad9af1d5f725781117d:record:121",
+            "number": "POB-121",
+            "kind": "party-opening",
+            "status": "posted",
+            "revision": 0,
+            "revisions": [],
+            "date": "2026-11-19",
+            "time": "12:00",
+            "occurredAt": "2026-11-19T12:00:00.000Z",
+            "createdAt": "2026-11-19T12:00:00.000Z",
+            "party": 1,
+            "partyName": "عميل تجريبي",
+            "partyType": "customer",
+            "account": null,
+            "warehouse": null,
+            "title": "رصيد بداية الحساب",
+            "note": "أصل رصيد البداية\nOuverture",
+            "total": 15,
+            "paid": 0,
+            "due": 0,
+            "cashAmount": 0,
+            "lines": [],
+            "partyOpeningVersion": 1,
+            "partyOpeningDirection": "receivable",
+            "partyOpeningAmount": 15,
+            "partyOpeningContribution": 15,
+            "partyBalanceDelta": 15,
+            "partyOpeningBalanceBefore": 120,
+            "partyOpeningAppliedDelta": 15,
+            "partyOpeningBalanceAfter": 135,
+            "updatedBy": "owner",
+            "updatedByName": "Owner"
+          },
+          "beforeParty": {
+            "id": 1,
+            "name": "عميل تجريبي",
+            "phone": "",
+            "type": "customer",
+            "balance": 120
+          },
+          "afterParty": {
+            "id": 1,
+            "name": "عميل تجريبي",
+            "phone": "",
+            "type": "customer",
+            "balance": 135,
+            "lastMovementAt": "2026-11-19T12:00:00.000Z"
+          },
+          "appliedDelta": 15,
+          "user": "owner",
+          "userName": "Owner"
+        }
+      ],
+      "appSettings": [
+        {
+          "_id": "currency-settings",
+          "code": "MRU",
+          "availableCodes": [
+            "MRU"
+          ],
+          "schemaVersion": 1
+        },
+        {
+          "_id": "invoice-branding",
+          "schemaVersion": 1,
+          "storeName": "محل تجريبي Mobile",
+          "storePhone": "",
+          "storeAddress": "",
+          "storeLogoDataUrl": "",
+          "registrationNumber": "",
+          "taxNumber": "",
+          "footerNote": "بيانات وهمية فقط",
+          "nameFont": "tahoma",
+          "nameFontSize": 24,
+          "nameFontWeight": 800
+        },
+        {
+          "_id": "mobile-business-origin",
+          "schemaVersion": 1,
+          "originId": "synthetic-mobile23-shop"
+        },
+        {
+          "_id": "mobile-business:archive:256600f14ea43d8a5cf1a736d296eb7815ed8082d475d882b135039a4b2b16a1",
+          "sourceFormat": "alkarna-mobile-business-backup",
+          "schemaVersion": 1,
+          "sourceSha256": "256600f14ea43d8a5cf1a736d296eb7815ed8082d475d882b135039a4b2b16a1",
+          "inertSourceArchive": true,
+          "businessState": {
+            "originId": "synthetic-mobile23-shop",
+            "featureSchema": 4,
+            "products": [
+              {
+                "id": 1,
+                "name": "سلعة تجريبية",
+                "sku": "001",
+                "price": 20,
+                "wholesale": 18,
+                "cost": 10,
+                "openingCost": 10,
+                "categoryId": 1,
+                "stocks": {
+                  "الرئيسي": 10,
+                  "الفرعي": 4
+                },
+                "qty": 10
+              },
+              {
+                "id": 2,
+                "name": "رصيد تجريبي",
+                "sku": "002",
+                "price": 12,
+                "wholesale": 11,
+                "cost": 5,
+                "openingCost": 5,
+                "openingTotal": 5,
+                "openingWarehouse": "الرئيسي",
+                "categoryId": 1,
+                "stocks": {
+                  "الرئيسي": 4.25,
+                  "الفرعي": 0
+                },
+                "qty": 4.25
+              }
+            ],
+            "parties": [
+              {
+                "id": 1,
+                "name": "عميل تجريبي",
+                "phone": "",
+                "type": "customer",
+                "balance": 135,
+                "lastMovementAt": "2026-11-19T12:00:00.000Z"
+              },
+              {
+                "id": 2,
+                "name": "مورد تجريبي",
+                "phone": "",
+                "type": "supplier",
+                "balance": 190
+              }
+            ],
+            "accounts": [
+              {
+                "id": 1,
+                "name": "نقدي تجريبي",
+                "balance": 959.2587500000001,
+                "openingBalance": 1000,
+                "active": true
+              },
+              {
+                "id": 2,
+                "name": "بنك تجريبي",
+                "balance": -5,
+                "openingBalance": -20,
+                "active": true
+              }
+            ],
+            "records": [
+              {
+                "id": 121,
+                "number": "POB-121",
+                "kind": "party-opening",
+                "status": "posted",
+                "revision": 0,
+                "revisions": [],
+                "date": "2026-11-19",
+                "time": "12:00",
+                "occurredAt": "2026-11-19T12:00:00.000Z",
+                "createdAt": "2026-11-19T12:00:00.000Z",
+                "party": 1,
+                "partyName": "عميل تجريبي",
+                "partyType": "customer",
+                "account": null,
+                "warehouse": null,
+                "title": "رصيد بداية الحساب",
+                "note": "أصل رصيد البداية\nOuverture",
+                "total": 15,
+                "paid": 0,
+                "due": 0,
+                "cashAmount": 0,
+                "lines": [],
+                "partyOpeningVersion": 1,
+                "partyOpeningDirection": "receivable",
+                "partyOpeningAmount": 15,
+                "partyOpeningContribution": 15,
+                "partyBalanceDelta": 15,
+                "partyOpeningBalanceBefore": 120,
+                "partyOpeningAppliedDelta": 15,
+                "partyOpeningBalanceAfter": 135,
+                "updatedBy": "owner",
+                "updatedByName": "Owner"
+              },
+              {
+                "id": 120,
+                "number": "EMP-PAY-06bcb6b4-ff18-42fe-8455-045ac75e48f8",
+                "kind": "employee-payment",
+                "status": "posted",
+                "revision": 0,
+                "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                "employeeName": "عامل / Employé",
+                "employeeAccountOrder": 1,
+                "paymentMethod": "1",
+                "total": 20,
+                "amount": 20,
+                "paidTotal": 20,
+                "dueTotal": 0,
+                "employeePaymentDirection": "withdraw",
+                "employeePaymentVersion": 2,
+                "balanceDelta": -20,
+                "businessDate": "2026-11-19",
+                "occurredAt": "2026-11-19T12:00:00.000Z",
+                "allocations": [],
+                "note": "صرف العامل\nSalaire",
+                "lines": [],
+                "createdAt": "2026-11-19T12:00:00.000Z",
+                "payrollDocumentId": "employee-payment-96bbbd37-7234-4205-bd7e-6a3659249cfd",
+                "sourceDocumentId": "employee-payment-96bbbd37-7234-4205-bd7e-6a3659249cfd",
+                "date": "2026-11-19",
+                "time": "12:00",
+                "title": "عامل / Employé",
+                "subtitle": "سحب العامل",
+                "paid": 20,
+                "due": 0,
+                "voided": false,
+                "account": 1
+              },
+              {
+                "id": 119,
+                "number": "EMP-2026-11-01-5fa52879c7630216cf83d57818a15da3",
+                "kind": "employee-accrual",
+                "status": "posted",
+                "revision": 0,
+                "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                "employeeName": "عامل / Employé",
+                "periodStart": "2026-11-01",
+                "periodEnd": "2026-11-30",
+                "dueDate": "2026-11-01",
+                "businessDate": "2026-11-01",
+                "occurredAt": "2026-11-01T12:00:00.000Z",
+                "total": 100,
+                "amount": 100,
+                "balanceDelta": 100,
+                "agreementSnapshot": {
+                  "id": "agreement-013c1941-ef65-4127-8a77-ad27b660ffdf",
+                  "startDate": "2026-11-01",
+                  "amount": 100,
+                  "intervalMonths": 1,
+                  "entitlement": "beginning",
+                  "anchorDay": 1
+                },
+                "lines": [],
+                "createdAt": "2026-11-19T12:00:00.000Z",
+                "context": "mobile-bootstrap",
+                "payrollDocumentId": "employee-accrual-5fa52879c7630216cf83d57818a15da3",
+                "sourceDocumentId": "employee-accrual-5fa52879c7630216cf83d57818a15da3",
+                "date": "2026-11-01",
+                "time": "12:00",
+                "title": "عامل / Employé",
+                "subtitle": "استحقاق عامل",
+                "paid": 0,
+                "due": 0,
+                "voided": false,
+                "account": null
+              },
+              {
+                "id": 118,
+                "kind": "return",
+                "number": "RETURN-118",
+                "date": "2026-11-18",
+                "time": "10:15",
+                "occurredAt": "2026-11-18T10:15:00.000Z",
+                "status": "posted",
+                "revision": 0,
+                "total": 3.08625,
+                "paid": 3.08625,
+                "due": 0,
+                "account": 1,
+                "party": null,
+                "warehouse": "الرئيسي",
+                "parentDocumentId": "117",
+                "returnParentKind": "sale",
+                "lines": [
+                  {
+                    "id": "return-line-fixture",
+                    "product": 2,
+                    "name": "رصيد تجريبي",
+                    "qty": 0.25,
+                    "price": 12.345,
+                    "lineTotal": 3.08625,
+                    "lineTotalMode": "desktop-legacy",
+                    "costAtSale": 5
+                  }
+                ],
+                "note": "مرتجع محفوظ\nRetour littéral"
+              },
+              {
+                "id": 117,
+                "kind": "sale",
+                "date": "2026-11-17",
+                "time": "10:15",
+                "total": 12.345,
+                "paid": 12.345,
+                "due": 0,
+                "lines": [
+                  {
+                    "product": 2,
+                    "name": "رصيد تجريبي",
+                    "qty": 1,
+                    "price": 12.345,
+                    "costAtSale": 5,
+                    "lineTotal": 12.345,
+                    "lineTotalMode": "exact"
+                  }
+                ],
+                "title": "سند تجريبي 117",
+                "revision": 0,
+                "account": 1,
+                "warehouse": "الرئيسي",
+                "number": "3",
+                "sequence": 3,
+                "profit": 7.345
+              },
+              {
+                "id": 116,
+                "kind": "pay",
+                "date": "2026-11-16",
+                "time": "10:15",
+                "total": 20,
+                "paid": 20,
+                "due": 0,
+                "lines": [],
+                "title": "سند تجريبي 116",
+                "revision": 0,
+                "account": 2,
+                "party": 2
+              },
+              {
+                "id": 115,
+                "kind": "receive",
+                "date": "2026-11-15",
+                "time": "10:15",
+                "total": 10,
+                "paid": 10,
+                "due": 0,
+                "lines": [],
+                "title": "سند تجريبي 115",
+                "revision": 0,
+                "account": 2,
+                "party": 2
+              },
+              {
+                "id": 114,
+                "kind": "purchase",
+                "date": "2026-11-14",
+                "time": "10:15",
+                "total": 20,
+                "paid": 0,
+                "due": 20,
+                "lines": [
+                  {
+                    "product": 1,
+                    "name": "سلعة تجريبية",
+                    "qty": 2,
+                    "price": 10,
+                    "costAtSale": 10
+                  }
+                ],
+                "title": "سند تجريبي 114",
+                "revision": 0,
+                "party": 2,
+                "warehouse": "الرئيسي",
+                "number": "2",
+                "sequence": 2
+              },
+              {
+                "id": 113,
+                "kind": "sale",
+                "date": "2026-11-13",
+                "time": "10:15",
+                "total": 20,
+                "paid": 20,
+                "due": 0,
+                "lines": [
+                  {
+                    "product": 1,
+                    "name": "سلعة تجريبية",
+                    "qty": 1,
+                    "price": 20,
+                    "costAtSale": 10
+                  }
+                ],
+                "title": "سند تجريبي 113",
+                "revision": 0,
+                "account": 1,
+                "party": 1,
+                "warehouse": "الرئيسي",
+                "number": "2",
+                "sequence": 2,
+                "profit": 10,
+                "voided": true
+              },
+              {
+                "id": 112,
+                "kind": "adjustment",
+                "date": "2026-11-12",
+                "time": "10:15",
+                "total": 0,
+                "paid": 0,
+                "due": 0,
+                "lines": [
+                  {
+                    "product": 2,
+                    "name": "رصيد تجريبي",
+                    "qty": 5,
+                    "price": 5,
+                    "delta": 5
+                  }
+                ],
+                "title": "رصيد بداية",
+                "revision": 0,
+                "warehouse": "الرئيسي",
+                "number": "OPEN-2",
+                "openingStock": true,
+                "newQty": 5
+              },
+              {
+                "id": 111,
+                "kind": "offset",
+                "date": "2026-11-11",
+                "time": "10:15",
+                "total": 20,
+                "paid": 0,
+                "due": 0,
+                "lines": [],
+                "title": "سند تجريبي 111",
+                "revision": 0,
+                "party": 1,
+                "otherParty": 2,
+                "note": "تقاص تاريخي غير نقدي"
+              },
+              {
+                "id": 110,
+                "kind": "adjustment",
+                "date": "2026-11-10",
+                "time": "10:15",
+                "total": 10,
+                "paid": 0,
+                "due": 0,
+                "lines": [
+                  {
+                    "product": 1,
+                    "name": "سلعة تجريبية",
+                    "qty": 1,
+                    "price": 10,
+                    "delta": -1,
+                    "actualQuantity": 8
+                  }
+                ],
+                "title": "سند تجريبي 110",
+                "revision": 0,
+                "warehouse": "الرئيسي",
+                "newQty": 8,
+                "note": "جرد تجريبي",
+                "settlementSequence": 1
+              },
+              {
+                "id": 109,
+                "kind": "stocktransfer",
+                "date": "2026-11-09",
+                "time": "10:15",
+                "total": 20,
+                "paid": 0,
+                "due": 0,
+                "lines": [
+                  {
+                    "product": 1,
+                    "name": "سلعة تجريبية",
+                    "qty": 2,
+                    "price": 10,
+                    "delta": 0
+                  }
+                ],
+                "title": "سند تجريبي 109",
+                "revision": 0,
+                "from": "الرئيسي",
+                "toWarehouse": "الفرعي"
+              },
+              {
+                "id": 108,
+                "kind": "transfer",
+                "date": "2026-11-08",
+                "time": "10:15",
+                "total": 25,
+                "paid": 25,
+                "due": 0,
+                "lines": [],
+                "title": "سند تجريبي 108",
+                "revision": 0,
+                "account": 1,
+                "to": 2,
+                "note": "تحويل بين حسابين"
+              },
+              {
+                "id": 107,
+                "kind": "withdraw",
+                "date": "2026-11-07",
+                "time": "10:15",
+                "total": 15,
+                "paid": 15,
+                "due": 0,
+                "lines": [],
+                "title": "سند تجريبي 107",
+                "revision": 0,
+                "account": 1,
+                "note": "سحب محفوظ"
+              },
+              {
+                "id": 106,
+                "kind": "deposit",
+                "date": "2026-11-06",
+                "time": "10:15",
+                "total": 50,
+                "paid": 50,
+                "due": 0,
+                "lines": [],
+                "title": "سند تجريبي 106",
+                "revision": 0,
+                "account": 1
+              },
+              {
+                "id": 105,
+                "kind": "expense",
+                "date": "2026-11-05",
+                "time": "10:15",
+                "total": 20,
+                "paid": 20,
+                "due": 0,
+                "lines": [],
+                "title": "نقل تجريبي",
+                "revision": 0,
+                "account": 1,
+                "number": "1",
+                "sequence": 1,
+                "note": "مصروف محفوظ",
+                "expenseCategoryId": "expense-category-fixture",
+                "expenseCategoryName": "نقل / Transport"
+              },
+              {
+                "id": 104,
+                "kind": "pay",
+                "date": "2026-11-04",
+                "time": "10:15",
+                "total": 10,
+                "paid": 10,
+                "due": 0,
+                "lines": [],
+                "title": "سند تجريبي 104",
+                "revision": 0,
+                "account": 1,
+                "party": 1,
+                "note": "إرجاع للعميل"
+              },
+              {
+                "id": 103,
+                "kind": "receive",
+                "date": "2026-11-03",
+                "time": "10:15",
+                "total": 30,
+                "paid": 30,
+                "due": 0,
+                "lines": [],
+                "title": "سند تجريبي 103",
+                "revision": 0,
+                "account": 1,
+                "party": 1,
+                "note": "استلام عميل\nTexte littéral"
+              },
+              {
+                "id": 102,
+                "kind": "sale",
+                "date": "2026-11-02",
+                "time": "10:15",
+                "total": 60,
+                "paid": 0,
+                "due": 60,
+                "lines": [
+                  {
+                    "product": 1,
+                    "name": "سلعة تجريبية",
+                    "qty": 3,
+                    "price": 20,
+                    "costAtSale": 10
+                  }
+                ],
+                "title": "سند تجريبي 102",
+                "revision": 0,
+                "party": 1,
+                "warehouse": "الرئيسي",
+                "number": "1",
+                "sequence": 1,
+                "profit": 30
+              },
+              {
+                "id": 101,
+                "kind": "purchase",
+                "date": "2026-11-01",
+                "time": "10:15",
+                "total": 40,
+                "paid": 40,
+                "due": 0,
+                "lines": [
+                  {
+                    "product": 1,
+                    "name": "سلعة تجريبية",
+                    "qty": 4,
+                    "price": 10,
+                    "costAtSale": 9
+                  }
+                ],
+                "title": "سند تجريبي 101",
+                "revision": 1,
+                "account": 1,
+                "party": 2,
+                "warehouse": "الرئيسي",
+                "number": "1",
+                "sequence": 1,
+                "revisions": [
+                  {
+                    "id": 101,
+                    "kind": "purchase",
+                    "date": "2026-11-01",
+                    "time": "10:15",
+                    "total": 30,
+                    "paid": 30,
+                    "due": 0,
+                    "lines": [
+                      {
+                        "product": 1,
+                        "name": "سلعة تجريبية",
+                        "qty": 3,
+                        "price": 10
+                      }
+                    ],
+                    "title": "سند تجريبي 101",
+                    "revision": 0,
+                    "account": 1,
+                    "party": 2,
+                    "warehouse": "الرئيسي",
+                    "number": "1",
+                    "sequence": 1
+                  }
+                ],
+                "createdAt": "2026-11-01T10:15:00.000Z",
+                "updatedAt": "2026-11-02T11:00:00.000Z"
+              }
+            ],
+            "warehouses": [
+              "الرئيسي",
+              "الفرعي"
+            ],
+            "warehouseMeta": {
+              "الرئيسي": {
+                "archived": false
+              },
+              "الفرعي": {
+                "archived": false
+              }
+            },
+            "warehouse": "الرئيسي",
+            "salesWarehouse": "الرئيسي",
+            "categories": [
+              {
+                "id": 1,
+                "name": "عام"
+              }
+            ],
+            "expenseCategories": [
+              {
+                "id": "expense-category-fixture",
+                "name": "نقل / Transport",
+                "normalizedName": "نقل / transport",
+                "kind": "nonrecurring",
+                "isArchived": false,
+                "revision": 0,
+                "createdAt": "2026-11-23T12:00:00.000Z"
+              }
+            ],
+            "employees": [
+              {
+                "id": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                "name": "عامل / Employé",
+                "phone": "22001122",
+                "startDate": "2026-11-01",
+                "balance": 80,
+                "revision": 0,
+                "isArchived": false,
+                "agreements": [
+                  {
+                    "id": "agreement-013c1941-ef65-4127-8a77-ad27b660ffdf",
+                    "startDate": "2026-11-01",
+                    "amount": 100,
+                    "intervalMonths": 1,
+                    "entitlement": "beginning",
+                    "anchorDay": 1
+                  }
+                ],
+                "createdAt": "2026-11-19T12:00:00.000Z",
+                "updatedAt": "2026-11-19T12:00:00.000Z"
+              }
+            ],
+            "payrollFinancialMovements": [
+              {
+                "id": "fin-f9d3d235-b470-48ee-8c47-d6b8d68c9092",
+                "paymentMethod": "1",
+                "paymentCode": "1",
+                "direction": "out",
+                "amount": 20,
+                "documentId": "employee-payment-96bbbd37-7234-4205-bd7e-6a3659249cfd",
+                "documentNumber": "EMP-PAY-06bcb6b4-ff18-42fe-8455-045ac75e48f8",
+                "partyId": null,
+                "partyName": null,
+                "type": "employee-payment",
+                "occurredAt": "2026-11-19T12:00:00.000Z",
+                "transferId": null,
+                "note": "صرف العامل\nSalaire",
+                "status": "posted",
+                "revision": 0,
+                "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                "employeeName": "عامل / Employé"
+              }
+            ],
+            "stockEvents": [
+              {
+                "productId": "1",
+                "documentId": "legacy-1",
+                "warehouseId": "الرئيسي",
+                "quantityDelta": 10,
+                "type": "legacy-opening"
+              },
+              {
+                "productId": "1",
+                "documentId": "legacy-1",
+                "warehouseId": "الفرعي",
+                "quantityDelta": 2,
+                "type": "legacy-opening"
+              },
+              {
+                "productId": "1",
+                "documentId": "101",
+                "documentRevision": 1,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": 3,
+                "type": "purchase",
+                "at": "2026-11-01T10:15:00.000Z"
+              },
+              {
+                "productId": "1",
+                "documentId": "101",
+                "documentRevision": 2,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": -3,
+                "type": "purchase-edit",
+                "at": "2026-11-01T10:15:00.000Z"
+              },
+              {
+                "productId": "1",
+                "documentId": "101",
+                "documentRevision": 3,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": 4,
+                "type": "purchase-edit",
+                "at": "2026-11-01T10:15:00.000Z"
+              },
+              {
+                "productId": "1",
+                "documentId": "102",
+                "documentRevision": 4,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": -3,
+                "type": "sale",
+                "at": "2026-11-02T10:15:00.000Z"
+              },
+              {
+                "productId": "1",
+                "documentId": "109",
+                "documentRevision": 11,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": -2,
+                "type": "transfer-out",
+                "at": "2026-11-09T10:15:00.000Z"
+              },
+              {
+                "productId": "1",
+                "documentId": "109",
+                "documentRevision": 11,
+                "warehouseId": "الفرعي",
+                "quantityDelta": 2,
+                "type": "transfer-in",
+                "at": "2026-11-09T10:15:00.000Z"
+              },
+              {
+                "productId": "1",
+                "documentId": "110",
+                "documentRevision": 12,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": -1,
+                "type": "adjustment",
+                "at": "2026-11-10T10:15:00.000Z"
+              },
+              {
+                "productId": "2",
+                "documentId": "112",
+                "documentRevision": 14,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": 5,
+                "type": "opening",
+                "at": "2026-11-12T10:15:00.000Z"
+              },
+              {
+                "productId": "1",
+                "documentId": "113",
+                "documentRevision": 15,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": -1,
+                "type": "sale",
+                "at": "2026-11-13T10:15:00.000Z"
+              },
+              {
+                "productId": "1",
+                "documentId": "113",
+                "documentRevision": 16,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": 1,
+                "type": "sale-void",
+                "at": "2026-11-13T10:15:00.000Z"
+              },
+              {
+                "productId": "1",
+                "documentId": "114",
+                "documentRevision": 17,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": 2,
+                "type": "purchase",
+                "at": "2026-11-14T10:15:00.000Z"
+              },
+              {
+                "productId": "2",
+                "documentId": "117",
+                "documentRevision": 20,
+                "warehouseId": "الرئيسي",
+                "quantityDelta": -1,
+                "type": "sale",
+                "at": "2026-11-17T10:15:00.000Z"
+              },
+              {
+                "id": "return-event-fixture",
+                "productId": "2",
+                "warehouseId": "الرئيسي",
+                "documentId": "118",
+                "documentNumber": "RETURN-118",
+                "quantityDelta": 0.25,
+                "type": "return",
+                "occurredAt": "2026-11-18T10:15:00.000Z"
+              }
+            ],
+            "stockEventSequence": 20,
+            "auditEvents": [
+              {
+                "id": "expense-category-audit-19104984-18ac-4b6f-a7cd-bc7c0436abb3",
+                "action": "expense-category.create",
+                "status": "committed",
+                "entityId": "expense-category-fixture",
+                "createdAt": "2026-11-23T12:00:00.000Z",
+                "at": "2026-11-23T12:00:00.000Z",
+                "before": null,
+                "after": {
+                  "id": "expense-category-fixture",
+                  "name": "نقل / Transport",
+                  "normalizedName": "نقل / transport",
+                  "kind": "nonrecurring",
+                  "isArchived": false,
+                  "revision": 0,
+                  "createdAt": "2026-11-23T12:00:00.000Z"
+                },
+                "user": "owner"
+              },
+              {
+                "id": "payroll-audit-2bfbcd2a-686d-4edd-acec-b302b5e057a8",
+                "action": "payroll.employee.create",
+                "status": "committed",
+                "entityId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                "createdAt": "2026-11-19T12:00:00.000Z",
+                "before": null,
+                "after": {
+                  "id": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                  "name": "عامل / Employé",
+                  "phone": "22001122",
+                  "startDate": "2026-11-01",
+                  "balance": 0,
+                  "revision": 0,
+                  "isArchived": false,
+                  "agreements": [
+                    {
+                      "id": "agreement-013c1941-ef65-4127-8a77-ad27b660ffdf",
+                      "startDate": "2026-11-01",
+                      "amount": 100,
+                      "intervalMonths": 1,
+                      "entitlement": "beginning",
+                      "anchorDay": 1
+                    }
+                  ],
+                  "createdAt": "2026-11-19T12:00:00.000Z"
+                },
+                "actorId": "owner",
+                "actorName": "Owner"
+              },
+              {
+                "id": "payroll-audit-5461e9c7-8b78-4f35-8e10-db7b1d5d9eb5",
+                "action": "payroll.employee-accrual.automatic",
+                "status": "committed",
+                "entityId": "employee-accrual-5fa52879c7630216cf83d57818a15da3",
+                "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                "createdAt": "2026-11-19T12:00:00.000Z",
+                "before": null,
+                "after": {
+                  "id": "employee-accrual-5fa52879c7630216cf83d57818a15da3",
+                  "number": "EMP-2026-11-01-5fa52879c7630216cf83d57818a15da3",
+                  "kind": "employee-accrual",
+                  "status": "posted",
+                  "revision": 0,
+                  "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                  "employeeName": "عامل / Employé",
+                  "periodStart": "2026-11-01",
+                  "periodEnd": "2026-11-30",
+                  "dueDate": "2026-11-01",
+                  "businessDate": "2026-11-01",
+                  "occurredAt": "2026-11-01T12:00:00.000Z",
+                  "total": 100,
+                  "amount": 100,
+                  "balanceDelta": 100,
+                  "agreementSnapshot": {
+                    "id": "agreement-013c1941-ef65-4127-8a77-ad27b660ffdf",
+                    "startDate": "2026-11-01",
+                    "amount": 100,
+                    "intervalMonths": 1,
+                    "entitlement": "beginning",
+                    "anchorDay": 1
+                  },
+                  "lines": [],
+                  "createdAt": "2026-11-19T12:00:00.000Z",
+                  "context": "mobile-bootstrap"
+                }
+              },
+              {
+                "id": "payroll-audit-a1cb7e8d-92dd-4560-93fd-3c13f95fc354",
+                "action": "payroll.employee-payment.post",
+                "status": "committed",
+                "entityId": "employee-payment-96bbbd37-7234-4205-bd7e-6a3659249cfd",
+                "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                "createdAt": "2026-11-19T12:00:00.000Z",
+                "before": null,
+                "after": {
+                  "id": "employee-payment-96bbbd37-7234-4205-bd7e-6a3659249cfd",
+                  "number": "EMP-PAY-06bcb6b4-ff18-42fe-8455-045ac75e48f8",
+                  "kind": "employee-payment",
+                  "status": "posted",
+                  "revision": 0,
+                  "employeeId": "employee-9a3eed9c-60da-4a00-a134-642f016eb451",
+                  "employeeName": "عامل / Employé",
+                  "employeeAccountOrder": 1,
+                  "paymentMethod": "1",
+                  "total": 20,
+                  "amount": 20,
+                  "paidTotal": 20,
+                  "dueTotal": 0,
+                  "employeePaymentDirection": "withdraw",
+                  "employeePaymentVersion": 2,
+                  "balanceDelta": -20,
+                  "businessDate": "2026-11-19",
+                  "occurredAt": "2026-11-19T12:00:00.000Z",
+                  "allocations": [],
+                  "note": "صرف العامل\nSalaire",
+                  "lines": [],
+                  "createdAt": "2026-11-19T12:00:00.000Z"
+                },
+                "actorId": "owner",
+                "actorName": "Owner"
+              },
+              {
+                "id": "party-opening-audit-9f00b16a-9a3b-4428-b9a1-654512a19830",
+                "action": "party-opening.post",
+                "entityId": 121,
+                "partyId": 1,
+                "version": 1,
+                "status": "committed",
+                "createdAt": "2026-11-19T12:00:00.000Z",
+                "at": "2026-11-19T12:00:00.000Z",
+                "reason": "أصل رصيد البداية\nOuverture",
+                "beforeDocument": null,
+                "afterDocument": {
+                  "id": 121,
+                  "number": "POB-121",
+                  "kind": "party-opening",
+                  "status": "posted",
+                  "revision": 0,
+                  "revisions": [],
+                  "date": "2026-11-19",
+                  "time": "12:00",
+                  "occurredAt": "2026-11-19T12:00:00.000Z",
+                  "createdAt": "2026-11-19T12:00:00.000Z",
+                  "party": 1,
+                  "partyName": "عميل تجريبي",
+                  "partyType": "customer",
+                  "account": null,
+                  "warehouse": null,
+                  "title": "رصيد بداية الحساب",
+                  "note": "أصل رصيد البداية\nOuverture",
+                  "total": 15,
+                  "paid": 0,
+                  "due": 0,
+                  "cashAmount": 0,
+                  "lines": [],
+                  "partyOpeningVersion": 1,
+                  "partyOpeningDirection": "receivable",
+                  "partyOpeningAmount": 15,
+                  "partyOpeningContribution": 15,
+                  "partyBalanceDelta": 15,
+                  "partyOpeningBalanceBefore": 120,
+                  "partyOpeningAppliedDelta": 15,
+                  "partyOpeningBalanceAfter": 135,
+                  "updatedBy": "owner",
+                  "updatedByName": "Owner"
+                },
+                "beforeParty": {
+                  "id": 1,
+                  "name": "عميل تجريبي",
+                  "phone": "",
+                  "type": "customer",
+                  "balance": 120
+                },
+                "afterParty": {
+                  "id": 1,
+                  "name": "عميل تجريبي",
+                  "phone": "",
+                  "type": "customer",
+                  "balance": 135,
+                  "lastMovementAt": "2026-11-19T12:00:00.000Z"
+                },
+                "appliedDelta": 15,
+                "user": "owner",
+                "userName": "Owner"
+              }
+            ],
+            "opening": {
+              "accounts": {
+                "1": 1000,
+                "2": -20
+              },
+              "parties": {
+                "1": 100,
+                "2": 200
+              },
+              "stocks": {
+                "1": {
+                  "الرئيسي": 10,
+                  "الفرعي": 2
+                },
+                "2": {
+                  "الرئيسي": 0,
+                  "الفرعي": 0
+                }
+              }
+            },
+            "sequences": {
+              "sale": 3,
+              "purchase": 2,
+              "expense": 1,
+              "stock-settlement": 1
+            },
+            "counters": [
+              {
+                "_id": "documentSequence:stock-settlement",
+                "value": 1
+              }
+            ],
+            "branding": "محل تجريبي Mobile",
+            "brandInfo": {
+              "phone": "",
+              "address": "",
+              "footer": "بيانات وهمية فقط"
+            },
+            "currency": {
+              "code": "MRU",
+              "availableCodes": [
+                "MRU"
+              ]
+            }
+          }
+        }
+      ],
+      "users": [],
+      "importMappings": []
+    },
+    "counts": {
+      "employees": 1,
+      "parties": 2,
+      "warehouses": 2,
+      "products": 2,
+      "productCategories": 1,
+      "expenseCategories": 1,
+      "documents": 24,
+      "stockMovements": 15,
+      "financialMovements": 15,
+      "paymentAccounts": 2,
+      "recurringExpenses": 0,
+      "accountTransfers": 1,
+      "counters": 4,
+      "auditEvents": 5,
+      "appSettings": 4,
+      "users": 0,
+      "importMappings": 0
+    }
+  }
+}

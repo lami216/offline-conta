@@ -1,0 +1,13 @@
+{
+  "kind": "synthetic-no-customer-data",
+  "desktopReference": "2327ccc83b3f76f7a30d13c0ca8d356c4cd7483b",
+  "mobileBase": "098ea6a5aeea00ac6ccd3c60f5b53205d54fca01",
+  "fixtureSha256": "db21092a6c0d314e5ad1fb6d1a416cfac9cd79aa148186282714c94a14bd2689",
+  "exportedAt": "2026-11-23T12:00:00.000Z",
+  "sourceSha256": {
+    "approved-runtime/desktop-backup-export.js": "011e254df5d593abb41e7375a399ac20470b34c0f64b1171a0d43fd0ccecb32c",
+    "approved-runtime/cost-provenance.js": "eafc793cbc1d7db1459406d15b73cd995ae8233b57b5a78cb684b8cb029c8619",
+    "approved-runtime/payroll-domain.js": "a3e140c62693bcedb53341740b013a861f1a1b3f6c0a618bfcda1bf8ad6e62cf",
+    "scripts/desktop-business-fixture.mjs": "bab76b28b200a9ee7bae1999d0283e00220cd4109170ce7e494c049be86992b2"
+  }
+}

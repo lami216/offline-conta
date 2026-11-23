@@ -2,7 +2,7 @@ import type { ContaBackup } from './backup.ts';
 
 export const MOBILE_BUSINESS_FORMAT = 'alkarna-mobile-business-backup';
 const COLLECTIONS = ['employees', 'parties', 'warehouses', 'products', 'productCategories', 'expenseCategories', 'documents', 'stockMovements', 'financialMovements', 'paymentAccounts', 'recurringExpenses', 'accountTransfers', 'counters', 'auditEvents', 'appSettings', 'users', 'importMappings'] as const;
-const fail = (): never => { throw new Error('ملف تبادل بيانات الهاتف غير صالح؛ لم تتغير بيانات الجهاز'); };
+function fail(): never { throw new Error('ملف تبادل بيانات الهاتف غير صالح؛ لم تتغير بيانات الجهاز'); }
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 function withoutCredentials(value: unknown, depth = 0): void {

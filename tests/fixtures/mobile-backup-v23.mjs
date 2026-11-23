@@ -5,18 +5,21 @@ export const mobileBackupV23Expected = {
   customerId: 'mobile23:party:1', supplierId: 'mobile23:party:2',
   accountId: 'mobile23:account:1', bankId: 'mobile23:account:2',
   saleId: 'mobile23:record:117', voidedSaleId: 'mobile23:record:113',
+  repeatedSaleId: 'mobile23:record:102', repeatedPurchaseId: 'mobile23:record:114',
   cash: 982, bank: 215, customerReceivable: 120, supplierPayable: 190,
   sales: 72, cost: 35, profit: 37, purchases: 60, expenses: 20,
   inventory: 160, firstMainStock: 10, firstOtherStock: 4, secondMainStock: 4,
 };
 
-export function mobileBackupV23() {
+export function mobileBackupV23({ repeatedCommercialLines = false } = {}) {
   const line = (product, qty, price, extra = {}) => ({ product, name: product === 1 ? 'سلعة تجريبية' : 'رصيد تجريبي', qty, price, ...extra });
   const record = (id, kind, total, extra = {}) => ({ id, kind, date: `2026-11-${String(id - 100).padStart(2, '0')}`, time: '10:15', total, paid: 0, due: 0, lines: [], title: `سند تجريبي ${id}`, revision: 0, ...extra });
   const originalPurchase = record(101, 'purchase', 30, { paid: 30, account: 1, party: 2, warehouse: 'الرئيسي', number: '1', sequence: 1, lines: [line(1, 3, 10)] });
   const records = [
     record(101, 'purchase', 40, { paid: 40, account: 1, party: 2, warehouse: 'الرئيسي', number: '1', sequence: 1, revision: 1, revisions: [originalPurchase], createdAt: '2026-11-01T10:15:00.000Z', updatedAt: '2026-11-02T11:00:00.000Z', lines: [line(1, 4, 10, { costAtSale: 9 })] }),
-    record(102, 'sale', 60, { due: 60, party: 1, warehouse: 'الرئيسي', number: '1', sequence: 1, profit: 30, lines: [line(1, 3, 20, { costAtSale: 10 })] }),
+    // Original Mobile23 validates and exports repeated product rows separately.
+    // Splitting these rows preserves every quantity, price, cost and total.
+    record(102, 'sale', 60, { due: 60, party: 1, warehouse: 'الرئيسي', number: '1', sequence: 1, profit: 30, lines: repeatedCommercialLines ? [line(1, 1, 20, { costAtSale: 10 }), line(1, 2, 20, { costAtSale: 10 })] : [line(1, 3, 20, { costAtSale: 10 })] }),
     record(103, 'receive', 30, { paid: 30, account: 1, party: 1, note: 'استلام عميل\nTexte littéral' }),
     record(104, 'pay', 10, { paid: 10, account: 1, party: 1, note: 'إرجاع للعميل' }),
     record(105, 'expense', 20, { paid: 20, account: 1, number: '1', sequence: 1, title: 'نقل تجريبي', note: 'مصروف محفوظ' }),
@@ -28,7 +31,7 @@ export function mobileBackupV23() {
     record(111, 'offset', 20, { party: 1, otherParty: 2, note: 'تقاص تاريخي غير نقدي' }),
     record(112, 'adjustment', 0, { warehouse: 'الرئيسي', number: 'OPEN-2', openingStock: true, newQty: 5, title: 'رصيد بداية', lines: [line(2, 5, 5, { delta: 5 })] }),
     record(113, 'sale', 20, { paid: 20, account: 1, party: 1, warehouse: 'الرئيسي', number: '2', sequence: 2, profit: 10, voided: true, lines: [line(1, 1, 20, { costAtSale: 10 })] }),
-    record(114, 'purchase', 20, { due: 20, party: 2, warehouse: 'الرئيسي', number: '2', sequence: 2, lines: [line(1, 2, 10, { costAtSale: 10 })] }),
+    record(114, 'purchase', 20, { due: 20, party: 2, warehouse: 'الرئيسي', number: '2', sequence: 2, lines: repeatedCommercialLines ? [line(1, 1, 10, { costAtSale: 10 }), line(1, 1, 10, { costAtSale: 10 })] : [line(1, 2, 10, { costAtSale: 10 })] }),
     record(115, 'receive', 10, { paid: 10, account: 2, party: 2 }),
     record(116, 'pay', 20, { paid: 20, account: 2, party: 2 }),
     record(117, 'sale', 12, { paid: 12, account: 1, warehouse: 'الرئيسي', number: '3', sequence: 3, profit: 7, lines: [line(2, 1, 12, { costAtSale: 5 })] }),

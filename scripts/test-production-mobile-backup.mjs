@@ -62,6 +62,20 @@ try {
   assert.equal(exported.collections.users.length, 1); assert.equal(exported.collections.users[0].username, "mobile-restore-manager");
   assert.equal(exported.collections.products.length, raw.state.products.length);
   assert.equal(exported.collections.parties.length, raw.state.parties.length);
+  const repeatedRecords = [102, 114].map(sourceId => {
+    const original = raw.state.records.find(record => record.id === sourceId);
+    const document = exported.collections.documents.find(record => record.id === `mobile23:record:${sourceId}`);
+    assert.equal(original.lines.length, 2); assert.equal(document.lines.length, 2);
+    assert.equal(document.lines[0].productId, document.lines[1].productId);
+    assert.deepEqual(document.lines.map(line => line.id), [`${document.id}:line:1`, `${document.id}:line:2`]);
+    assert.deepEqual(document.lines.map(line => [line.quantity, line.unitPrice, line.lineTotal]), original.lines.map(line => [line.qty, line.price, line.qty * line.price]));
+    assert.equal(document.legacyKey, document.id); assert.ok(document.mobileReadOnlyReason);
+    if (original.kind === "sale") assert.deepEqual(document.lines.map(line => line.costAtSale), original.lines.map(line => line.costAtSale));
+    return { id: document.id, kind: document.kind, lines: document.lines.length, total: document.total, readOnly: true };
+  });
+  const sales = await json(await call("/api/reports?type=sales&allTime=true&unpaged=true"));
+  const purchases = await json(await call("/api/reports?type=purchases&allTime=true&unpaged=true"));
+  assert.deepEqual([sales.summary.netSales, sales.summary.cost, sales.summary.profit, purchases.summary.total], [72, 35, 37, 60], "Compiled restore preserves the independently specified source totals and repeated-row COGS");
   for (const type of ["overview", "stock", "financial", "party-ledger"]) {
     const report = await call(`/api/reports?type=${type}&partyType=customer&allTime=true&unpaged=true`);
     // A party ledger without a selected party may return a useful validation error,
@@ -75,7 +89,7 @@ try {
     assert.deepEqual(after.collections[name], exported.collections[name], "Desktop backup round trip preserves " + name);
   }
   const proof = { status: "passed", compiledProductionServer: true, originalMobile23Export: true, previewReadOnly: true, sameOriginEnforced: true,
-    restored: true, desktopLoginPreserved: true, phoneSessionsNotImported: true, nativeBackupRoundTrip: true,
+    restored: true, desktopLoginPreserved: true, phoneSessionsNotImported: true, nativeBackupRoundTrip: true, repeatedCommercialRowsPreserved: true, repeatedRecords,
     counts: plan.counts, localApplicationOrTestExecution: false };
   await writeFile("test-output/mobile-backup-ui/production-restore-result.json", JSON.stringify(proof, null, 2));
   console.log(JSON.stringify(proof));

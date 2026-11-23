@@ -34,7 +34,7 @@ const select = prefix => {
   assert.equal(matches.length, 1, "Locate one original declaration: " + prefix);
   return matches[0];
 };
-const fixture = mobileBackupV23();
+const fixture = mobileBackupV23({ repeatedCommercialLines: true });
 assert.equal(fixture.state.featureSchema, 2, "Synthetic state uses the original feature schema");
 let exported;
 const context = vm.createContext({
@@ -55,12 +55,21 @@ const parsed = JSON.parse(exported.text);
 assert.equal(parsed.format, "alkarna-web-backup");
 assert.equal(parsed.schemaVersion, 1);
 assert.equal(parsed.state.records.length, fixture.state.records.length);
+const repeatedRecords = [102, 114].map(id => {
+  const original = fixture.state.records.find(record => record.id === id);
+  const actual = parsed.state.records.find(record => record.id === id);
+  assert.equal(original.lines.length, 2, "Synthetic source contains repeated commercial rows");
+  assert.equal(original.lines[0].product, original.lines[1].product);
+  assert.deepEqual(actual.lines, original.lines, "Original Mobile23 validator and exporter retain both repeated rows in order");
+  assert.equal(actual.lines.reduce((sum, line) => sum + line.qty * line.price, 0), actual.total);
+  return { id, kind: actual.kind, lineCount: actual.lines.length, quantity: actual.lines.reduce((sum, line) => sum + line.qty, 0), total: actual.total };
+});
 const output = join("test-output", "mobile-backup-ui");
 await mkdir(output, { recursive: true });
 await writeFile(join(output, "mobile23-export.conta.json"), exported.text);
 const proof = { status: "passed", repository: "lami216/Contamobile", commit, path: "approved-runtime/app.js", blob,
   androidVersionCode: 23, androidVersionName: "1.0.22", source: url, actualExporterExecuted: true,
   originalMobileValidationPassed: true,
-  syntheticOnly: true, sourceDocuments: parsed.state.records.length, file: "mobile23-export.conta.json" };
+  syntheticOnly: true, sourceDocuments: parsed.state.records.length, repeatedCommercialRowsPreserved: true, repeatedRecords, file: "mobile23-export.conta.json" };
 await writeFile(join(output, "mobile23-source-proof.json"), JSON.stringify(proof, null, 2));
 console.log(JSON.stringify(proof));

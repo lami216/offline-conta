@@ -28,7 +28,7 @@ function workbook(bytes) {
 /** Real commands/components; only external printing/file dialogs are captured in CI. */
 export async function runSalesByProductScenarios({ cdp, origin, command, database, screenshot, output }) {
   assert.equal(process.env.CI, "true"); assert.equal(process.env.GITHUB_ACTIONS, "true"); assert.equal(process.platform, "win32");
-  const evaluate = code => cdp.evaluate(code), checkpoints = [], layouts = [], exports = [];
+  const evaluate = code => cdp.evaluate(code), checkpoints = [], layouts = [], exports = [], desktopPaymentGeometry = [];
   const until = async (check, label) => { const end = Date.now() + 25000; while (Date.now() < end) { if (await check()) return; await new Promise(resolve => setTimeout(resolve, 50)); } throw Error("Timed out waiting for " + label); };
   const click = selector => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e||e.disabled)throw Error('Unavailable sales action '+${JSON.stringify(selector)});e.click()})()`);
   const fill = (selector, value) => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});if(!e)throw Error('Missing sales filter');Object.getOwnPropertyDescriptor(e.tagName==='SELECT'?HTMLSelectElement.prototype:HTMLInputElement.prototype,'value').set.call(e,${JSON.stringify(String(value))});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))})()`);
@@ -91,6 +91,39 @@ export async function runSalesByProductScenarios({ cdp, origin, command, databas
   await choose(".report-filters>.combobox .combobox-trigger", null); await expect(filtered);
   await evaluate(`(()=>{window.__salesOriginalFetch=window.fetch;window.__salesRequests=[];window.fetch=async function(input,init){const r=await window.__salesOriginalFetch.call(this,input,init),url=String(input?.url??input);if(url.includes('/api/reports?'))window.__salesRequests.push({url,status:r.status});return r};window.__salesPreviousPrinting=window.alkarnaPrinting;window.__salesOutput=null;const capture=async(kind,settings)=>{const p=document.querySelector('.report-print-portal');if(!p)throw Error('Missing real printable sales report');window.__salesOutput={kind,settings,title:p.querySelector('h2')?.textContent,headers:[...p.querySelectorAll('thead th')].map(e=>e.textContent.trim()),rows:[...p.querySelectorAll('tbody tr')].map(row=>[...row.children].map(e=>e.textContent.trim())),footer:[...p.querySelectorAll('.report-kpi-value b')].map(e=>e.textContent.trim())};await new Promise(resolve=>window.__salesFinishOutput=resolve);return{ok:true}};window.alkarnaPrinting={getSettings:async()=>({deviceName:null,profile:'a4'}),print:settings=>capture('printer',settings),pdf:settings=>capture('pdf',settings),saveExport:async request=>{window.__salesOutput={kind:'excel',format:request.format,name:request.suggestedName,bytes:Array.from(request.data)};return{ok:true}}}})()`);
   try {
+    // Windows scaling changes the available CSS width. Test the unselected label,
+    // whose native SELECT arrow can remain visible even when its text is crushed.
+    await fill(".reports-workspace .payment-account-select", "");
+    const allAccounts = [[definitions[0].name, 5, 125], filtered[1]];
+    await expect(allAccounts);
+    for (const locale of ["ar", "fr"]) {
+      await evaluate(`window.__smokeSetLocale(${JSON.stringify(locale)})`);
+      await until(() => evaluate(`document.documentElement.lang===${JSON.stringify(locale)}`), "desktop payment locale");
+      for (const mode of ["invoices", "products"]) {
+        await click("[data-sales-view=" + mode + "]");
+        await until(() => evaluate(`document.querySelector('[data-sales-view=${mode}]')?.getAttribute('aria-pressed')==='true'&&!document.querySelector('.report-loading')`), "desktop sales mode " + mode);
+        if (mode === "products") await expect(allAccounts);
+        for (const width of [1280, 1440, 1536]) {
+          await cdp.call("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+          await evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+          const geometry = await evaluate(`(()=>{const root=document.querySelector('.sales-report-toolbar');if(!root)throw Error('Missing actual sales toolbar');const payment=root.querySelector('.payment-account-select'),product=root.querySelector('.report-filters>.combobox .combobox-trigger'),category=root.querySelector('.report-category-filter .combobox-trigger'),toggle=root.querySelector('.sales-view-toggle'),dates=root.querySelector('.compact-date-range'),print=root.querySelector('.report-print-button');const box=e=>{const r=e.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width}};const css=getComputedStyle(payment),ctx=document.createElement('canvas').getContext('2d');ctx.font=css.font||[css.fontWeight,css.fontSize,css.fontFamily].join(' ');const placeholder=payment.options[0].textContent,minimum=Math.max(155,Math.ceil(ctx.measureText(placeholder).width+parseFloat(css.paddingLeft)+parseFloat(css.paddingRight)+22));return{placeholder,value:payment.value,minimum,payment:box(payment),product:box(product),category:box(category),toggle:box(toggle),dates:box(dates),print:box(print),toolbar:box(root),pageOverflow:document.documentElement.scrollWidth>innerWidth+1}})()`);
+          const label = locale + "/" + mode + "/" + width;
+          assert.equal(geometry.value, "", label + " tests the real default payment placeholder");
+          assert.equal(geometry.placeholder, locale === "ar" ? "كل وسائل الدفع" : "Tous les modes de paiement");
+          assert(geometry.payment.width + 1 >= geometry.minimum, label + " payment label needs " + geometry.minimum + "px; actual " + geometry.payment.width);
+          assert(geometry.product.width <= 200 && geometry.category.width <= 200, label + " product/category controls must not crowd out payment");
+          assert(geometry.product.width >= 120 && geometry.category.width >= 100, label + " other filters retain useful space too");
+          const sameRow = boxes => Math.max(...boxes.map(box => box.bottom)) - Math.min(...boxes.map(box => box.bottom)) <= 3;
+          assert(sameRow([geometry.payment, geometry.product, geometry.toggle]), label + " sales/payment filters remain in one usable row");
+          if (width >= 1440 || locale === "ar") assert(sameRow([geometry.dates, geometry.category, geometry.print, geometry.toggle, geometry.product, geometry.payment]), label + " desktop toolbar stays on one row");
+          assert.equal(geometry.pageOverflow, false, label + " has no horizontal page overflow");
+          for (const box of [geometry.payment, geometry.product, geometry.category]) assert(box.left >= geometry.toolbar.left - 1 && box.right <= geometry.toolbar.right + 1, label + " filters remain inside their toolbar");
+          desktopPaymentGeometry.push({ locale, mode, width, ...geometry });
+          if ((locale === "ar" && mode === "invoices" && width === 1280) || (locale === "ar" && mode === "products" && width === 1536) || (locale === "fr" && mode === "products" && width === 1440)) await screenshot("sales-payment-desktop-" + locale + "-" + mode + "-" + width, width);
+        }
+      }
+    }
+    await fill(".reports-workspace .payment-account-select", account); await expect(filtered);
     for (const locale of ["ar", "fr"]) {
       await evaluate(`window.__smokeSetLocale(${JSON.stringify(locale)})`);
       await until(() => evaluate(`document.documentElement.lang===${JSON.stringify(locale)}`), "sales locale " + locale);
@@ -148,7 +181,7 @@ export async function runSalesByProductScenarios({ cdp, origin, command, databas
     assert.deepEqual(await snapshot(), beforeReads, "Views, filters, layouts, print/PDF/Excel do not mutate financial/stock/document/audit data");
     checkpoints.push("Sales defaults to invoices; switching to products keeps category, account and period filters, aggregates the same product across different invoices/prices, excludes other accounts/categories and voided invoices, and keeps the three-column grid and full-scope footer consistent");
     checkpoints.push("Actual product-view print and PDF paths render the real unpaged report and produce Chrome PDF bytes, Arabic/French actual XLSX contains product/quantity/sales and full-scope totals, and switching back exports invoice-number columns with groupBy=invoice; all browsing/export snapshots remain unchanged");
-    return { checkpoints, layouts, exports, productIds: definitions.map(row => row.id), accountId: account, sourceSnapshotsUnchanged: true, defaultInvoices: true };
+    return { checkpoints, layouts, exports, desktopPaymentGeometry, productIds: definitions.map(row => row.id), accountId: account, sourceSnapshotsUnchanged: true, defaultInvoices: true };
   } finally {
     await evaluate('(()=>{window.__salesFinishOutput?.();window.fetch=window.__salesOriginalFetch;window.alkarnaPrinting=window.__salesPreviousPrinting;delete window.__salesOriginalFetch;delete window.__salesPreviousPrinting;delete window.__salesOutput;delete window.__salesRequests;delete window.__salesFinishOutput})()');
   }

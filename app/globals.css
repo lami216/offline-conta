@@ -2584,6 +2584,52 @@ textarea:focus { outline:3px solid rgba(11,109,103,.17); outline-offset:1px; bor
 @media(max-width:1050px){.product-category-create{grid-template-columns:1fr}.report-category-filter{flex:1 1 190px;max-width:none}.overview-summary-groups{grid-template-columns:1fr}.overview-summary-group .report-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.overview-summary-group .report-kpis{grid-template-columns:1fr}}
 
+.report-toolbar.sales-report-toolbar {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sales-report-toolbar > .report-category-filter {
+  flex: 0 1 122px;
+  min-width: 104px;
+}
+.report-toolbar.sales-report-toolbar .report-filters {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.sales-report-toolbar .report-filters > .combobox {
+  flex: 0 1 150px;
+  width: 150px;
+  min-width: 128px;
+}
+.sales-report-toolbar .combobox-trigger {
+  height: 34px;
+  min-height: 34px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: 14px;
+}
+.sales-report-toolbar .combobox-trigger span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sales-report-toolbar .combobox-trigger svg {
+  flex: 0 0 14px;
+}
+.sales-report-toolbar .report-filters > .payment-account-select {
+  flex: 0 0 186px;
+  width: 186px;
+  min-width: 186px;
+  font-size: 13px;
+  text-overflow: ellipsis;
+}
+@media (min-width: 1240px) {
+  .report-toolbar.sales-report-toolbar,
+  .report-toolbar.sales-report-toolbar .report-filters {
+    flex-wrap: nowrap;
+  }
+}
+
 
 /* Product modal scroll ownership and floating option lists. */
 html:has(.modal-overlay),body:has(.modal-overlay){overflow:hidden}

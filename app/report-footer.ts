@@ -2,13 +2,14 @@ import {reportCostUnknown} from "./report-cost-status.ts";
 import { reportNumber, type ReportResponse, type ReportType, type SummaryTone } from "./report-types.ts";
 
 export type ReportFooterMetric = { key: string; label: string; value: number; tone: SummaryTone; format?: "number" | "percent"; note?: string; uncertain?: boolean };
-type FooterContext = { type: ReportType; result: ReportResponse; productFiltered?: boolean; partyType?: "employee" | "customer" | "supplier"; translate?: (label: string) => string };
+type FooterContext = { type: ReportType; result: ReportResponse; productFiltered?: boolean; salesByProduct?: boolean; partyType?: "employee" | "customer" | "supplier"; translate?: (label: string) => string };
 const signed = (value: number): SummaryTone => value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
 const metric = (summary: ReportResponse["summary"], key: string, label: string, tone: SummaryTone, format?: "number" | "percent", note?: string): ReportFooterMetric => ({ key, label, value: reportNumber(summary[key]), tone, format, note, ...(reportCostUnknown(key,summary)?{uncertain:true}:{}) });
 
 /** Explicit accounting conclusions for each ordinary report; overview owns its summary strip. */
-export function buildReportFooterMetrics({ type, result, productFiltered = false, partyType, translate = value => value }: FooterContext): ReportFooterMetric[] {
+export function buildReportFooterMetrics({ type, result, productFiltered = false, salesByProduct = false, partyType, translate = value => value }: FooterContext): ReportFooterMetric[] {
   const s = result.summary, t = translate;
+  if (type === "sales" && salesByProduct) return [metric(s,"soldProducts",t("عدد المنتجات المباعة"),"neutral","number"),metric(s,"soldQuantity",t("إجمالي الكمية المباعة"),"neutral","number"),metric(s,"netSales",t("صافي المبيعات"),"positive")];
   if (type === "sales") return [metric(s,"netSales",t("صافي المبيعات"),"positive"),metric(s,"cost",t("تكلفة البضاعة المباعة"),"negative"),metric(s,"profit",t("ربح المبيعات"),signed(reportNumber(s.profit))),metric(s,"margin",t("هامش ربح المبيعات %"),signed(reportNumber(s.margin)),"percent")];
   if (type === "purchases" && productFiltered) { const total=reportNumber(s.total),quantity=reportNumber(s.quantity); return [metric(s,"total",t("إجمالي شراء المنتج"),"neutral"),metric(s,"quantity",t("الكمية المشتراة"),"neutral"),{key:"averagePurchasePrice",label:t("متوسط سعر شراء الوحدة"),value:quantity?total/quantity:0,tone:"neutral"},metric(s,"count",t("عدد الفواتير التي تحتوي المنتج"),"neutral")]; }
   if (type === "purchases") return [metric(s,"total",t("إجمالي المشتريات"),"neutral"),metric(s,"paid",t("المدفوع عند تسجيل الفواتير"),"neutral"),metric(s,"due",t("الآجل عند تسجيل الفواتير"),"negative"),metric(s,"count",t("عدد فواتير الشراء"),"neutral")];

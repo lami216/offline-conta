@@ -2003,6 +2003,22 @@ input, select, .combobox-trigger { border-color: #9faab8; }
 .report-toolbar .report-filters{display:flex;align-items:end;gap:6px;padding:0;border:0;min-width:0;background:transparent}
 .report-summary-area{order:3}
 @media(max-width:1100px){.report-toolbar{flex-wrap:wrap}.report-toolbar .report-filters{flex-wrap:wrap}}
+.sales-view-toggle {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+.sales-view-toggle .selection-option {
+  min-height: 34px;
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-size: .875rem;
+  white-space: nowrap;
+}
+.report-table-sales-products { min-width: 0; }
+.report-table-sales-products tbody tr:has(td):hover { cursor: default; }
+.report-table-sales-products th:first-child { width: 50%; }
+.report-table-sales-products td[data-column="product"] { overflow-wrap: anywhere; }
 
 /* Content option selections share one strong language; scanner remains an indicator switch. */
 .pos-invoice-top{display:grid;gap:2px;min-height:0}

@@ -7,7 +7,7 @@ import { latestReportCost, reportCostNumber, reportNetLines, type HistoricalRepo
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
 import type { SqliteDatabase as Db, DbDocument as Document } from "./sqlite.ts";
 type FindCursor<T> = ReturnType<Db["collection"]>["find"] extends (...args:any[])=>infer R ? R : never;
-import type { ReportFilters, ReportResponse, ReportRow, ReportType } from "../app/report-types.ts";
+import type { ReportFilters, ReportResponse, ReportRow, ReportType, SalesByProductReportRow } from "../app/report-types.ts";
 import { inventoryUnitCost, isProductExpired, resolvePartyType } from "../app/domain.ts";
 import { displayDocumentNumber, displayStockMovementDocumentNumber } from "./document-sequences.ts";
 import { classifyStockMovementType, collapseLegacyStockEditMovements, stockMovementMatchesFilter } from "../app/stock-movement.ts";
@@ -194,9 +194,27 @@ export async function buildReport(db: Db, f: ReportFilters): Promise<ReportRespo
   if (f.type === "sales") {
     const sales=await directDocuments(db,f,"sale",categoryScope);
     const summaryFacts=await saleFacts(db,[...sales.all,...legacyReturns.filter(saleDocument)],f,categoryScope),totals=profitSummary(summaryFacts);
+    const summary={count:sales.totalRows,grossSales:sales.all.reduce((sum,document)=>sum+netValue(document),0),netSales:totals.revenue,cost:totals.cost,profit:totals.profit,margin:totals.margin,costKnown:totals.costKnown,unknownRevenue:totals.unknownRevenue,paid:sales.all.reduce((sum,document)=>sum+n(document.paidTotal),0),due:sales.all.reduce((sum,document)=>sum+n(document.dueTotal),0)};
+    if (f.groupBy === "product") {
+      const grouped = new Map<string, SalesByProductReportRow>();
+      for (const fact of summaryFacts) {
+        const productId = String(fact.productId), row = grouped.get(productId) ?? {
+          id: productId, productId, product: String(fact.product), sku: String(fact.sku ?? "—"),
+          productMissing: fact.productMissing === true, quantity: 0, revenue: 0,
+        };
+        row.quantity += n(fact.quantity);
+        row.revenue += n(fact.revenue);
+        grouped.set(productId, row);
+      }
+      const allRows = [...grouped.values()], ordered = sortReportRows(allRows,
+        f.sortKey ? f : { ...f, sortKey: "product", sortDirection: "asc" });
+      return { report: f.type, from: f.from!, to: f.to!, summary: { ...summary,
+        soldProducts: allRows.length, soldQuantity: summaryFacts.reduce((sum, fact) => sum + n(fact.quantity), 0),
+      }, rows: pageReportRows(ordered, f), meta: pagination(allRows.length, f) };
+    }
     const factsByDocument=new Map<string,ReportRow[]>();for(const fact of summaryFacts){const key=String(fact.documentId),rows=factsByDocument.get(key)??[];rows.push(fact);factsByDocument.set(key,rows)}
     const allRows:ReportRow[]=hasProductFilter?sales.ordered.flatMap(document=>factsByDocument.get(String(document.id))??[]):sales.ordered.map(document=>{const p=profitSummary(factsByDocument.get(String(document.id))??[]);return{id:String(document.id),documentId:String(document.id),number:displayDocumentNumber(document),occurredAt:String(document.occurredAt),party:String(document.partyName??"بيع مباشر"),partyId:String(document.partyId??""),paymentMethod:String(document.paymentMethod??""),total:p.revenue,cost:p.cost,profit:p.profit,margin:p.margin,costKnown:p.costKnown,unknownRevenue:p.unknownRevenue,paid:n(document.paidTotal),due:n(document.dueTotal)}});
-    return{report:f.type,from:f.from!,to:f.to!,summary:{count:sales.totalRows,grossSales:sales.all.reduce((sum,document)=>sum+netValue(document),0),netSales:totals.revenue,cost:totals.cost,profit:totals.profit,margin:totals.margin,costKnown:totals.costKnown,unknownRevenue:totals.unknownRevenue,paid:sales.all.reduce((sum,document)=>sum+n(document.paidTotal),0),due:sales.all.reduce((sum,document)=>sum+n(document.dueTotal),0)},rows:pageReportRows(sortReportRows(allRows,f),f),meta:pagination(allRows.length,f)};
+    return{report:f.type,from:f.from!,to:f.to!,summary,rows:pageReportRows(sortReportRows(allRows,f),f),meta:pagination(allRows.length,f)};
   }
   if (f.type === "expenses") {
     const [original, categories] = await Promise.all([

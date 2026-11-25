@@ -1,4 +1,10 @@
 export const arMessages = {
+  "عدد المنتجات المباعة": "عدد المنتجات المباعة",
+  "إجمالي الكمية المباعة": "إجمالي الكمية المباعة",
+  "حسب الفواتير": "حسب الفواتير",
+  "حسب المنتجات": "حسب المنتجات",
+  "العرض حسب": "العرض حسب",
+  "حركة المبيعات حسب المنتج": "حركة المبيعات حسب المنتج",
   "وقت التسجيل": "وقت التسجيل",
   "رصيد بداية عامل": "رصيد بداية عامل",
   "workerOpening.title": "رصيد بداية",
@@ -1183,6 +1189,12 @@ export type MessageKey = keyof typeof arMessages;
 export type TranslationParams = Record<string, string | number>;
 
 export const frMessages: Record<MessageKey, string> = {
+  "عدد المنتجات المباعة": "Nombre de produits vendus",
+  "إجمالي الكمية المباعة": "Quantité totale vendue",
+  "حسب الفواتير": "Par facture",
+  "حسب المنتجات": "Par produit",
+  "العرض حسب": "Afficher par",
+  "حركة المبيعات حسب المنتج": "Mouvement des ventes par produit",
   "وقت التسجيل": "Date et heure d’enregistrement",
   "رصيد بداية عامل": "Solde initial du salarié",
   "workerOpening.title": "Solde initial",

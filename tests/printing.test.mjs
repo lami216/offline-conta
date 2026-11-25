@@ -17,8 +17,9 @@ test("report printing is portrait, isolated from pagination, and never prints th
   assert.match(globals,/@page report\{size:A4 portrait;margin:10mm 12mm\}/);
   assert.match(globals,/html\.print-report-mode body>\.report-print-portal\{display:block!important\}/);
   assert.match(globals,/\.sidebar,\.page-bar,\.no-print,\.toast,\.report-loading\{display:none!important\}/);
-  assert.match(app,/const printable=await fetchReport\(committedPeriod,1,sortState,true\)/);
-  assert.match(app,/choice==="printer"\)await printPreparedReport\(\)/);
+  const reportOutput=app.slice(app.indexOf("const printReport"),app.indexOf("const applyDraftPeriod"));
+  assert.match(reportOutput,/query\.set\("page",\s*"1"\)[\s\S]*query\.set\("unpaged",\s*"true"\)[\s\S]*const printable\s*=\s*await fetchReport\(query\)/);
+  assert.match(reportOutput,/setPrintResult\(printable\)[\s\S]*if\s*\(choice\s*===\s*"printer"\)\s*\{\s*await printPreparedReport\(\)/);
   assert.match(app,/savePreparedReportPdf\(base\)/);
   assert.match(app,/printResult&&createPortal\(<div className="report-print-portal"/);
   assert.doesNotMatch(app,/setResult\(printable\)[\s\S]{0,220}window\.print\(\)/);

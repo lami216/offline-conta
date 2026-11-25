@@ -122,7 +122,7 @@ async function main() {
       const refresh=async()=>{const response=await fetch("/api/bootstrap"),value=await response.json();if(!response.ok)throw new Error(value.error||"Bootstrap failed");setData(value)};
       useEffect(()=>{void refresh().catch(error=>{window.__smokeError=error.stack;console.error(error)})},[]);
       useEffect(()=>{
-        window.__smokeSetView=async next=>{if(!await prepare())return false;await refresh();setStatementPreviewId(null);setView(next);document.getElementById("root").className="app-shell section-"+(next.startsWith("bank-")?"banks":["party-ledger","expense-report","overview","stock-report","financial-report"].includes(next)?"reports":next==="party-detail"?"customers":next==="sale"?"pos":next==="purchase"?"purchases":next);return true};
+        window.__smokeSetView=async next=>{if(!await prepare())return false;await refresh();setStatementPreviewId(null);setView(next);document.getElementById("root").className="app-shell section-"+(next.startsWith("bank-")?"banks":["party-ledger","expense-report","overview","stock-report","financial-report","sales-report"].includes(next)?"reports":next==="party-detail"?"customers":next==="sale"?"pos":next==="purchase"?"purchases":next);return true};
         window.__smokeSetLocale=setLocale;
         window.__smokeOpenNoteDocument=async id=>{if(!await prepare())return false;await refresh();setStatementPreviewId(id);return true};
         window.__smokeEditExpense=async id=>{if(!await prepare())return false;await refresh();setView("expenses");setExpenseEditId(id);document.getElementById("root").className="app-shell section-expenses";return true};
@@ -144,6 +144,7 @@ async function main() {
       if(statementDocument)return <DocumentDetail document={statementDocument} data={data} close={()=>setStatementPreviewId(null)}/>;
       if(view==="bank-adjustment"||view==="bank-movements")return <Banks data={data} run={run} openDoc={id=>{window.__openedPayrollDocument=id;setStatementPreviewId(id)}} openSource={target=>{window.__openedReportSource=target}} tab={view==="bank-adjustment"?"adjustment":"movements"} sourceRequest={null} clearSourceRequest={()=>{}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
       if(view==="financial-report")return <Reports data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type="financial" sourceRequest={null} clearSourceRequest={()=>{}}/>;
+      if(view==="sales-report")return <Reports data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type="sales" sourceRequest={null} clearSourceRequest={()=>{}}/>;
       if(view==="customers"||view==="suppliers")return <Parties key={view} partyType={view==="customers"?"customer":"supplier"} data={data} run={run} openParty={party=>{window.__openedParty=party.id;setSelectedPartyId(party.id);setView("party-detail")}} canEdit canDelete registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
       if(view==="party-detail"){const party=data.parties.find(row=>row.id===selectedPartyId);return party?<PartyPage key={party.id} party={party} data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>:<p>Missing synthetic party</p>}
       if(view==="records")return <Records data={data} openDoc={openDoc}/>;
@@ -392,6 +393,9 @@ async function main() {
   const {runPartyOpeningNotesScenarios}=await import("./party-opening-notes-ui-scenarios.mjs");
   result.partyOpeningNotes=await runPartyOpeningNotesScenarios({cdp,command,database,screenshot});
   result.checkpoints.push(...result.partyOpeningNotes.checkpoints);
+  const {runSalesByProductScenarios}=await import("./sales-by-product-ui-scenarios.mjs");
+  result.salesByProduct=await runSalesByProductScenarios({cdp,origin:base,command,database,screenshot,output});
+  result.checkpoints.push(...result.salesByProduct.checkpoints);
   assert.deepEqual(cdp.errors, []);
   result.status = "passed";
 }

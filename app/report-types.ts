@@ -12,6 +12,7 @@ export interface OverviewDetails { sales:OverviewBreakdownRow[]; purchases:Overv
 export interface ReportResponse<Row = ReportRow> { report: ReportType; from: string | null; to: string | null; summary: Record<string, number | string | boolean>; rows: Row[]; meta: ReportMeta; invoices?: OverviewInvoiceRow[]; parties?: ReportRow[]; bankAccounts?: OverviewBankAccount[]; warehouseValues?: OverviewWarehouseValue[]; overviewDetails?: OverviewDetails; payroll?: {rows:Array<{employeeId:string;name:string;currentOwed:number;currentUnpaidWages?:number;closingBalance:number;accrualPeriod:number;paidPeriod:number;reserveChange?:number}>} }
 export interface ReportRow { id?: string; documentId?: string; partyId?: string; [key: string]: string | number | boolean | null | undefined }
 export type SalesReportRow = ReportRow & { documentId: string; number: string; occurredAt: string; party: string; paymentMethod: string; total: number; cost: number; profit: number; margin: number; paid: number; due: number };
+export type SalesByProductReportRow = ReportRow & { productId: string; product: string; sku: string; productMissing: boolean; quantity: number; revenue: number };
 export type ProductSalesReportRow = ReportRow & { productId: string; sku: string; product: string; soldQuantity: number; netSales: number; averagePrice: number };
 export type StockMovementReportRow = ReportRow & { occurredAt: string; sku: string; product: string; warehouse: string; movementType: string; before: number; change: number; after: number; documentNumber: string };
 

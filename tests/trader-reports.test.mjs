@@ -33,7 +33,7 @@ async function native(t) {
   await f.command({ type: 'party-opening.post', partyId: a, direction: 'receivable', amount: 100, occurredAt: '2026-08-01' });
   await f.command({ type: 'party-opening.post', partyId: b, direction: 'payable', amount: 60, occurredAt: '2026-08-01' });
   const sale = (partyId, quantity, piecePrice, paymentMethod) => f.command({ type: 'sale.post', partyId, warehouseId: 'w', paymentMethod, lines: [{ productId, quantity, piecePrice }] });
-  const purchase = (partyId, quantity, paymentMethod) => f.command({ type: 'purchase.post', partyId, warehouseId: 'w', paymentMethod, lines: [{ productId, quantity, piecePrice: 10 }] });
+  const purchase = (partyId, quantity, paymentMethod) => f.command({ type: 'purchase.post', partyId, warehouseId: 'w', paymentMethod, lines: [{ productId, quantity, unitPrice: 10 }] });
   const aCashSale = await sale(a, 2, 20, 'cash');
   const aPurchase = await purchase(a, 3, 'note');
   const aCreditSale = await sale(a, 1, 25, 'note');
@@ -62,6 +62,8 @@ test('native trader sales and purchases share one account; cash invoices and ban
   assert.deepEqual([all.summary.partyCount, all.summary.transactionCount, all.summary.tradeTotal, all.summary.currentBalance, all.summary.reconciliationDifference, all.summary.unreconciledAccounts], [2, 11, 0, 15, 0, 0]);
   assert.deepEqual(values(single.summary), [65, 30, 50, 20, 65, 0]);
   const rows = new Map(single.rows.map(row => [row.documentId, row]));
+  const savedPurchase = await f.db.collection('documents').findOne({ id: f.aPurchase });
+  assert.deepEqual([savedPurchase.lines[0].unitPrice, savedPurchase.lines[0].lineTotal], [10, 30]);
   assert.deepEqual([rows.get(f.aCashSale).balanceChange, rows.get(f.aPurchase).balanceChange, rows.get(f.aCreditSale).balanceChange], [0, -30, 25]);
   assert.equal(rows.get(f.aReceive).movementType, 'استلام من التاجر'); assert.equal(rows.get(f.aPay).movementType, 'دفع للتاجر');
   assert.equal(rows.get(f.aReceive).description, 'Trader receipt literal');

@@ -17,7 +17,9 @@ test("remaining ERP pages use framed regions without legacy title bands", () => 
 });
 test("parties and banks use framed ERP tables", () => {
   const parties = between("function Parties", "function PartyPage");
-  assert.match(parties, /partyType.*customer.*supplier/);
+  assert.match(parties, /partyType: PartyType/);
+  assert.match(parties, /const presentation = partyPresentation\[partyType\]/);
+  assert.match(parties, /className="erp-table-wrap party-grid"/);
   assert.doesNotMatch(parties, /زبون ومورد/);
   const banks = between("function Banks", "function PaymentAccountDialog");
   assert.match(banks, /aria-label="وسائل الدفع"/);

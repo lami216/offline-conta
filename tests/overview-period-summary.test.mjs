@@ -64,7 +64,7 @@ test("party aggregate dues never net different parties against each other", asyn
   assert.match(ui,/aggregateDues=allParties\.reduce/);
   assert.match(ui,/totals\.owedToUs\+=net/);
   assert.match(ui,/totals\.weOwe\+=Math\.abs\(net\)/);
-  assert.match(ui,/PartyAggregateMetrics partyType=\{partyType\} metrics=\{aggregate\} owedToUs=\{aggregateDues\.owedToUs\} weOwe=\{aggregateDues\.weOwe\}/);
+  assert.match(ui,/PartyAggregateMetrics partyType=\{partyType\} metrics=\{aggregate\} traderPurchases=\{traderPurchases\} owedToUs=\{aggregateDues\.owedToUs\} weOwe=\{aggregateDues\.weOwe\}/);
 });
 
 

@@ -9,13 +9,14 @@ import { backupBuildInfo, type BackupApplication, type BackupBuild } from "./bui
 import { repairLegacyPayrollResume, validatePayrollSnapshot, type PayrollEmployee } from "./payroll.ts";
 import { invoiceAmountNumber, resolveInvoiceLineTotal, sumInvoiceLineTotals } from "../app/invoice-line-amount.ts";
 import { convertMobileBackup } from "./mobile-backup.ts";
+import { MOBILE_BUSINESS_FORMAT, readMobileBusinessBackup } from "./mobile-business-backup.ts";
 
 export const BACKUP_SCHEMA_VERSION = 1;
 export const BACKUP_COLLECTIONS = ["employees", "parties", "warehouses", "products", "productCategories", "expenseCategories", "documents", "stockMovements", "financialMovements", "paymentAccounts", "recurringExpenses", "accountTransfers", "counters", "auditEvents", "appSettings", "users", "importMappings"] as const;
 // Backups are local, user-selected files. Do not impose an artificial size or record-count cap;
 // validation below still enforces the accounting and reference invariants before restore.
 type BackupCollection = typeof BACKUP_COLLECTIONS[number];
-export type ContaBackup = { format: "conta-backup"; schemaVersion: 1; createdAt: string; appVersion: string; application?: BackupApplication; build?: BackupBuild; encoding: "json-v2"|"mongodb-extended-json-v2"; collections: Record<BackupCollection, Document[]>; counts: Record<BackupCollection, number>; mobileImport?: { sourceFormat: "alkarna-web-backup"; schemaVersion: 1 } };
+export type ContaBackup = { format: "conta-backup"; schemaVersion: 1; createdAt: string; appVersion: string; application?: BackupApplication; build?: BackupBuild; encoding: "json-v2"|"mongodb-extended-json-v2"; collections: Record<BackupCollection, Document[]>; counts: Record<BackupCollection, number>; mobileImport?: { sourceFormat: "alkarna-web-backup"|"alkarna-mobile-business-backup"; schemaVersion: 1 } };
 
 export async function createNativeBackup(db: Db): Promise<ContaBackup> {
   const pairs = await Promise.all(BACKUP_COLLECTIONS.map(async name => [name, await db.collection(name).find().toArray()] as const));
@@ -26,7 +27,9 @@ export function stringifyBackup(value: ContaBackup) { return value.encoding==="m
 export function parseAndValidateBackup(input: string): ContaBackup {
   let value: unknown; try { const raw=JSON.parse(input) as Record<string,unknown>;value=raw?.encoding==="mongodb-extended-json-v2"?EJSON.parse(input,{relaxed:true}):raw; } catch { throw new Error("ملف النسخة ليس JSON صالحًا"); }
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("هذا الملف ليس نسخة الكرنه");
-  if ((value as Record<string,unknown>).format === "alkarna-web-backup") value = convertMobileBackup(value);
+  const mobileBusiness = (value as Record<string,unknown>).format === MOBILE_BUSINESS_FORMAT;
+  if (mobileBusiness) value = readMobileBusinessBackup(value);
+  else if ((value as Record<string,unknown>).format === "alkarna-web-backup") value = convertMobileBackup(value);
   else delete (value as Record<string,unknown>).mobileImport;
   const b = value as Partial<ContaBackup>;
   if (b.format !== "conta-backup") throw new Error("هذا الملف ليس نسخة الكرنه");
@@ -46,7 +49,11 @@ export function parseAndValidateBackup(input: string): ContaBackup {
   // Preview describes the validated rows, including empty collections added for older backups.
   b.counts = Object.fromEntries(BACKUP_COLLECTIONS.map(name => [name, b.collections![name].length])) as ContaBackup["counts"];
   const backup = b as ContaBackup;
-  validateInvariants(repairBackupPayroll(backup)); return backup;
+  validateInvariants(repairBackupPayroll(backup));
+  // Only the strict business wrapper can earn this internal restore policy.
+  // An arbitrary native backup's supplied mobileImport flag is still discarded.
+  if (mobileBusiness) backup.mobileImport = { sourceFormat: MOBILE_BUSINESS_FORMAT, schemaVersion: 1 };
+  return backup;
 }
 function repairBackupPayroll(backup: ContaBackup): ContaBackup {
   const { employees = [], documents, auditEvents } = backup.collections;

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { partyCapabilities } from "../app/party-access.ts";
 
 const source = await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8");
 const openingHistory = await readFile(new URL("../app/opening-stock-history.tsx", import.meta.url), "utf8");
@@ -20,10 +21,6 @@ const expectedCommands = [
 ];
 
 const expectedPermissions = [
-  "customers.collect.edit",
-  "customers.collect.delete",
-  "suppliers.pay.edit",
-  "suppliers.pay.delete",
   "warehouses.transfer.edit",
   "warehouses.transfer.delete",
   "warehouses.adjust.edit",
@@ -40,6 +37,16 @@ test("every new transaction lifecycle command is reachable from the application 
 
 test("transaction lifecycle buttons respect the matching edit and delete permissions", () => {
   for (const permission of expectedPermissions) assert.ok(source.includes(`"${permission}"`), `missing UI permission ${permission}`);
+  assert.match(source, /canManage = \(action:[^\n]+\) =>\s*partyCapabilities\(partyType, action\)\.every\(capability => canUseCapability\(data\.principal, capability\)\)/);
+  assert.match(source, /canEditPayment = !archived && canManage\("cash-edit"\)/);
+  assert.match(source, /canDeleteLegacy = canManage\("cash-delete"\)/);
+  assert.match(source, /canDeletePayment = !archived && canDeleteLegacy/);
+  assert.deepEqual(partyCapabilities("customer", "cash-edit"), ["customers.collect.edit"]);
+  assert.deepEqual(partyCapabilities("customer", "cash-delete"), ["customers.collect.delete"]);
+  assert.deepEqual(partyCapabilities("supplier", "cash-edit"), ["suppliers.pay.edit"]);
+  assert.deepEqual(partyCapabilities("supplier", "cash-delete"), ["suppliers.pay.delete"]);
+  assert.deepEqual(partyCapabilities("trader", "cash-edit"), ["customers.collect.edit", "suppliers.pay.edit"]);
+  assert.deepEqual(partyCapabilities("trader", "cash-delete"), ["customers.collect.delete", "suppliers.pay.delete"]);
 });
 
 test("lifecycle row actions reuse the current visual system and shared confirmation flow", () => {

@@ -178,7 +178,8 @@ export async function runExpenseOverviewScenarios({cdp,origin,command,database,s
   await screenshot("overview-grouped-accounts-760",760);
   // Every group shares ERP table styling. Opening a group changes presentation only.
   const groupSelector=".overview-account-table .report-group-toggle";
-  await until(()=>evaluate('document.querySelectorAll('+JSON.stringify(groupSelector)+').length===3'),"three compact account group rows");
+  await until(()=>evaluate('document.querySelectorAll('+JSON.stringify(groupSelector)+').length===4'),"four compact account group rows");
+  assert.deepEqual(await evaluate('[...document.querySelectorAll('+JSON.stringify(groupSelector)+')].map(button=>button.getAttribute("aria-controls").split("-").at(-1)).sort()'),["customer","employee","supplier","trader"],"Each distinct role has exactly one overview group");
   assert.equal(await evaluate('[...document.querySelectorAll('+JSON.stringify(groupSelector)+')].every(button=>button.getAttribute("aria-expanded")==="false")'),true);
   assert.equal(await evaluate('[...document.querySelectorAll(".overview-account-table tbody[hidden]")].every(body=>getComputedStyle(body).display==="none")'),true,"Collapsed accounts are actually hidden");
   assert.equal(await evaluate('[...document.querySelectorAll(".overview-account-table .invoice-group-row")].every(row=>row.getBoundingClientRect().height<=40)'),true,"Group headings keep the compact invoice section style");
@@ -211,7 +212,7 @@ export async function runExpenseOverviewScenarios({cdp,origin,command,database,s
   assert.equal(await evaluate('[...document.querySelectorAll(".overview-account-table .report-group-toggle")].every(button=>button.getAttribute("aria-expanded")==="false")'),true);
   assert.deepEqual(await moneySnapshot(),beforeMetadata,"Folding and reading reports leave accounting untouched");
   await evaluate('(()=>{const button=[...document.querySelectorAll(".overview-current-status button")].find(button=>button.textContent.includes("إجمالي المستحق لنا"));if(!button)throw Error("Missing receivable summary");button.click()})()');
-  await until(()=>evaluate('document.querySelectorAll(".summary-breakdown-modal .report-group-toggle").length===3'),"receivable role groups");
+  await until(()=>evaluate('document.querySelectorAll(".summary-breakdown-modal .report-group-toggle").length===4'),"receivable role groups");
   assert.equal(await evaluate('[...document.querySelectorAll(".summary-breakdown-modal .report-group-toggle")].every(button=>button.getAttribute("aria-expanded")==="false")'),true);
   assert.equal(Number((await evaluate('document.querySelector(".summary-breakdown-modal tfoot").textContent')).replace(/[^0-9.+-]/g,"")),11);
   await evaluate('(()=>{const button=[...document.querySelectorAll(".summary-breakdown-modal .report-group-toggle")].find(button=>button.getAttribute("aria-controls")?.endsWith("-customer"));button.click()})()');
@@ -220,7 +221,7 @@ export async function runExpenseOverviewScenarios({cdp,origin,command,database,s
   await until(()=>evaluate('!document.querySelector(".summary-breakdown-modal")'),"receivable source dispatch");
   assert.deepEqual(await evaluate("window.__openedReportSource"),{kind:"party",partyId:reportCustomer.id});
   await evaluate('(()=>{const button=[...document.querySelectorAll(".overview-current-status button")].find(button=>button.textContent.includes("إجمالي المستحق علينا"));if(!button)throw Error("Missing payable summary");button.click()})()');
-  await until(()=>evaluate('document.querySelectorAll(".summary-breakdown-modal .report-group-toggle").length===3'),"compact payable groups");
+  await until(()=>evaluate('document.querySelectorAll(".summary-breakdown-modal .report-group-toggle").length===4'),"compact payable groups");
   await screenshot("overview-payable-groups-1280",1280);
   assert.equal(await evaluate('[...document.querySelectorAll(".summary-breakdown-modal .report-group-toggle")].every(button=>button.getAttribute("aria-expanded")==="false")'),true);
   assert.equal(Number((await evaluate('document.querySelector(".summary-breakdown-modal tfoot").textContent')).replace(/[^0-9.+-]/g,"")),97);
@@ -238,7 +239,7 @@ export async function runExpenseOverviewScenarios({cdp,origin,command,database,s
   assert.equal(await evaluate('document.querySelectorAll(".summary-breakdown-modal tbody tr").length'),3,"The150 ordinary expense detail excludes worker wages");
   await screenshot("overview-ordinary-expense-sources-1280",1280);
   await click('.summary-breakdown-modal button[aria-label="إغلاق"]');
-  checkpoints.push("Overview accounts use three compact collapsed ERP headers and opening/closing them leaves all balances unchanged; current wages no longer sit in period performance");
+  checkpoints.push("Overview accounts use four distinct compact collapsed ERP headers and opening/closing them leaves all balances unchanged; current wages no longer sit in period performance");
   checkpoints.push("Overview role groups reconcile customer receivable11/supplier payable17/worker payable80, dispatch exact party/employee source IDs, and collapsed receivable/payable totals remain11/97");
   await fill('.overview-toolbar input[type="date"]:first-of-type',"2000-01-01");
   // Each date is in its own label, so select the second field by its position in the toolbar.

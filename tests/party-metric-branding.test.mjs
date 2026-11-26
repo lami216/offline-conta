@@ -12,9 +12,9 @@ const brand = readFileSync(new URL("../lib/app-brand.ts", import.meta.url), "utf
 test("party list and account summaries keep both debt directions visible in the shared metric strip", () => {
   assert.match(app, /function PartyMetricStrip/);
   assert.match(app, /return <PartyMetricStrip items=\{items\} aggregate\/>/);
-  assert.match(app, /<PartyMetricStrip items=\{\[/);
+  assert.match(app, /<PartyMetricStrip items=\{trader\s*\?\s*\[/);
   const aggregate = app.slice(app.indexOf("function PartyAggregateMetrics"), app.indexOf("function Parties"));
-  assert.equal((aggregate.match(/labelKey:/g) ?? []).length, 9);
+  assert.equal((aggregate.match(/labelKey:/g) ?? []).length, 11);
   assert.match(aggregate,/labelKey:"إجمالي المستحقات لنا"/);
   assert.match(aggregate,/labelKey:"إجمالي المستحقات علينا"/);
   assert.doesNotMatch(css, /party-list-metrics/);

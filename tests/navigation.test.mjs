@@ -102,7 +102,7 @@ test("traceable records open details first and expose a source-navigation action
     /document\.kind==="sale"[\s\S]*?navigate\("pos",\{replaceEditor:edit\}\)/,
     /document\.kind==="purchase"[\s\S]*?navigate\("purchases",\{replaceEditor:edit\}\)/,
     /document\.kind==="expense"[\s\S]*?navigate\("expenses",\{replaceEditor:edit\}\)/,
-    /document\.kind==="payment"[\s\S]*?setPartyDetail\(party\)/,
+    /document\.kind\s*===\s*"payment"[\s\S]*?navigate\(partyView\(party\), \{ replaceEditor: edit \}\)[\s\S]*?setPartyDetail\(party\)/,
     /document\.kind==="transfer"[\s\S]*?navigate\("transfers",\{replaceEditor:edit\}\)/,
     /document\.kind==="adjustment"[\s\S]*?navigate\("adjustments",\{replaceEditor:edit\}\)/,
     /document\.kind==="account-transfer"[\s\S]*?setBankTab\("transfers"\)/,

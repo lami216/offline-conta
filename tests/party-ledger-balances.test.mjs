@@ -215,7 +215,7 @@ test('explicit roles disambiguate equal identities and empty role results remain
   assert.deepEqual([worker.summary.partyType, worker.summary.currentBalance], ['employee', -30]);
   await assert.rejects(f.report({ partyId: 'shared', partyType: 'supplier' }), /نوع الطرف/);
   await assert.rejects(f.report({ partyType: '' }), /يجب اختيار الطرف/);
-  await assert.rejects(f.report({ partyType: 'administrator' }), /partyType/);
+  assert.throws(() => f.report({ partyType: 'administrator' }), /partyType/);
   await f.db.collection('parties').deleteMany({ partyType: 'supplier' });
   const empty = await f.report({ partyType: 'supplier' });
   assert.deepEqual(empty.rows, []); assert.deepEqual([empty.summary.partyCount, empty.summary.transactionCount, empty.summary.closingReceivable, empty.summary.closingPayable], [0, 0, 0, 0]);

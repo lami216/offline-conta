@@ -17,7 +17,10 @@ test("warehouse movement report uses declared column types instead of key-name c
   assert.match(source, /\["after",tr\("بعد"\),"number"\]/);
   assert.doesNotMatch(source, /const monetaryKeys=/);
   assert.doesNotMatch(source, /const numericKeys=/);
-  assert.match(source, /columnType==="money"\?<MoneyValue/);
+  const renderValue = source.slice(source.indexOf("const renderReportValue"), source.indexOf("const nonMoneySummaryKeys"));
+  assert.match(renderValue, /if \(columnType !== "money"\) return display\(/);
+  assert.match(renderValue, /return <MoneyValue value=\{amount\} tone=\{tone\}/);
+  assert.match(source, /\{renderReportValue\(key, columnType, row\)\}/);
   assert.match(source, /columnType==="number"\|\|columnType==="money"/);
 });
 

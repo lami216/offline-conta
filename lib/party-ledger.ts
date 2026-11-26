@@ -60,11 +60,11 @@ function partyEffect(document: Stored, parentKinds: ReadonlyMap<string, string>,
 /** Replay current posted documents once; saved before/after snapshots may predate later edits. */
 export function buildPartyLedger(party: Stored, documents: Stored[], parentKinds: ReadonlyMap<string, string>,
   movementsByDocument: ReadonlyMap<string, Stored[]> = new Map(), period: Period = {}): Ledger {
-  const partyId = String(party.id), partyType = resolvePartyType(party), role = partyType === "customer" ? "العميل" : "المورد";
+  const partyId = String(party.id), partyType = resolvePartyType(party), role = partyType === "trader" ? "التاجر" : partyType === "customer" ? "العميل" : "المورد";
   const ordered = documents.filter(document => String(document.partyId) === partyId && document.status === "posted")
     .sort((left, right) => String(left.occurredAt).localeCompare(String(right.occurredAt)) ||
       Number(left.sequence ?? 0) - Number(right.sequence ?? 0) || String(left.id).localeCompare(String(right.id)));
-  let running = 0, opening = 0, closing = 0, debit = 0, credit = 0, trade = 0, received = 0, paid = 0;
+  let running = 0, opening = 0, closing = 0, debit = 0, credit = 0, trade = 0, received = 0, paid = 0, sales = 0, purchases = 0;
   const rows: ReportRow[] = [];
   for (const document of ordered) {
     const movement = activeCashMovement(document, movementsByDocument.get(String(document.id)) ?? []);
@@ -74,9 +74,15 @@ export function buildPartyLedger(party: Stored, documents: Stored[], parentKinds
     if (period.from && day < period.from) opening += delta;
     if (!period.to || day <= period.to) closing += delta;
     if ((period.from && day < period.from) || (period.to && day > period.to)) continue;
-    const isReturn = document.kind === "return", purchaseReturn = isReturn && parentKinds.get(String(document.parentDocumentId)) === "purchase";
+    const isReturn = document.kind === "return", parentKind = parentKinds.get(String(document.parentDocumentId)), purchaseReturn = isReturn && parentKind === "purchase";
     if (partyType === "customer") trade += document.kind === "sale" ? amount(document.total) : isReturn && !purchaseReturn ? -amount(document.total) : 0;
-    else trade += document.kind === "purchase" ? amount(document.total) : purchaseReturn ? -amount(document.total) : 0;
+    else if (partyType === "supplier") trade += document.kind === "purchase" ? amount(document.total) : purchaseReturn ? -amount(document.total) : 0;
+    else if (partyType === "trader") {
+      // One account, two trade measures. Neither is a cash receipt or a balance.
+      // Keep unknown historical return parents out of both commercial totals.
+      sales += document.kind === "sale" ? amount(document.total) : isReturn && parentKind === "sale" ? -amount(document.total) : 0;
+      purchases += document.kind === "purchase" ? amount(document.total) : purchaseReturn ? -amount(document.total) : 0;
+    }
     if (document.kind === "payment") {
       const direction = paymentDirection(document, movement), cash = Math.max(0, amount(movement?.amount ?? document.cashAmount ?? document.total));
       if (direction === "receive") received += cash;
@@ -87,7 +93,7 @@ export function buildPartyLedger(party: Stored, documents: Stored[], parentKinds
       document.partyCashDirection === "receive" ? "party-receipt" : document.partyCashDirection === "pay" ? "party-payment" : "payment";
     const label = code === "party-opening" ? "رصيد بداية الديون" : code === "sale" ? "فاتورة بيع" : code === "purchase" ? "فاتورة شراء" :
       code === "return" ? "حركة تاريخية" : code === "offset" ? "مقاصة" : code === "settlement" ? "تسوية" :
-      code === "party-receipt" ? `استلام من ${role}` : code === "party-payment" ? partyType === "customer" ? "دفع للعميل" : "دفع للمورد" : "دفعة";
+      code === "party-receipt" ? `استلام من ${role}` : code === "party-payment" ? partyType === "trader" ? "دفع للتاجر" : partyType === "customer" ? "دفع للعميل" : "دفع للمورد" : "دفعة";
     debit += Math.max(delta, 0); credit += Math.max(-delta, 0);
     rows.push({ id: String(document.id), documentId: String(document.id), partyId, party: String(party.name ?? ""), partyType,
       occurredAt: String(document.occurredAt), movementType: label, movementCode: code, documentNumber: displayDocumentNumber(document),
@@ -99,6 +105,7 @@ export function buildPartyLedger(party: Stored, documents: Stored[], parentKinds
   }
   const current = amount(party.receivable) - amount(party.payable);
   return { rows: rows.reverse(), summary: { name: String(party.name ?? ""), partyType, tradeTotal: trade,
+    ...(partyType === "trader" ? { salesTotal: sales, purchasesTotal: purchases } : {}),
     receivedTotal: received, paidTotal: paid, debitTotal: debit, creditTotal: credit, openingBalance: opening, closingBalance: closing,
     currentBalance: current, net: current, receivable: Math.max(current, 0), payable: Math.max(-current, 0),
     reconciliationDifference: current - running, transactionCount: rows.length,
@@ -110,6 +117,7 @@ export function combinePartyLedgers(ledgers: Ledger[], partyType: string, select
   const keys = ["tradeTotal", "receivedTotal", "paidTotal", "debitTotal", "creditTotal", "openingBalance", "closingBalance", "currentBalance", "net",
     "receivable", "payable", "reconciliationDifference", "transactionCount"];
   if (partyType === "employee") keys.push("workersAccrued", "workersPaid", "workersDeposited", "workersReserveReleased");
+  if (partyType === "trader") keys.push("salesTotal", "purchasesTotal");
   const summary: Record<string, string | number | boolean> = { name: selected ? String(ledgers[0]?.summary.name ?? "") : "", partyType, partyCount: ledgers.length };
   for (const key of keys) summary[key] = ledgers.reduce((sum, ledger) => sum + amount(ledger.summary[key]), 0);
   summary.closingReceivable = ledgers.reduce((sum, ledger) => sum + Math.max(amount(ledger.summary.closingBalance), 0), 0);

@@ -39,7 +39,7 @@ test("overview aggregate details link each contributing category to a traceable 
   assert.match(ui,/overview-worker-expenses[^\n]+value:workerExpense,openDetail:openWorkerExpenseSummary/);
   assert.match(ui,/profit-sales-cost[^\n]+source:\{kind:"report",reportType:"sales",period:committedPeriod\}/);
   const start=ui.indexOf('const accountSummaryDetail ='),details=ui.slice(start,ui.indexOf('const openWorkerBalanceSummary',start));
-  assert.match(ui,/reportAccountRoles = \["employee", "customer", "supplier"\]/);
+  assert.match(ui,/reportAccountRoles = \["employee", "customer", "supplier", "trader"\]/);
   assert.match(details,/reportAccountRoles\.map\(role/);
   assert.match(details,/party\.partyType === role && reportNumber\(receivable \? party\.receivable : party\.payable\) > 0/);
   assert.match(details,/id: "overview-party-"\+key\+"-"\+String\(party\.id\)/);

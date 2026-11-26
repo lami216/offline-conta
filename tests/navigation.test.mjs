@@ -73,7 +73,7 @@ test("party ledger filters real compatible roles and transient documents overlay
   const source = normalizePresentationSource(await readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"));
   assert.match(source, /filter\(p=>resolvePartyType\(p\)===partyTypeFilter\)/);
   assert.match(source, /search:`\$\{p\.name\} \$\{p\.phone\?\?""\}`/);
-  assert.match(source, /reportAccountRoles = \["employee", "customer", "supplier"\]/);
+  assert.match(source, /reportAccountRoles = \["employee", "customer", "supplier", "trader"\]/);
   assert.match(source, /<select className="party-ledger-role-select"[^>]+value=\{partyTypeFilter\}[\s\S]*?onChange=\{event=>changeLedgerSelection\(event\.target\.value as typeof partyTypeFilter\)\}/);
   assert.match(source, /reportAccountRoles\.map\(role=><option key=\{role\} value=\{role\}>\{reportAccountGroupLabel\(role\)\}<\/option>\)/);
   assert.match(source, /<SearchableSelect key=\{partyTypeFilter\} value=\{partyId\}/);

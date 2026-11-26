@@ -101,8 +101,8 @@ test("archived invoice party stays visible only inside its old invoice edit and 
  const updated=await db.collection("documents").findOne({id:sale});assert.equal(updated.partyId,"c");assert.equal(updated.partyName,"Customer");
  const source=await readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8");
  assert.match(source,/currentCustomer\?\.isArchived/);assert.match(source,/currentSupplier\?\.isArchived/);
- assert.match(source,/p\.isArchived!==true&&resolvePartyType\(p\)==="customer"/);
- assert.match(source,/p\.isArchived!==true&&resolvePartyType\(p\)==="supplier"/);
+ assert.match(source,/p\.isArchived!==true&&supportsPartyRole\(p,"customer"\)/);
+ assert.match(source,/p\.isArchived!==true&&supportsPartyRole\(p,"supplier"\)/);
 });
 
 test("archived product already present in a sale can be edited but cannot be newly introduced",async()=>{

@@ -10,6 +10,7 @@ export type DocumentReadAccess = {
   can: (capability: string) => boolean;
   customerPartyIds: ReadonlySet<string>;
   supplierPartyIds: ReadonlySet<string>;
+  traderPartyIds?: ReadonlySet<string>;
 };
 
 const partyIdOf = (document: ReadModelDocument) =>
@@ -57,11 +58,16 @@ export function canReadDocumentKind(kind: string, access: Pick<DocumentReadAcces
 /** One authorization rule for both live documents and historical/audit reads. */
 export function canReadDocument(document: ReadModelDocument, access: DocumentReadAccess) {
   if (["employee-opening", "employee-accrual", "employee-payment", "employee-closure"].includes(String(document.kind))) return access.can("employees.view");
-  if (access.can("records.view")) return true;
-
   const kind = String(document.kind ?? ""), partyId = partyIdOf(document);
-  const customerParty = Boolean(partyId) && access.customerPartyIds.has(partyId);
-  const supplierParty = Boolean(partyId) && access.supplierPartyIds.has(partyId);
+  const traderParty = Boolean(partyId) && access.traderPartyIds?.has(partyId) === true;
+  // The trader's single account mixes both commercial sides. General record
+  // access must not turn one-sided party authority into mixed-account access.
+  if (traderParty && ["party-opening", "payment", "settlement", "offset", "return"].includes(kind)) {
+    return access.can("customers.view") && access.can("suppliers.view");
+  }
+  if (access.can("records.view")) return true;
+  const customerParty = Boolean(partyId) && (access.customerPartyIds.has(partyId) || traderParty);
+  const supplierParty = Boolean(partyId) && (access.supplierPartyIds.has(partyId) || traderParty);
 
   if (kind === "sale") return canAny(access.can, saleAccess) || (customerParty && canAny(access.can, customerAccess));
   if (kind === "purchase") return canAny(access.can, purchaseAccess) || (supplierParty && canAny(access.can, supplierAccess));

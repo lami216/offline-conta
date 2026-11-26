@@ -53,6 +53,7 @@ import {
   inventoryValueAcrossWarehouses,
   inventoryAverageUnitCostAcrossWarehouses,
   resolvePartyType,
+  supportsPartyRole,
   money,
   accountingPercent,
   number,
@@ -62,6 +63,7 @@ import {
   type BootstrapData,
   type DocumentRecord,
   type Party,
+  type PartyType,
   type Product,
   type PaymentAccount,
   type InvoiceBrandingSettings,
@@ -74,6 +76,7 @@ import { canManagePartyPayment } from "./party-payment-actions";
 import { PartyOpeningPanel, PartyOpeningCreateFields, emptyPartyOpeningDraft } from "./party-opening-panel";
 import { reportDateQuery, reportNumber, reportTableModel, type OverviewBreakdownRow, type ReportGroup, type ReportResponse, type ReportType } from "./report-types";
 import { buildReportFooterMetrics } from "./report-footer";
+import { partyCapabilities } from "./party-access";
 import { applyPriceMode, clearPersistedSaleDraft, initialSaleUiState, sellingPrice, validateSaleDraft, belowCostConfirmation, formatSaleValidationError, type PriceMode } from "./sale-draft";
 import { readApiResponse, redirectExpiredSession } from "./api-response";
 import { exportNativeBackup } from "./backup-export";
@@ -105,6 +108,7 @@ type View =
   | "expenses"
   | "employees"
   | "customers"
+  | "traders"
   | "suppliers"
   | "warehouses"
   | "warehouseAdmin"
@@ -205,8 +209,17 @@ const topNavClass: Record<(typeof MAIN_NAV_ORDER)[number], string> = {
 const partyNav: Array<{ id: View; label: string; icon: typeof Users }> = [
   { id: "customers", label: "العملاء", icon: Users },
   { id: "suppliers", label: "الموردون", icon: Users },
+  { id: "traders", label: "التجار", icon: Users },
   { id: "employees", label: "العمال", icon: Users },
 ];
+const partyPresentation = {
+  customer: { view: "customers", noun: "العميل", plural: "العملاء", management: "إدارة العملاء", newLabel: "إضافة عميل جديد", name: "اسم العميل", created: "تمت إضافة العميل", account: "حساب العميل", empty: "لا يوجد عملاء حتى الآن", saved: "party.savedCustomer", deleted: "party.deletedCustomer", pay: "دفع للعميل" },
+  supplier: { view: "suppliers", noun: "المورد", plural: "الموردون", management: "إدارة الموردين", newLabel: "إضافة مورد جديد", name: "اسم المورد", created: "تمت إضافة المورد", account: "حساب المورد", empty: "لا يوجد موردون", saved: "party.savedSupplier", deleted: "party.deletedSupplier", pay: "دفع للمورد" },
+  trader: { view: "traders", noun: "التاجر", plural: "التجار", management: "إدارة التجار", newLabel: "إضافة تاجر جديد", name: "اسم التاجر", created: "تمت إضافة التاجر", account: "حساب التاجر", empty: "لا يوجد تجار حتى الآن", saved: "تم حفظ التاجر", deleted: "تم حذف أو أرشفة التاجر", pay: "دفع للتاجر" },
+} as const;
+const partyView = (party: Party) => partyPresentation[resolvePartyType(party)].view;
+const partyChoiceLabel = (party: Party) =>
+  resolvePartyType(party) === "trader" ? `${party.name} (${tr("تاجر")})` : party.name;
 const invoiceNav: Array<{ id: View; label: string; icon: typeof Receipt }> = [
   { id: "purchases", label: "فواتير الشراء", icon: PackagePlus },
   { id: "expenses", label: "فواتير المصاريف", icon: WalletCards },
@@ -305,8 +318,8 @@ function ContaAppContent() {
   const can=(capability:string)=>data.principal.principalType==="owner"||data.principal.permissions.includes(capability);
   const settingsAllowed=(target:SettingsTab)=>target==="license"||target==="contact"||can("settings.view")&&(target==="general"||(target==="users"?can("settings.users.manage"):can("settings.backup.manage")||can("settings.legacy.import")));
   const [employeeSourceId,setEmployeeSourceId]=useState<string|null>(null);
-  const viewCapability:Record<View,string>={employees:"employees.view",pos:"pos.view",purchases:"purchases.view",expenses:"expenses.view",customers:"customers.view",suppliers:"suppliers.view",warehouses:"warehouses.inventory.view",warehouseAdmin:"warehouses.view",transfers:"warehouses.transfer",adjustments:"warehouses.adjust",products:"products.view",records:"records.view",reports:"reports.view",banks:"banks.view",settings:"settings.view"};
-  const canView=(id:View)=>id==="banks"?bankNav.some(item=>can(bankTabCapability[item.id])):can(viewCapability[id]);
+  const viewCapability:Record<View,string>={employees:"employees.view",pos:"pos.view",purchases:"purchases.view",expenses:"expenses.view",customers:"customers.view",suppliers:"suppliers.view",traders:"customers.view",warehouses:"warehouses.inventory.view",warehouseAdmin:"warehouses.view",transfers:"warehouses.transfer",adjustments:"warehouses.adjust",products:"products.view",records:"records.view",reports:"reports.view",banks:"banks.view",settings:"settings.view"};
+  const canView=(id:View)=>id==="banks"?bankNav.some(item=>can(bankTabCapability[item.id])):id === "traders" ? partyCapabilities("trader", "view").every(can) : can(viewCapability[id]);
   const effectiveBankTab=can(bankTabCapability[bankTab])?bankTab:bankNav.find(item=>can(bankTabCapability[item.id]))?.id??bankTab;
   useEffect(() => {
     const close = (event: PointerEvent) => {
@@ -359,8 +372,10 @@ function ContaAppContent() {
       if (!r.ok) { redirectExpiredSession(r); throw new Error(j.error); }
       setDisplayCurrencyCode(j.currency?.code);
       setData(j);
-      const permitted=(id:View)=>j.principal.principalType==="owner"||(id==="banks"?bankNav.some(item=>j.principal.permissions.includes(bankTabCapability[item.id])):j.principal.permissions.includes(viewCapability[id]));
-      if(!permitted(view)){const first=(["pos","purchases","records","products","customers","suppliers","employees","warehouses","expenses","banks","reports","settings"] as View[]).find(permitted);if(first)setView(first)}
+      const nextCan = (capability: string) => j.principal.principalType === "owner" || j.principal.permissions.includes(capability);
+      const permitted = (id: View) => id === "banks" ? bankNav.some(item => nextCan(bankTabCapability[item.id]))
+        : id === "traders" ? partyCapabilities("trader", "view").every(nextCan) : nextCan(viewCapability[id]);
+      if(!permitted(view)){const first=(["pos","purchases","records","products","customers","suppliers","traders","employees","warehouses","expenses","banks","reports","settings"] as View[]).find(permitted);if(first)setView(first)}
       setError("");
     } catch (e) {
       setError(e instanceof Error ? e.message : tr("تعذر تحميل البيانات"));
@@ -408,14 +423,15 @@ function ContaAppContent() {
   const closeDoc = () => { setDoc(null); window.requestAnimationFrame(() => dialogOpenerRef.current?.focus()); };
   const legacyPartyDocumentDeleteCapability=(document:DocumentRecord)=>{
     const currentParty=document.partyId?data.parties.find(item=>item.id===document.partyId):null;
-    if(currentParty)return resolvePartyType(currentParty)==="supplier"?"suppliers.pay.delete":"customers.collect.delete";
+    if(currentParty)return partyCapabilities(resolvePartyType(currentParty), "cash-delete");
     const related=document.partyId?data.documents.find(item=>item.partyId===document.partyId&&(item.kind==="purchase"||item.kind==="sale")):null;
-    return related?.kind==="purchase"?"suppliers.pay.delete":related?.kind==="sale"?"customers.collect.delete":null;
+    return related?.kind === "purchase" ? partyCapabilities("supplier", "cash-delete")
+      : related?.kind === "sale" ? partyCapabilities("customer", "cash-delete") : null;
   };
   const canVoidLegacyPartyDocument=(document:DocumentRecord)=>{
     if(!isNativeLegacyPartyDocument(document))return false;
     const capability=legacyPartyDocumentDeleteCapability(document);
-    return capability?can(capability):can("customers.collect.delete")||can("suppliers.pay.delete");
+    return capability ? capability.every(can) : can("customers.collect.delete") || can("suppliers.pay.delete");
   };
   const voidLegacyPartyDocument=async(document:DocumentRecord)=>{
     if(!canVoidLegacyPartyDocument(document))return;
@@ -442,7 +458,7 @@ function ContaAppContent() {
     if (target.kind === "party") {
       const party=data.parties.find(item=>item.id===target.partyId);
       if(!party)return;
-      const targetView:View=resolvePartyType(party)==="customer"?"customers":"suppliers";
+      const targetView = partyView(party);
       if(await navigate(targetView))setPartyDetail(party);return;
     }
     if(target.bankTab&&!can(bankTabCapability[target.bankTab]))return;
@@ -456,12 +472,21 @@ function ContaAppContent() {
     if(document.kind==="purchase"){const edit=can("purchases.edit")&&document.status==="posted"&&!document.legacyKey;if(!await navigate("purchases",{replaceEditor:edit}))return;if(edit)setPurchaseEditRequest(document.id);return}
     if(document.kind==="expense"){const edit=can("expenses.edit")&&document.status==="posted"&&!document.legacyKey;if(!await navigate("expenses",{replaceEditor:edit}))return;if(edit)setExpenseEditRequest(document.id);return}
     if(document.employeeId){if(!data.employees?.some(employee=>employee.id===document.employeeId))return;if(await navigate("employees",{replaceEditor:true}))setEmployeeSourceId(document.id);return}
-    if(document.kind==="payment"&&document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(!party)return;const customer=resolvePartyType(party)==="customer",edit=document.status==="posted"&&!party.isArchived&&can(customer?"customers.collect.edit":"suppliers.pay.edit");if(!await navigate(customer?"customers":"suppliers",{replaceEditor:edit}))return;setPartyDetail(party);if(edit)setPartyPaymentEditRequest(document.id);return}
+    if (document.kind === "payment" && document.partyId) {
+      const party = data.parties.find(item => item.id === document.partyId);
+      if (!party) return;
+      const edit = document.status === "posted" && !party.isArchived &&
+        partyCapabilities(resolvePartyType(party), "cash-edit").every(can);
+      if (!await navigate(partyView(party), { replaceEditor: edit })) return;
+      setPartyDetail(party);
+      if (edit) setPartyPaymentEditRequest(document.id);
+      return;
+    }
     if(document.kind==="transfer"){const edit=can("warehouses.transfer.edit")&&document.status==="posted";if(!await navigate("transfers",{replaceEditor:edit}))return;if(edit)setTransferEditRequest(document.id);return}
     if(document.kind==="adjustment"){const edit=can("warehouses.adjust.edit")&&document.status==="posted"&&!isProductArchiveStockClearanceDocument(document);if(!await navigate("adjustments",{replaceEditor:edit}))return;if(edit)setAdjustmentEditRequest(document.id);return}
     if(document.kind==="account-transfer"){if(!can(bankTabCapability.transfers))return;const edit=can("banks.transfer.edit")&&document.status==="posted",replaceEditor=edit||effectiveBankTab!=="transfers";if(!await navigate("banks",{replaceEditor}))return;setBankTab("transfers");if(edit)setBankSourceRequest({kind:"transfer",documentId:document.id});return}
     if(document.kind==="account-adjustment"){if(!can(bankTabCapability.adjustment))return;const edit=can("banks.deposit_withdraw.edit")&&document.status==="posted",replaceEditor=edit||effectiveBankTab!=="adjustment";if(!await navigate("banks",{replaceEditor}))return;setBankTab("adjustment");if(edit)setBankSourceRequest({kind:"adjustment",documentId:document.id});return}
-    if(document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(party){const target:View=resolvePartyType(party)==="customer"?"customers":"suppliers";if(await navigate(target))setPartyDetail(party);return}}
+    if(document.partyId){const party=data.parties.find(item=>item.id===document.partyId);if(party){const target = partyView(party);if(await navigate(target))setPartyDetail(party);return}}
     await navigate("records");
   };
   const openDocumentSourceById = async (documentId: string) => {
@@ -488,6 +513,7 @@ function ContaAppContent() {
     return()=>{cancelled=true;window.clearTimeout(timer)};
   }, [autoPrintId, data.documents, locale]);
   const autoPrintDocument=autoPrintId?data.documents.find(document=>document.id===autoPrintId)??null:null;
+  const listedPartyType = view === "customers" ? "customer" : view === "suppliers" ? "supplier" : view === "traders" ? "trader" : null;
   if(!loading&&licenseStatus&&!licenseStatus.valid)return <div className="unlicensed-shell" dir={dir}><div className="unlicensed-session"><button className="language-switch soft" type="button" onClick={()=>setLocale(locale==="ar"?"fr":"ar")}><Globe/>{locale==="ar"?"Français":"العربية"}</button><form action="/api/auth/logout" method="post"><button className="soft" type="submit"><LogOut/>  {tr("خروج")}</button></form></div><SupportLicensePage initialStatus={licenseStatus} onActivated={()=>reload({blocking:true})}/></div>;
   return (
     <div className={`app-shell section-${view}`} dir={dir}>
@@ -507,7 +533,7 @@ function ContaAppContent() {
           {nav.slice(0,1).map(n=><PermissionNavItem key={n.id} allowed={can(viewCapability[n.id])} active={view===n.id} className={`nav ${topNavClass[n.id as "pos"]}`} onClick={()=>navigate(n.id)}><n.icon/><span>{tr(n.label)}</span></PermissionNavItem>)}
           <div className="nav-menu nav-invoices" ref={invoiceMenuRef}><button className={invoiceNav.some(n=>n.id===view)?"nav active":"nav"} aria-expanded={invoiceMenu} onClick={()=>setInvoiceMenu(x=>!x)}><ReceiptText/><span>{tr("الفواتير")}</span><ChevronDown className="chevron"/></button>{invoiceMenu&&<div className="nav-popover">{invoiceNav.map(n=><PermissionNavItem key={n.id} allowed={can(viewCapability[n.id])} active={view===n.id} onClick={()=>navigate(n.id)}><span>{tr(n.label)}</span></PermissionNavItem>)}</div>}</div>
           <div className="nav-menu nav-warehouses" ref={warehouseMenuRef}><button className={warehouseNav.some(n=>n.id===view)?"nav active":"nav"} aria-expanded={warehouseMenu} onClick={()=>setWarehouseMenu(x=>!x)}><Boxes/><span>{tr("المخازن")}</span><ChevronDown className="chevron"/></button>{warehouseMenu&&<div className="nav-popover">{warehouseNav.map(n=><PermissionNavItem key={n.id} allowed={can(viewCapability[n.id])} active={view===n.id} onClick={()=>navigate(n.id)}><span>{tr(n.label)}</span></PermissionNavItem>)}</div>}</div>
-          <div className="nav-menu nav-parties party-nav-menu" ref={partyMenuRef}><button className={partyNav.some(item=>item.id===view)?"nav active":"nav"} aria-expanded={partyMenu} onClick={()=>setPartyMenu(value=>!value)}><Users/><span>{tr("العملاء والموردون")}</span><ChevronDown className="chevron"/></button>{partyMenu&&<div className="nav-popover party-nav-popover">{partyNav.map(item=><PermissionNavItem key={item.id} allowed={can(viewCapability[item.id])} active={view===item.id} onClick={()=>navigate(item.id)}><span>{tr(item.label)}</span></PermissionNavItem>)}</div>}</div>
+          <div className="nav-menu nav-parties party-nav-menu" ref={partyMenuRef}><button className={partyNav.some(item=>item.id===view)?"nav active":"nav"} aria-expanded={partyMenu} onClick={()=>setPartyMenu(value=>!value)}><Users/><span>{tr("العملاء والموردون")}</span><ChevronDown className="chevron"/></button>{partyMenu&&<div className="nav-popover party-nav-popover">{partyNav.map(item=><PermissionNavItem key={item.id} allowed={canView(item.id)} active={view===item.id} onClick={()=>navigate(item.id)}><span>{tr(item.label)}</span></PermissionNavItem>)}</div>}</div>
           {nav.slice(1).filter(n=>n.id!=="reports"&&n.id!=="settings"&&n.id!=="banks").map(n=><PermissionNavItem key={n.id} allowed={can(viewCapability[n.id])} active={view===n.id} className={`nav ${topNavClass[n.id as "products"]}`} onClick={()=>navigate(n.id)}><n.icon/><span>{tr(n.label)}</span></PermissionNavItem>)}
           <div className="nav-menu nav-accounts bank-nav-menu" ref={bankMenuRef}><button className={view==="banks"?"nav active":"nav"} aria-expanded={bankMenu} onClick={()=>setBankMenu(open=>!open)}><Landmark/><span>{tr("البنوك")}</span><ChevronDown className="chevron"/></button>{bankMenu&&<div className="nav-popover bank-nav-popover">{bankNav.map(item=><PermissionNavItem key={item.id} allowed={can(bankTabCapability[item.id])} active={view==="banks"&&effectiveBankTab===item.id} onClick={()=>void (async()=>{if((view==="banks"&&item.id===effectiveBankTab)||await navigate("banks",{replaceEditor:true}))setBankTab(item.id)})()}><span>{tr(item.label)}</span></PermissionNavItem>)}</div>}</div>
           <div className="nav-menu nav-reports report-nav-menu" ref={reportMenuRef}><button className={view==="reports"?"nav active":"nav"} aria-expanded={reportMenu} onClick={()=>setReportMenu(value=>!value)}><Receipt/><span>{tr("التقارير")}</span><ChevronDown className="chevron"/></button>{reportMenu&&<div className="nav-popover report-nav-popover">{reportOrder.map(id=><PermissionNavItem key={id} allowed={can("reports.view")} active={view==="reports"&&reportType===id} onClick={()=>void (async()=>{if(await navigate("reports"))setReportType(id)})()}><span>{tr(reportNames[id])}</span></PermissionNavItem>)}</div>}</div>
@@ -524,7 +550,7 @@ function ContaAppContent() {
           <button className="icon mobile" onClick={() => setMenu(true)}>
             <Menu />
           </button>
-          {partyDetail?<button className="page-title-back" onClick={()=>setPartyDetail(null)}><h1>{resolvePartyType(partyDetail)==="customer"?tr("العملاء"):tr("الموردون")}</h1></button>:<h1>{tr([...nav, ...invoiceNav, ...warehouseNav, ...partyNav].find((n) => n.id === view)?.label ?? "")}</h1>}
+          {partyDetail?<button className="page-title-back" onClick={()=>setPartyDetail(null)}><h1>{tr(partyPresentation[resolvePartyType(partyDetail)].plural)}</h1></button>:<h1>{tr([...nav, ...invoiceNav, ...warehouseNav, ...partyNav].find((n) => n.id === view)?.label ?? "")}</h1>}
           <button className="icon refresh" title={tr("تحديث البيانات")} aria-label={tr("تحديث البيانات")} onClick={requestPageRefresh}><RefreshCw /></button><div className="page-utilities"><time dateTime={today.toISOString().slice(0,10)} suppressHydrationWarning><span className="today-long">{localizedDate(today,{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</span><span className="today-short">{localizedDate(today,{weekday:"short",day:"numeric",month:"short"})}</span></time><button className="language-switch soft" type="button" onClick={()=>setLocale(locale==="ar"?"fr":"ar")}><Globe/>{locale==="ar"?"Français":"العربية"}</button></div>
         </header>
         <div className="content">
@@ -556,8 +582,10 @@ function ContaAppContent() {
               {view === "expenses" && (
                 <Expenses data={data} run={run} openDoc={openDoc} editRequest={expenseEditRequest} clearEditRequest={() => setExpenseEditRequest(null)} registerEditorGuard={registerEditorGuard} canEdit={can("expenses.edit")} canDelete={can("expenses.delete")} />
               )}{" "}
-              {(view === "customers" || view === "suppliers") && (
-                <Parties key={view} partyType={view === "customers" ? "customer" : "supplier"} data={data} run={run} openParty={setPartyDetail} canEdit={can(view === "customers" ? "customers.edit" : "suppliers.edit")} canDelete={can(view === "customers" ? "customers.delete" : "suppliers.delete")} registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
+              {listedPartyType && (
+                <Parties key={view} partyType={listedPartyType} data={data} run={run} openParty={setPartyDetail}
+                  canEdit={partyCapabilities(listedPartyType, "edit").every(can)} canDelete={partyCapabilities(listedPartyType, "delete").every(can)}
+                  registerEditorGuard={registerEditorGuard} prepareEditorReplacement={prepareEditorReplacement} />
               )}{" "}
               {view === "employees" && <EmployeesPage data={data} run={run} openDoc={openDoc} sourceId={employeeSourceId} clearSource={()=>setEmployeeSourceId(null)} registerEditorGuard={registerEditorGuard}/>}
               {view === "products" && <Products data={data} run={run} sourceRequest={productSourceRequest} clearSourceRequest={()=>setProductSourceRequest(null)} openProductMovements={id=>void openProductMovementHistory(id)} />}{" "}
@@ -953,8 +981,8 @@ function Pos({
         : [];
     }),
     total = invoiceDraftInvoiceTotal(details.map(item=>item.l), "piecePrice"),
-    currentCustomer=partyId?data.parties.find(p=>p.id===partyId&&resolvePartyType(p)==="customer"):null,
-    customerOptions=[...(editingDocument&&currentCustomer?.isArchived?[{value:currentCustomer.id,label:`${currentCustomer.name} (${tr("مؤرشف")})`,search:currentCustomer.phone}]:[]),...data.parties.filter(p=>p.isArchived!==true&&resolvePartyType(p)==="customer").map(p=>({value:p.id,label:p.name,search:p.phone}))];
+    currentCustomer=partyId?data.parties.find(p=>p.id===partyId&&supportsPartyRole(p,"customer")):null,
+    customerOptions=[...(editingDocument&&currentCustomer?.isArchived?[{value:currentCustomer.id,label:`${partyChoiceLabel(currentCustomer)} (${tr("مؤرشف")})`,search:currentCustomer.phone}]:[]),...data.parties.filter(p=>p.isArchived!==true&&supportsPartyRole(p,"customer")).map(p=>({value:p.id,label:partyChoiceLabel(p),search:p.phone}))];
   const snapshot = () => JSON.stringify({ lines, payment, partyId, priceMode });
   const dirty = () => editingDocumentId ? snapshot() !== baseline.current : lines.length > 0 || partyId !== "" || payment !== "" || priceMode !== initialSaleUiState.priceMode;
   const resetEditor = () => { clearPersistedSaleDraft(sessionStorage); setEditingDocumentId(null); setLines([]); setPartyId(""); setPayment(""); setPriceMode(initialSaleUiState.priceMode); setSelectedLine(null); setQuery(""); baseline.current = ""; };
@@ -1088,7 +1116,7 @@ function Purchases({ data, run, openDoc, editRequest, clearEditRequest, requestP
   const defaultPurchaseWarehouseId=soleWarehouseId(data.warehouses), warehouseId=warehouseSelectionId(data.warehouses,warehouseDraft,Boolean(editingDocumentId));
   const details = lines.flatMap(line => { const product = data.products.find(p => p.id === line.productId); return product ? [{ line, product }] : []; });
   const total = invoiceDraftInvoiceTotal(details.map(item=>item.line),"unitPrice");
-  const currentSupplier=partyId?data.parties.find(p=>p.id===partyId&&resolvePartyType(p)==="supplier"):null,supplierOptions=[...(editingDocument&&currentSupplier?.isArchived?[{value:currentSupplier.id,label:`${currentSupplier.name} (${tr("مؤرشف")})`,search:currentSupplier.phone}]:[]),...data.parties.filter(p=>p.isArchived!==true&&resolvePartyType(p)==="supplier").map(p=>({value:p.id,label:p.name,search:p.phone}))];
+  const currentSupplier=partyId?data.parties.find(p=>p.id===partyId&&supportsPartyRole(p,"supplier")):null,supplierOptions=[...(editingDocument&&currentSupplier?.isArchived?[{value:currentSupplier.id,label:`${partyChoiceLabel(currentSupplier)} (${tr("مؤرشف")})`,search:currentSupplier.phone}]:[]),...data.parties.filter(p=>p.isArchived!==true&&supportsPartyRole(p,"supplier")).map(p=>({value:p.id,label:partyChoiceLabel(p),search:p.phone}))];
   const snapshot = () => JSON.stringify({ lines, payment, partyId, warehouseId });
   const dirty = () => editingDocumentId ? snapshot() !== baseline.current : lines.length > 0 || partyId !== "" || warehouseId !== defaultPurchaseWarehouseId || payment !== "";
   const resetEditor = () => { for(const key of ["purchase-lines","purchase-party","purchase-warehouse","purchase-payment"])sessionStorage.removeItem(`conta:${key}`); setEditingDocumentId(null); setLines([]); setPartyId(""); setWarehouseId(""); setPayment(""); setSelectedLine(null); setQuery(""); baseline.current = ""; };
@@ -1165,9 +1193,9 @@ function Expenses({ data, run, openDoc, editRequest, clearEditRequest, registerE
 type SummaryBreakdownRow={id:string;label:string;meta?:string;value:number;tone?:MoneyTone;source?:SummarySourceTarget;openDetail?:()=>void;uncertain?:boolean};
 type SummaryBreakdownGroup={id:string;label:string;rows:SummaryBreakdownRow[];action?:()=>void;actionLabel?:string};
 type SummaryBreakdown={title:string;total:number;rows:SummaryBreakdownRow[];groups?:SummaryBreakdownGroup[];tone?:MoneyTone;compact?:boolean;uncertain?:boolean};
-const reportAccountRoles = ["employee", "customer", "supplier"] as const;
-const reportAccountLabel = (role: unknown) => tr(role === "employee" ? "عامل" : role === "customer" ? "عميل" : "مورد");
-const reportAccountGroupLabel = (role: unknown) => tr(role === "employee" ? "العمال" : role === "customer" ? "العملاء" : "الموردون");
+const reportAccountRoles = ["employee", "customer", "supplier", "trader"] as const;
+const reportAccountLabel = (role: unknown) => tr(role === "employee" ? "عامل" : role === "customer" ? "عميل" : role === "trader" ? "تاجر" : "مورد");
+const reportAccountGroupLabel = (role: unknown) => tr(role === "employee" ? "العمال" : role === "customer" ? "العملاء" : role === "trader" ? "التجار" : "الموردون");
 function orderedReportAccounts(rows: ReportResponse["parties"]) {
   const rank = (role: unknown) => reportAccountRoles.indexOf(role as typeof reportAccountRoles[number]);
   return [...(rows ?? [])].sort((a, b) => rank(a.partyType) - rank(b.partyType) || String(a.name ?? "").localeCompare(String(b.name ?? "")));
@@ -1272,7 +1300,7 @@ function Banks({ data, run, openDoc, openSource, tab, sourceRequest, clearSource
   const [adjustmentAccount,setAdjustmentAccount]=useState(""),[adjustmentDirection,setAdjustmentDirection]=useState<"deposit"|"withdrawal">("deposit"),[adjustmentAmount,setAdjustmentAmount]=useState(""),[adjustmentNote,setAdjustmentNote]=useState(""),[adjustmentFilter,setAdjustmentFilter]=useState(""),[adjustmentType,setAdjustmentType]=useState(""),adjustmentScope=useBankScope();
   const active=useMemo(()=>activePaymentAccounts(data.paymentAccounts),[data.paymentAccounts]),visibleAccounts=useMemo(()=>data.paymentAccounts.filter(account=>account.isArchived!==true),[data.paymentAccounts]),archived=useMemo(()=>data.paymentAccounts.filter(account=>account.isArchived===true),[data.paymentAccounts]),name=useCallback((id:string)=>data.paymentAccounts.find(account=>account.id===id||account.code===id)?.name??id,[data.paymentAccounts]);
   const movementLabels=useMemo<Record<string,string>>(()=>({sale:tr("بيع"),purchase:tr("شراء"),expense:tr("مصروف"),"employee-payment":tr("حركة حساب عامل"),"party-receipt":tr("استلام من طرف"),"party-payment":tr("دفع لطرف"),"transfer-in":tr("تحويل داخل"),"transfer-out":tr("تحويل خارج"),"manual-deposit":tr("إيداع"),"manual-withdrawal":tr("سحب"),"opening-balance":tr("رصيد بداية"),"opening-balance-correction":tr("تصحيح رصيد البداية"),"balance-correction":tr("تصحيح رصيد سابق")}),[locale]);
-  const summaryMovementLabels=useMemo<Record<string,string>>(()=>({...movementLabels,"party-receipt:customer":tr("دفع لنا العميل"),"party-receipt:supplier":tr("دفع لنا المورد"),"party-payment:customer":tr("دفعنا للعميل"),"party-payment:supplier":tr("دفعنا للمورد"),"party-receipt:unknown":tr("استلام من طرف"),"party-payment:unknown":tr("دفع لطرف")}),[movementLabels,locale]);
+  const summaryMovementLabels=useMemo<Record<string,string>>(()=>({...movementLabels,"party-receipt:customer":tr("دفع لنا العميل"),"party-receipt:supplier":tr("دفع لنا المورد"),"party-payment:customer":tr("دفعنا للعميل"),"party-payment:supplier":tr("دفعنا للمورد"),"party-receipt:trader":tr("استلام من التاجر"),"party-payment:trader":tr("دفع للتاجر"),"party-receipt:unknown":tr("استلام من طرف"),"party-payment:unknown":tr("دفع لطرف")}),[movementLabels,locale]);
   const resetMovementFilters=()=>{movementScope.all();setAccountFilter("");setTypeFilter("")},resetTransferFilters=()=>{transferScope.all();setTransferFromFilter("");setTransferToFilter("")},resetAdjustmentFilters=()=>{adjustmentScope.all();setAdjustmentFilter("");setAdjustmentType("")};
   const operationalMovements=useMemo(()=>tab==="movements"||tab==="adjustment"?data.financialMovements.filter(m=>!["opening-balance","opening-balance-correction"].includes(m.type)):[],[data.financialMovements,tab]);
   const movements=useMemo(()=>tab==="movements"?filterFinancialMovements(operationalMovements,movementScope.period,accountFilter,typeFilter):[],[tab,operationalMovements,movementScope.period,accountFilter,typeFilter]);
@@ -1284,12 +1312,13 @@ function Banks({ data, run, openDoc, openSource, tab, sourceRequest, clearSource
     if(kind==="expense")return{kind:"report",reportType:"expenses",period:null};
     if(kind==="party-receipt:customer"||kind==="party-payment:customer")return{kind:"view",view:"customers"};
     if(kind==="party-receipt:supplier"||kind==="party-payment:supplier")return{kind:"view",view:"suppliers"};
+    if (kind === "party-receipt:trader" || kind === "party-payment:trader") return { kind: "view", view: "traders" };
     if(kind==="manual-deposit"||kind==="manual-withdrawal")return{kind:"view",view:"banks",bankTab:"adjustment"};
     return undefined;
   };
   const movementSummaryDetail=(direction:"in"|"out"):SummaryBreakdown=>{const breakdown=buildAccountBreakdown(),source=direction==="in"?breakdown.income:breakdown.expenses,tone:MoneyTone=direction==="in"?"positive":"negative";return{title:direction==="in"?tr("إجمالي المداخيل"):tr("إجمالي المصاريف"),total:direction==="in"?accountSummary.income:accountSummary.expenses,tone,rows:source.map(row=>({id:`${direction}-${row.kind}`,label:summaryMovementLabels[row.kind]??row.kind,value:row.value,tone,source:movementSummarySource(row.kind)}))}};
   const accountBalanceDetail=():SummaryBreakdown=>{const breakdown=buildAccountBreakdown();return{title:tr("إجمالي الأرصدة الحالية"),total:accountSummary.currentBalance,rows:breakdown.accounts.map(account=>({id:`account-${account.id}`,label:account.name,meta:account.isActive?tr("نشط"):tr("متوقف"),value:account.value,source:{kind:"view",view:"banks",bankTab:"accounts"}}))}};
-  const debtDetail=(side:"owedToUs"|"weOwe"):SummaryBreakdown=>{const breakdown=buildAccountBreakdown(),tone:MoneyTone=side==="owedToUs"?"positive":"negative";return{title:side==="owedToUs"?tr("إجمالي المستحق لنا"):tr("إجمالي المستحق علينا"),total:accountSummary[side],tone,compact:true,rows:breakdown.parties.map(party=>({id:`${side}-${party.id}`,label:party.name,meta:`${party.partyType==="customer"?tr("عميل"):tr("مورد")}${party.isArchived?` · ${tr("مؤرشف")}`:""}`,value:party[side],tone,source:{kind:"party",partyId:party.id}}))}};
+  const debtDetail=(side:"owedToUs"|"weOwe"):SummaryBreakdown=>{const breakdown=buildAccountBreakdown(),tone:MoneyTone=side==="owedToUs"?"positive":"negative";return{title:side==="owedToUs"?tr("إجمالي المستحق لنا"):tr("إجمالي المستحق علينا"),total:accountSummary[side],tone,compact:true,rows:breakdown.parties.map(party=>({id:`${side}-${party.id}`,label:party.name,meta:`${reportAccountLabel(party.partyType)}${party.isArchived?` · ${tr("مؤرشف")}`:""}`,value:party[side],tone,source:{kind:"party",partyId:party.id}}))}};
   const transfers=useMemo(()=>tab==="transfers"?filterTransfers(data.accountTransfers,transferScope.period,transferFromFilter,transferToFilter):[],[tab,data.accountTransfers,transferScope.period,transferFromFilter,transferToFilter]);
   const adjustments=useMemo(()=>tab==="adjustment"?filterFinancialMovements(operationalMovements,adjustmentScope.period,adjustmentFilter).filter(row=>["manual-deposit","manual-withdrawal"].includes(row.type)&&(!adjustmentType||row.type===adjustmentType)):[],[tab,operationalMovements,adjustmentScope.period,adjustmentFilter,adjustmentType]);
   const movementColumns=useMemo(()=>[{key:"date",type:"date" as const,get:(m:BootstrapData["financialMovements"][number])=>m.occurredAt},{key:"type",type:"text" as const,get:(m:BootstrapData["financialMovements"][number])=>movementLabels[financialMovementKind(m.type)]?tr(movementLabels[financialMovementKind(m.type)]):m.type},{key:"statement",type:"text" as const,get:(m:BootstrapData["financialMovements"][number])=>movementStatement(m)},{key:"account",type:"text" as const,get:(m:BootstrapData["financialMovements"][number])=>name(m.paymentMethod)},{key:"amount",type:"money" as const,get:(m:BootstrapData["financialMovements"][number])=>m.direction==="in"?m.amount:-m.amount},{key:"document",type:"text" as const,get:(m:BootstrapData["financialMovements"][number])=>m.documentNumber}],[locale,name]),{sort:movementSort,sortedRows:sortedMovements,toggle:toggleMovementSort}=useSortableRows(movements,movementColumns);
@@ -1347,21 +1376,31 @@ type PartyMetricStripItem = { labelKey: MessageKey; value: number; tone?: "neutr
 function PartyMetricStrip({items,aggregate=false}:{items:PartyMetricStripItem[];aggregate?:boolean}) {
   return <div className={`party-trade-metrics${aggregate?" party-aggregate-metrics":""}`}>{items.map(item=><span key={item.labelKey} className={`metric-${item.tone??"neutral"}`}><small>{tr(item.labelKey)}</small>{item.count?<b>{number(item.value)}</b>:<MoneyValue value={item.value} tone={item.tone??"neutral"} className="financial-amount-summary"/>}</span>)}</div>;
 }
-function PartyAggregateMetrics({partyType,metrics,owedToUs,weOwe}:{partyType:"customer"|"supplier";metrics:ReturnType<typeof partyAggregateMetrics>;owedToUs:number;weOwe:number}) {
+function PartyAggregateMetrics({ partyType, metrics, traderPurchases, owedToUs, weOwe }: {
+  partyType: PartyType; metrics: ReturnType<typeof partyAggregateMetrics>; traderPurchases: number; owedToUs: number; weOwe: number;
+}) {
   const dues:PartyMetricStripItem[]=[
     {labelKey:"إجمالي المستحقات لنا",value:owedToUs,tone:"positive"},
     {labelKey:"إجمالي المستحقات علينا",value:weOwe,tone:"negative"},
   ];
-  const customer=partyType==="customer", items:PartyMetricStripItem[]=customer
+  const customer = partyType === "customer";
+  const items: PartyMetricStripItem[] = partyType === "trader" ? [
+    { labelKey: "مبيعاتنا للتجار", value: metrics.tradeTotal },
+    { labelKey: "مشترياتنا من التجار", value: traderPurchases },
+    ...dues,
+  ] : customer
     ? [{labelKey:"إجمالي ما اشتراه العملاء منا",value:metrics.tradeTotal},{labelKey:"إجمالي ما دفعه العملاء لنا",value:metrics.cashIn,tone:"positive"},{labelKey:"إجمالي ما دفعناه للعملاء",value:metrics.cashOut,tone:"negative"},{labelKey:"إجمالي الربح من مبيعات العملاء",value:metrics.grossProfit,tone:metrics.grossProfit>0?"positive":metrics.grossProfit<0?"negative":"neutral"},...dues]
     : [{labelKey:"إجمالي مشترياتنا من الموردين",value:metrics.tradeTotal},{labelKey:"إجمالي ما دفعناه للموردين",value:metrics.cashOut,tone:"negative"},{labelKey:"إجمالي ما دفعه الموردون لنا",value:metrics.cashIn,tone:"positive"},...dues];
   return <PartyMetricStrip items={items} aggregate/>;
 }
-function Parties({ partyType, data, run, openParty, canEdit, canDelete, registerEditorGuard, prepareEditorReplacement }: { partyType: "customer" | "supplier"; data: BootstrapData; run: RunCommand; openParty: (p: Party) => void; canEdit:boolean; canDelete:boolean; registerEditorGuard:RegisterEditorGuard; prepareEditorReplacement:()=>Promise<boolean> }) {
+function Parties({ partyType, data, run, openParty, canEdit, canDelete, registerEditorGuard, prepareEditorReplacement }: { partyType: PartyType; data: BootstrapData; run: RunCommand; openParty: (p: Party) => void; canEdit:boolean; canDelete:boolean; registerEditorGuard:RegisterEditorGuard; prepareEditorReplacement:()=>Promise<boolean> }) {
   const [q,setQ]=useState(""),[name,setName]=useState(""),[phone,setPhone]=useState(""),[editing,setEditing]=useState<Party|null>(null),[showArchived,setShowArchived]=useState(false);
   const [opening,setOpening]=useState(emptyPartyOpeningDraft),canOpening=canUseCapability(data.principal,"party.opening.manage");
   const [creating,setCreating]=useState(false),[saving,setSaving]=useState(false),createId=useId();
-  const customer=partyType==="customer", noun=customer?tr("العميل"):tr("المورد"), plural=customer?tr("العملاء"):tr("الموردون"),canCreate=canUseCapability(data.principal,customer?"customers.create":"suppliers.create");
+  const customer = partyType === "customer", trader = partyType === "trader";
+  const presentation = partyPresentation[partyType];
+  const noun = tr(presentation.noun), plural = tr(presentation.plural);
+  const canCreate = partyCapabilities(partyType, "create").every(capability => canUseCapability(data.principal, capability));
   const createDirty = () => Boolean(name || phone || opening.enabled || opening.amount || opening.note || opening.direction !== "receivable");
   const resetCreate = () => {
     setCreating(false);
@@ -1388,7 +1427,10 @@ function Parties({ partyType, data, run, openParty, canEdit, canDelete, register
     if (!canCreate || saving || !name.trim()) return;
     setSaving(true);
     try {
-      await run({type:"party.create",partyType,name,phone,...(canOpening&&opening.enabled?{opening:{direction:opening.direction,amount:Number(opening.amount),note:opening.note}}:{})},customer?tr("تمت إضافة العميل"):tr("تمت إضافة المورد"),resetCreate);
+      const identity = trader ? { type: "trader.create" } : { type: "party.create", partyType };
+      await run({ ...identity, name, phone, ...(canOpening && opening.enabled
+        ? { opening: { direction: opening.direction, amount: Number(opening.amount), note: opening.note } } : {}) },
+        tr(presentation.created), resetCreate);
     } catch {
       // The command handler shows the failure. Keep the form available for correction.
     } finally {
@@ -1397,46 +1439,56 @@ function Parties({ partyType, data, run, openParty, canEdit, canDelete, register
   };
   const query=normalizeSearch(q), list=data.parties.filter(p=>p.isArchived!==true&&resolvePartyType(p)===partyType&&(!query||normalizeSearch(`${p.name} ${p.phone}`).includes(query))).sort((a,b)=>compareTableValues(a.name,b.name,"text","asc"));
   const archived=data.parties.filter(p=>p.isArchived===true&&resolvePartyType(p)===partyType).sort((a,b)=>compareTableValues(a.name,b.name,"text","asc"));
-  const allParties=data.parties.filter(p=>p.isArchived!==true&&resolvePartyType(p)===partyType),summaries=new Map(data.partyFinancialSummaries.map(summary=>[summary.partyId,summary])),metricMap=new Map(allParties.map(party=>[party.id,partyTradeMetrics(summaries.get(party.id),partyType)] as const)),aggregate=partyAggregateMetrics(data.partyFinancialSummaries,allParties.map(party=>party.id),partyType),aggregateDues=allParties.reduce((totals,party)=>{const net=Number(party.receivable??0)-Number(party.payable??0);if(net>0)totals.owedToUs+=net;else if(net<0)totals.weOwe+=Math.abs(net);return totals},{owedToUs:0,weOwe:0});
-  return <section className={`${customer?"customer":"supplier"}-workspace parties-workspace`}>
-    <FramedSection title={customer?tr("إدارة العملاء"):tr("إدارة الموردين")} className="parties-controls">
+  const tradeRole = trader ? "customer" : partyType;
+  const allParties=data.parties.filter(p=>p.isArchived!==true&&resolvePartyType(p)===partyType),summaries=new Map(data.partyFinancialSummaries.map(summary=>[summary.partyId,summary])),metricMap=new Map(allParties.map(party=>[party.id,partyTradeMetrics(summaries.get(party.id),tradeRole)] as const)),aggregate=partyAggregateMetrics(data.partyFinancialSummaries,allParties.map(party=>party.id),tradeRole),aggregateDues=allParties.reduce((totals,party)=>{const net=Number(party.receivable??0)-Number(party.payable??0);if(net>0)totals.owedToUs+=net;else if(net<0)totals.weOwe+=Math.abs(net);return totals},{owedToUs:0,weOwe:0});
+  const traderPurchases = trader ? partyAggregateMetrics(data.partyFinancialSummaries, allParties.map(party => party.id), "supplier").tradeTotal : 0;
+  return <section className={`${partyType}-workspace parties-workspace`}>
+    <FramedSection title={tr(presentation.management)} className="parties-controls">
       <div className="parties-search-row"><CompactSearch value={q} onChange={setQ} placeholder={tr("بحث بالاسم أو الهاتف")}/>{archived.length>0&&<button type="button" className="soft party-archived-button" onClick={()=>setShowArchived(true)}>{tr("المؤرشفون")} ({number(archived.length)})</button>}</div>
       {canCreate&&<button type="button" className="primary party-create-toggle" aria-expanded={creating} aria-controls={createId} disabled={saving} onClick={()=>void toggleCreate()}>
-        {creating?<X/>:<Plus/>}{creating?tr("إلغاء"):customer?tr("إضافة عميل جديد"):tr("إضافة مورد جديد")}
+        {creating?<X/>:<Plus/>}{creating?tr("إلغاء"):tr(presentation.newLabel)}
       </button>}
       {canCreate&&creating&&<form id={createId} className="parties-create" onSubmit={event=>void createParty(event)}>
-        <input autoFocus required aria-label={customer?tr("اسم العميل"):tr("اسم المورد")} value={name} onChange={event=>setName(event.target.value)} placeholder={customer?tr("اسم العميل"):tr("اسم المورد")} disabled={saving}/>
+        <input autoFocus required aria-label={tr(presentation.name)} value={name} onChange={event=>setName(event.target.value)} placeholder={tr(presentation.name)} disabled={saving}/>
         <input dir="ltr" aria-label={tr("رقم الهاتف")} value={phone} onChange={event=>setPhone(event.target.value)} placeholder={tr("رقم الهاتف")} disabled={saving}/>
         {canOpening&&<PartyOpeningCreateFields value={opening} onChange={setOpening}/>}
         <button className="primary" disabled={saving||!name.trim()||(canOpening&&opening.enabled&&(!Number.isFinite(Number(opening.amount))||Number(opening.amount)<=0))}>{tr("إضافة")} {noun}</button>
       </form>}
     </FramedSection>
-    <FramedSection title={plural} className="parties-list"><div className="erp-table-wrap party-grid"><table className="erp-table" aria-label={plural}><thead><tr><th>{tr("رقم")}</th><th>{tr("اسم")} {noun}</th><th>{tr("الهاتف")}</th><th>{customer?tr("إجمالي مشترياته"):tr("إجمالي مشترياتنا منه")}</th>{customer&&<th>{tr("الربح الإجمالي")}</th>}<th>{tr("الرصيد الحالي")}</th><th>{tr("إجراء")}</th></tr></thead><tbody>{list.map((party,index)=>{const balance=party.receivable-party.payable,metric=metricMap.get(party.id)!;return <tr key={party.id} onClick={()=>void showParty(party)}><td className="num-cell">{number(index+1)}</td><td className="name-cell">{party.name}</td><td dir="ltr">{party.phone||"—"}</td><td className="num-cell"><MoneyValue value={metric.total}/></td>{customer&&<td className={`num-cell ${Number(metric.grossProfit??0)>0?"metric-positive":Number(metric.grossProfit??0)<0?"metric-negative":"metric-neutral"}`}><MoneyValue value={metric.grossProfit??0} tone={Number(metric.grossProfit??0)>0?"positive":Number(metric.grossProfit??0)<0?"negative":"neutral"}/></td>}<td className={`num-cell ${balance>0?"positive":balance<0?"negative":""}`}><MoneyValue value={Math.abs(balance)} tone={balance>0?"positive":balance<0?"negative":"neutral"}/></td><td className="action-cell"><div className="party-row-actions"><button className="soft" onClick={event=>{event.stopPropagation();void showParty(party)}}>{tr("كشف الحساب")}</button>{(canEdit||canDelete)&&<button className="soft party-edit-button" aria-label={`${tr("تعديل")} ${party.name}`} title={tr("تعديل")} onClick={event=>{event.stopPropagation();void editParty(party)}}><PencilLine/>{tr("تعديل")}</button>}</div></td></tr>})}{!list.length&&<tr><td colSpan={customer?7:6}>{customer?tr("لا يوجد عملاء حتى الآن"):tr("لا يوجد موردون")}</td></tr>}</tbody></table></div></FramedSection>
-    <PartyAggregateMetrics partyType={partyType} metrics={aggregate} owedToUs={aggregateDues.owedToUs} weOwe={aggregateDues.weOwe}/>
+    <FramedSection title={plural} className="parties-list"><div className="erp-table-wrap party-grid"><table className="erp-table" aria-label={plural}><thead><tr><th>{tr("رقم")}</th><th>{tr("اسم")} {noun}</th><th>{tr("الهاتف")}</th><th>{trader ? tr("مبيعاتنا للتاجر") : customer ? tr("إجمالي مشترياته") : tr("إجمالي مشترياتنا منه")}</th>
+      {trader && <th>{tr("مشترياتنا من التاجر")}</th>}{customer&&<th>{tr("الربح الإجمالي")}</th>}<th>{tr("الرصيد الحالي")}</th><th>{tr("إجراء")}</th></tr></thead><tbody>{list.map((party,index)=>{const balance=party.receivable-party.payable,metric=metricMap.get(party.id)!;return <tr key={party.id} onClick={()=>void showParty(party)}><td className="num-cell">{number(index+1)}</td><td className="name-cell">{party.name}</td><td dir="ltr">{party.phone||"—"}</td><td className="num-cell"><MoneyValue value={metric.total}/></td>
+      {trader && <td className="num-cell"><MoneyValue value={summaries.get(party.id)?.supplierTradeTotal ?? 0}/></td>}{customer&&<td className={`num-cell ${Number(metric.grossProfit??0)>0?"metric-positive":Number(metric.grossProfit??0)<0?"metric-negative":"metric-neutral"}`}><MoneyValue value={metric.grossProfit??0} tone={Number(metric.grossProfit??0)>0?"positive":Number(metric.grossProfit??0)<0?"negative":"neutral"}/></td>}<td className={`num-cell ${balance>0?"positive":balance<0?"negative":""}`}><MoneyValue value={Math.abs(balance)} tone={balance>0?"positive":balance<0?"negative":"neutral"}/></td><td className="action-cell"><div className="party-row-actions"><button className="soft" onClick={event=>{event.stopPropagation();void showParty(party)}}>{tr("كشف الحساب")}</button>{(canEdit||canDelete)&&<button className="soft party-edit-button" aria-label={`${tr("تعديل")} ${party.name}`} title={tr("تعديل")} onClick={event=>{event.stopPropagation();void editParty(party)}}><PencilLine/>{tr("تعديل")}</button>}</div></td></tr>})}{!list.length&&<tr><td colSpan={customer || trader ? 7 : 6}>{tr(presentation.empty)}</td></tr>}</tbody></table></div></FramedSection>
+    <PartyAggregateMetrics partyType={partyType} metrics={aggregate} traderPurchases={traderPurchases} owedToUs={aggregateDues.owedToUs} weOwe={aggregateDues.weOwe}/>
     {editing&&<PartyEditDialog party={editing} run={run} canEdit={canEdit} canDelete={canDelete} close={()=>setEditing(null)}/>}
     {showArchived&&createPortal(<div className="modal-overlay section-parties" role="dialog" aria-modal="true" aria-label={tr("المؤرشفون")} onKeyDown={event=>handleModalKeyboard(event,()=>setShowArchived(false))}><div className="modal-card archived-parties-dialog"><div className="modal-heading"><h3>{tr("المؤرشفون")} · {plural}</h3><button type="button" className="icon" autoFocus aria-label={tr("إغلاق")} onClick={()=>setShowArchived(false)}><X/></button></div><div className="erp-table-wrap"><table className="erp-table"><thead><tr><th>{tr("الاسم")}</th><th>{tr("الهاتف")}</th><th>{tr("إجراء")}</th></tr></thead><tbody>{archived.map(party=><tr key={party.id}><td>{party.name}</td><td dir="ltr">{party.phone||"—"}</td><td className="action-cell"><button type="button" className="soft" onClick={()=>{setShowArchived(false);void showParty(party)}}>{tr("كشف الحساب")}</button>{canEdit&&<button type="button" className="primary" onClick={async()=>{await run({type:"party.restore",id:party.id},tr("تمت استعادة الحساب"));setShowArchived(false)}}>{tr("استعادة")}</button>}</td></tr>)}</tbody></table></div></div></div>,document.body)}
   </section>;
 }
 function PartyEditDialog({party,run,canEdit,canDelete,close}:{party:Party;run:RunCommand;canEdit:boolean;canDelete:boolean;close:()=>void}){
   const [name,setName]=useState(party.name),[phone,setPhone]=useState(party.phone??"");
-  const confirmAction=useAppConfirm(),partyType=resolvePartyType(party),noun=partyType==="customer"?tr("العميل"):tr("المورد"),receivable=Math.max(0,Number(party.receivable??0)),payable=Math.max(0,Number(party.payable??0)),hasBalance=receivable>0||payable>0;
-  const remove=async()=>{if(hasBalance){showTransientNotice(tr("لا يمكن حذف أو أرشفة الحساب ما دام لديه رصيد قائم"));return}if(!await confirmAction({message:tr("party.deleteBalancedConfirm",{party:noun,name:party.name}),confirmLabel:tr("حذف"),tone:"danger"}))return;await run({type:"party.delete",id:party.id},partyType==="customer"?tr("party.deletedCustomer"):tr("party.deletedSupplier"));close()};
-  return createPortal(<div className="modal-overlay section-parties" role="dialog" aria-modal="true" aria-label={`${tr("تعديل")} ${noun}`} onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();close()}}}><form className="modal-card party-edit-dialog" onSubmit={async event=>{event.preventDefault();if(!canEdit)return;await run({type:"party.update",id:party.id,name,phone},partyType==="customer"?tr("party.savedCustomer"):tr("party.savedSupplier"));close()}}><div className="modal-heading"><h3>{tr("تعديل")} {noun}</h3><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}><X/></button></div><label>{tr("الاسم")}<input autoFocus required disabled={!canEdit} value={name} onChange={event=>setName(event.target.value)}/></label><label>{tr("رقم الهاتف")}<input dir="ltr" disabled={!canEdit} value={phone} onChange={event=>setPhone(event.target.value)}/></label>{hasBalance&&<div className="party-delete-warning"><strong>{tr("تنبيه")}</strong><span>{tr("لا يمكن حذف أو أرشفة الحساب ما دام لديه رصيد قائم")} · {tr("إجمالي المستحق لنا")}: {money(receivable)} · {tr("إجمالي المستحق علينا")}: {money(payable)}</span></div>}<div className="dialog-actions party-edit-actions">{canEdit&&<button className="primary" disabled={!name.trim()}>{tr("حفظ التعديل")}</button>}{canDelete&&<button type="button" className="danger" disabled={hasBalance} onClick={()=>void remove()}>{tr("حذف")} {noun}</button>}</div></form></div>,document.body)
+  const confirmAction=useAppConfirm(),partyType=resolvePartyType(party),noun=tr(partyPresentation[partyType].noun),receivable=Math.max(0,Number(party.receivable??0)),payable=Math.max(0,Number(party.payable??0)),hasBalance=receivable>0||payable>0;
+  const remove=async()=>{if(hasBalance){showTransientNotice(tr("لا يمكن حذف أو أرشفة الحساب ما دام لديه رصيد قائم"));return}if(!await confirmAction({message:tr("party.deleteBalancedConfirm",{party:noun,name:party.name}),confirmLabel:tr("حذف"),tone:"danger"}))return;await run({type:"party.delete",id:party.id},tr(partyPresentation[partyType].deleted));close()};
+  return createPortal(<div className="modal-overlay section-parties" role="dialog" aria-modal="true" aria-label={`${tr("تعديل")} ${noun}`} onKeyDown={event=>{if(event.key==="Escape"){event.preventDefault();close()}}}><form className="modal-card party-edit-dialog" onSubmit={async event=>{event.preventDefault();if(!canEdit)return;await run({type:"party.update",id:party.id,name,phone},tr(partyPresentation[partyType].saved));close()}}><div className="modal-heading"><h3>{tr("تعديل")} {noun}</h3><button type="button" className="icon" aria-label={tr("إغلاق")} onClick={close}><X/></button></div><label>{tr("الاسم")}<input autoFocus required disabled={!canEdit} value={name} onChange={event=>setName(event.target.value)}/></label><label>{tr("رقم الهاتف")}<input dir="ltr" disabled={!canEdit} value={phone} onChange={event=>setPhone(event.target.value)}/></label>{hasBalance&&<div className="party-delete-warning"><strong>{tr("تنبيه")}</strong><span>{tr("لا يمكن حذف أو أرشفة الحساب ما دام لديه رصيد قائم")} · {tr("إجمالي المستحق لنا")}: {money(receivable)} · {tr("إجمالي المستحق علينا")}: {money(payable)}</span></div>}<div className="dialog-actions party-edit-actions">{canEdit&&<button className="primary" disabled={!name.trim()}>{tr("حفظ التعديل")}</button>}{canDelete&&<button type="button" className="danger" disabled={hasBalance} onClick={()=>void remove()}>{tr("حذف")} {noun}</button>}</div></form></div>,document.body)
 }
 function PartyPage({party,data,openDoc,run,editRequest,clearEditRequest,registerEditorGuard,prepareEditorReplacement}:{party:Party;data:BootstrapData;openDoc:(id:string)=>void;run:RunCommand;editRequest:string|null;clearEditRequest:()=>void;registerEditorGuard:RegisterEditorGuard;prepareEditorReplacement:()=>Promise<boolean>}) {
   const confirmAction=useAppConfirm();
   const [openingEditRequest,setOpeningEditRequest]=useState<string|null>(null),openingGuard=useRef<ActiveEditorGuard|null>(null);
   const registerOpeningGuard=useCallback((guard:ActiveEditorGuard|null)=>{openingGuard.current=guard},[]);
-  const canOpening=canUseCapability(data.principal,"party.opening.manage");
+  const partyType = resolvePartyType(party), trader = partyType === "trader", presentation = partyPresentation[partyType];
+  const canManage = (action: Parameters<typeof partyCapabilities>[1]) =>
+    partyCapabilities(partyType, action).every(capability => canUseCapability(data.principal, capability));
+  const canOpening = canManage("opening");
   const today=localBusinessDay(),[from,setFrom]=useState(today),[to,setTo]=useState(today),[amount,setAmount]=useState(""),[paymentMethod,setPaymentMethod]=useState(""),[direction,setDirection]=useState<"receive"|"pay">("receive"),[note,setNote]=useState(""),[editingPaymentId,setEditingPaymentId]=useState<string|null>(null);
-  const customer=resolvePartyType(party)==="customer", archived=party.isArchived===true, balance=party.receivable-party.payable,summary=data.partyFinancialSummaries.find(item=>item.partyId===party.id),metrics=partyTradeMetrics(summary,customer?"customer":"supplier");
+  const customer=partyType === "customer", archived=party.isArchived===true, balance=party.receivable-party.payable,summary=data.partyFinancialSummaries.find(item=>item.partyId===party.id),metrics=partyTradeMetrics(summary,customer?"customer":"supplier");
   // Archived parties intentionally switch their history view to all-time when opened.
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(()=>{if(archived){setFrom("");setTo("")}},[party.id,archived]);
-  const canCreatePayment=!archived&&canUseCapability(data.principal,customer?"customers.collect":"suppliers.pay"),canEditPayment=!archived&&canUseCapability(data.principal,customer?"customers.collect.edit":"suppliers.pay.edit"),canDeletePayment=!archived&&canUseCapability(data.principal,customer?"customers.collect.delete":"suppliers.pay.delete"),canDeleteLegacy=canUseCapability(data.principal,customer?"customers.collect.delete":"suppliers.pay.delete");
+  const canCreatePayment = !archived && canManage("cash-post");
+  const canEditPayment = !archived && canManage("cash-edit");
+  const canDeleteLegacy = canManage("cash-delete");
+  const canDeletePayment = !archived && canDeleteLegacy;
   // Native legacy payment/settlement/offset records remain visible so old installations can safely unwind them.
   const kinds=["return","payment","settlement","offset","party-opening"];
-  const docs=data.documents.filter(d=>d.partyId===party.id&&(d.kind===(customer?"sale":"purchase")||kinds.includes(d.kind))&&(!from||d.occurredAt.slice(0,10)>=from)&&(!to||d.occurredAt.slice(0,10)<=to));
+  const docs=data.documents.filter(d=>d.partyId===party.id&&(kinds.includes(d.kind) || (d.kind === "sale" && (customer || trader)) || (d.kind === "purchase" && (!customer || trader)))&&(!from||d.occurredAt.slice(0,10)>=from)&&(!to||d.occurredAt.slice(0,10)<=to));
   const paymentBaseline=useRef(""),paymentSnapshot=()=>JSON.stringify({amount,paymentMethod,direction,note}),paymentDirty=()=>editingPaymentId?paymentSnapshot()!==paymentBaseline.current:Boolean(amount||paymentMethod||note);
   const resetPaymentEditor=()=>{setEditingPaymentId(null);setAmount("");setNote("");setPaymentMethod("");setDirection("receive");paymentBaseline.current=""};
   const loadPayment=(document:DocumentRecord)=>{if(!canManagePartyPayment(document,canEditPayment)){openDoc(document.id);return false}const historicalAccount=data.paymentAccounts.find(account=>account.id===document.paymentMethod||account.code===document.paymentMethod),values={amount:String(document.cashAmount??document.total),paymentMethod:historicalAccount?.id??"",direction:document.partyCashDirection,note:String((document as DocumentRecord&{note?:string|null}).note??"")};setEditingPaymentId(document.id);setAmount(values.amount);setPaymentMethod(values.paymentMethod);setDirection(values.direction);setNote(values.note);paymentBaseline.current=JSON.stringify(values);return true};
@@ -1454,7 +1506,12 @@ function PartyPage({party,data,openDoc,run,editRequest,clearEditRequest,register
     await run({type:"party-opening.void",documentId:document.id,expectedRevision:Number(document.revision??0)},tr("تم إلغاء رصيد البداية"),()=>setOpeningEditRequest(null));
   };
   const removeLegacy=async(document:DocumentRecord)=>{if(!canDeleteLegacy||!isNativeLegacyPartyDocument(document))return;if(!await confirmAction({message:tr("legacyParty.voidConfirm",{number:displayDocumentNumber(document)}),confirmLabel:tr("حذف"),tone:"danger"}))return;await run({type:"legacy-party-document.void",documentId:document.id},tr("legacyParty.voidSuccess"))};
-  return <section className={`party-detail ${customer?"customer-detail":"supplier-detail"}`}><div className="party-detail-top"><FramedSection title={customer?tr("حساب العميل"):tr("حساب المورد")} className="party-account-summary"><div className="party-identity"><div className="party-identity-field"><small>{tr("الاسم")}</small><strong>{party.name}</strong><small>{tr("الهاتف")}</small><strong><bdi dir="ltr">{party.phone||"—"}</bdi></strong></div></div><div className={`party-balance ${balance>0?"receivable":balance<0?"payable":"neutral"}`}><span>{balance>0?tr("مستحق لنا"):balance<0?tr("مستحق علينا"):tr("الحساب متوازن")}</span><MoneyValue value={Math.abs(balance)} tone={balance>0?"positive":balance<0?"negative":"neutral"} className="financial-amount-summary"/></div></FramedSection>{(editingPaymentId?canEditPayment:canCreatePayment)&&<FramedSection title={editingPaymentId?`${tr("تعديل")} · ${tr("حركة مالية")}`:tr("حركة مالية")} className="party-payment-panel"><div className="party-payment-row"><div className="party-cash-direction"><button type="button" className="selection-option" aria-pressed={direction==="receive"} onClick={()=>setDirection("receive")}>{tr("استلام من")} {customer?tr("العميل"):tr("المورد")}</button><button type="button" className="selection-option" aria-pressed={direction==="pay"} onClick={()=>setDirection("pay")}>{customer?tr("دفع للعميل"):tr("دفع للمورد")}</button></div><label>{tr("الحساب")}<PaymentAccountSelect accounts={data.paymentAccounts} activeOnly preserveSelected={Boolean(editingPaymentId)} value={paymentMethod} onChange={setPaymentMethod}/></label><label>{tr("المبلغ")}<Num value={amount} onChange={setAmount}/></label><label>{tr("ملاحظة")}<input value={note} onChange={e=>setNote(e.target.value)}/></label><div className="party-row-actions"><button className="primary" disabled={!Number.isFinite(val(amount))||val(amount)<=0||!paymentMethod} onClick={()=>void submit()}>{editingPaymentId?tr("حفظ التعديل"):tr("تسجيل الحركة")}</button>{editingPaymentId&&<button type="button" className="soft" onClick={resetPaymentEditor}>{tr("إلغاء التعديل")}</button>}</div></div></FramedSection>}</div><PartyOpeningPanel key={party.id} party={party} documents={data.documents} canManage={canOpening} run={run} registerGuard={registerOpeningGuard} prepareEditorReplacement={prepareEditorReplacement} editRequest={openingEditRequest} clearEditRequest={()=>setOpeningEditRequest(null)}/><FramedSection title={tr("سجل الحساب")} className="party-history"><div className="party-history-toolbar"><CompactDateRange from={from} to={to} allTime={!from&&!to} onAllTime={()=>{setFrom("");setTo("")}} onFromChange={setFrom} onToChange={setTo}/></div><Recent title={tr("الحركات")} docs={docs} openDoc={openDoc} parties={data.parties} bare privateAmounts actions={document=>document.kind==="party-opening"?<LifecycleActions onEdit={canOpening&&!archived&&document.status==="posted"?()=>void (async()=>{if(await prepareEditorReplacement())setOpeningEditRequest(document.id)})():undefined} onVoid={canVoidOpening(document)?()=>void removeOpening(document):undefined}/>:document.kind==="payment"&&document.partyCashDirection?<LifecycleActions onEdit={canManagePartyPayment(document,canEditPayment)?()=>void editPayment(document):undefined} onVoid={canManagePartyPayment(document,canDeletePayment)?()=>void removePayment(document):undefined}/>:isNativeLegacyPartyDocument(document)?<LifecycleActions onVoid={canDeleteLegacy?()=>void removeLegacy(document):undefined}/>:null}/><PartyMetricStrip items={[{labelKey:customer?"إجمالي ما اشتراه منا":"إجمالي مشترياتنا منه",value:metrics.total},{labelKey:customer?"إجمالي ما دفع لنا":"إجمالي ما دفعناه له",value:customer?summary?.cashIn??0:summary?.cashOut??0},{labelKey:customer?"إجمالي ما دفعناه له":"إجمالي ما دفع لنا",value:customer?summary?.cashOut??0:summary?.cashIn??0},{labelKey:customer?"الربح الإجمالي من مبيعاته":"عدد فواتير الشراء",value:customer?metrics.grossProfit??0:summary?.supplierInvoiceCount??0,tone:customer?(Number(metrics.grossProfit??0)>0?"positive":Number(metrics.grossProfit??0)<0?"negative":"neutral"):"neutral",count:!customer}]}/></FramedSection></section>;
+  return <section className={`party-detail ${partyType + "-detail"}`}><div className="party-detail-top"><FramedSection title={tr(presentation.account)} className="party-account-summary"><div className="party-identity"><div className="party-identity-field"><small>{tr("الاسم")}</small><strong>{party.name}</strong><small>{tr("الهاتف")}</small><strong><bdi dir="ltr">{party.phone||"—"}</bdi></strong></div></div><div className={`party-balance ${balance>0?"receivable":balance<0?"payable":"neutral"}`}><span>{balance>0?tr("مستحق لنا"):balance<0?tr("مستحق علينا"):tr("الحساب متوازن")}</span><MoneyValue value={Math.abs(balance)} tone={balance>0?"positive":balance<0?"negative":"neutral"} className="financial-amount-summary"/></div></FramedSection>{(editingPaymentId?canEditPayment:canCreatePayment)&&<FramedSection title={editingPaymentId?`${tr("تعديل")} · ${tr("حركة مالية")}`:tr("حركة مالية")} className="party-payment-panel"><div className="party-payment-row"><div className="party-cash-direction"><button type="button" className="selection-option" aria-pressed={direction==="receive"} onClick={()=>setDirection("receive")}>{trader ? tr("استلام من التاجر") : `${tr("استلام من")} ${tr(presentation.noun)}`}</button><button type="button" className="selection-option" aria-pressed={direction==="pay"} onClick={()=>setDirection("pay")}>{tr(presentation.pay)}</button></div><label>{tr("الحساب")}<PaymentAccountSelect accounts={data.paymentAccounts} activeOnly preserveSelected={Boolean(editingPaymentId)} value={paymentMethod} onChange={setPaymentMethod}/></label><label>{tr("المبلغ")}<Num value={amount} onChange={setAmount}/></label><label>{tr("ملاحظة")}<input value={note} onChange={e=>setNote(e.target.value)}/></label><div className="party-row-actions"><button className="primary" disabled={!Number.isFinite(val(amount))||val(amount)<=0||!paymentMethod} onClick={()=>void submit()}>{editingPaymentId?tr("حفظ التعديل"):tr("تسجيل الحركة")}</button>{editingPaymentId&&<button type="button" className="soft" onClick={resetPaymentEditor}>{tr("إلغاء التعديل")}</button>}</div></div></FramedSection>}</div><PartyOpeningPanel key={party.id} party={party} documents={data.documents} canManage={canOpening} run={run} registerGuard={registerOpeningGuard} prepareEditorReplacement={prepareEditorReplacement} editRequest={openingEditRequest} clearEditRequest={()=>setOpeningEditRequest(null)}/><FramedSection title={tr("سجل الحساب")} className="party-history"><div className="party-history-toolbar"><CompactDateRange from={from} to={to} allTime={!from&&!to} onAllTime={()=>{setFrom("");setTo("")}} onFromChange={setFrom} onToChange={setTo}/></div><Recent title={tr("الحركات")} docs={docs} openDoc={openDoc} parties={data.parties} bare privateAmounts actions={document=>document.kind==="party-opening"?<LifecycleActions onEdit={canOpening&&!archived&&document.status==="posted"?()=>void (async()=>{if(await prepareEditorReplacement())setOpeningEditRequest(document.id)})():undefined} onVoid={canVoidOpening(document)?()=>void removeOpening(document):undefined}/>:document.kind==="payment"&&document.partyCashDirection?<LifecycleActions onEdit={canManagePartyPayment(document,canEditPayment)?()=>void editPayment(document):undefined} onVoid={canManagePartyPayment(document,canDeletePayment)?()=>void removePayment(document):undefined}/>:isNativeLegacyPartyDocument(document)?<LifecycleActions onVoid={canDeleteLegacy?()=>void removeLegacy(document):undefined}/>:null}/><PartyMetricStrip items={trader ? [
+    { labelKey: "مبيعاتنا للتاجر", value: summary?.customerTradeTotal ?? 0 },
+    { labelKey: "مشترياتنا من التاجر", value: summary?.supplierTradeTotal ?? 0 },
+    { labelKey: "إجمالي ما دفع لنا", value: summary?.cashIn ?? 0, tone: "positive" },
+    { labelKey: "إجمالي ما دفعناه له", value: summary?.cashOut ?? 0, tone: "negative" },
+  ] : [{labelKey:customer?"إجمالي ما اشتراه منا":"إجمالي مشترياتنا منه",value:metrics.total},{labelKey:customer?"إجمالي ما دفع لنا":"إجمالي ما دفعناه له",value:customer?summary?.cashIn??0:summary?.cashOut??0},{labelKey:customer?"إجمالي ما دفعناه له":"إجمالي ما دفع لنا",value:customer?summary?.cashOut??0:summary?.cashIn??0},{labelKey:customer?"الربح الإجمالي من مبيعاته":"عدد فواتير الشراء",value:customer?metrics.grossProfit??0:summary?.supplierInvoiceCount??0,tone:customer?(Number(metrics.grossProfit??0)>0?"positive":Number(metrics.grossProfit??0)<0?"negative":"neutral"):"neutral",count:!customer}]}/></FramedSection></section>;
 }
 
 export const ALL_WAREHOUSES="__all_warehouses__";
@@ -1916,14 +1973,14 @@ function Reports({ data, openDoc, openSource, type, sourceRequest, clearSourceRe
   const [printedSalesQuery, setPrintedSalesQuery] = useState("");
   const salesByProduct = type === "sales" && salesGroup === "product";
   const reportTitle = salesByProduct ? tr("حركة المبيعات حسب المنتج") : tr(reportNames[type]);
-  const [partyTypeFilter,setPartyTypeFilter]=useState<"employee"|"customer"|"supplier">("customer");
+  const [partyTypeFilter,setPartyTypeFilter]=useState<typeof reportAccountRoles[number]>("customer");
   const [expenseCategoryKindFilter, setExpenseCategoryKindFilter] = useState<ExpenseCategoryKind | "">("");
   const expenseKindLabel = expenseCategoryKindFilter ? tr(expenseCategoryKindLabel({ kind: expenseCategoryKindFilter })) : tr("كل أنواع الفئات");
   const expenseCategoryLabel=expenseCategoryId==="__uncategorized"?tr("بدون فئة"):(data.expenseCategories??[]).find(c=>c.id===expenseCategoryId)?.name??tr("كل فئات المصاريف");
   const reportRequest=useRef<AbortController|null>(null),reportPageSize=100;
   const reportFilterTimer = useRef<number | null>(null);
   const allLedgerParties = (role: unknown) => tr(
-    role === "employee" ? "كل العمال" : role === "supplier" ? "كل الموردين" : "كل العملاء"
+    role === "employee" ? "كل العمال" : role === "supplier" ? "كل الموردين" : role === "trader" ? "كل التجار" : "كل العملاء"
   );
   const ledgerScopeName = (report: ReportResponse) =>
     String(report.summary.name || allLedgerParties(report.summary.partyType ?? partyTypeFilter));
@@ -2120,7 +2177,7 @@ function Reports({ data, openDoc, openSource, type, sourceRequest, clearSourceRe
     ? printedSalesFilters.has("allTime") ? null : { from: printResult.from, to: printResult.to }
     : committedPeriod;
   const productReport=["sales","purchases","product-sales","profit","stock"].includes(type),categoryOptions=data.categories.map(category=>({value:category.id,label:category.name,search:category.name})),productOptions=data.products.filter(p=>!categoryId||p.categoryId===categoryId).map(p=>({value:p.id,label:`${p.name}${p.isArchived ? ` ${tr("(مؤرشف)")}` : ""}`,search:`${p.name} ${p.sku??""} ${p.barcode??""}`})),partyOptions=(partyTypeFilter==="employee"?(data.employees??[]).filter(employee => !employee.isDeleted):data.parties.filter(p=>resolvePartyType(p)===partyTypeFilter)).map(p=>({value:p.id,label:`${p.name}${p.isArchived?` ${tr("(مؤرشف)")}`:""}`,search:`${p.name} ${p.phone??""}`})),accountName=(id:unknown)=>data.paymentAccounts.find(a=>a.id===id||a.code===id)?.name??(id?tr("حساب غير متاح"):"—"),table=reportTableModel(reportColumns(type, displayedProductFilter, type === "sales" ? salesGroup : groupBy),result),columns=table.columns,showDates=type!=="debts";
-  const display=(key:string,value:unknown,columnType:TableValueType,row?:Record<string,unknown>)=>{if(reportCostUnknown(key,row))return tr("ac.unknown");if(key==="expenseCategory")return value?String(value):tr("بدون فئة");if(key==="expenseCategoryKind")return tr(expenseCategoryKindLabel({kind:value}));if(key==="margin"&&value!=null&&value!==""&&Number.isFinite(Number(value)))return accountingPercent(Number(value));if(columnType==="number"){const numeric=Number(value);return value!=null&&value!==""&&Number.isFinite(numeric)?number(numeric):String(value??"—")}if(key==="paymentMethod")return accountName(value);if(key==="party"){const partyId=String(row?.partyId??""),partyText=String(value??"");if(!partyId&&type==="sales")return tr("بيع مباشر");if(!partyId&&type==="purchases")return tr("شراء مباشر");if(!partyId&&type==="financial"&&row?.movementType==="sale")return tr("بيع مباشر");if(!partyId&&type==="financial"&&row?.movementType==="purchase")return tr("شراء مباشر");return partyText||"—"}if(key==="accountType"){if(row?.partyType==="employee")return tr("عامل");if(row?.partyType==="customer")return tr("عميل");if(row?.partyType==="supplier")return tr("مورد");return String(value??"—")}if(key==="product"&&row?.productMissing===true)return tr("منتج غير متاح");if(key==="movementType"){if(type==="financial"&&value==="employee-payment")return reportNumber(row?.incoming)>0?tr("إيداع العامل"):tr("سحب العامل");if(type==="party-ledger"){const code=String(row?.movementCode??"");if(code==="employee-opening")return tr("رصيد بداية عامل");if(code==="employee-accrual")return tr("استحقاق عامل");if(code==="employee-closure")return tr("إقفال حساب عامل محذوف");if(code==="employee-withdrawal")return tr("سحب العامل");if(code==="employee-deposit")return tr("إيداع العامل");if(code==="party-opening")return tr("رصيد بداية الديون");if(code==="sale")return tr("فاتورة بيع");if(code==="purchase")return tr("فاتورة شراء");if(code==="return")return tr("حركة تاريخية");if(code==="offset")return tr("مقاصة");if(code==="settlement")return tr("تسوية");if(code==="party-receipt")return `${tr("استلام من")} ${row?.partyType==="customer"?tr("العميل"):tr("المورد")}`;if(code==="party-payment")return row?.partyType==="customer"?tr("دفع للعميل"):tr("دفع للمورد");if(code==="payment")return tr("دفعة");return String(value??"—")}const presentation=type==="stock"?stockMovementPresentationType(value,row?.change):String(value);return movementLabels[presentation]?tr(movementLabels[presentation] as MessageKey):tr("عملية غير معروفة")}if(key==="description"&&statementNote(row))return statementNote(row);if(key==="description"&&type==="party-ledger"){if(row?.descriptionCode==="employee-opening")return tr("رصيد بداية عامل")+" — "+tr(reportNumber(row?.credit)>0?"مستحق للعامل":"مستحق على العامل");if(row?.descriptionCode==="employee-closure")return tr("إقفال حساب عامل محذوف");if(row?.descriptionCode==="party-receipt")return tr("استلام من الطرف");if(row?.descriptionCode==="party-payment")return tr("دفع للطرف");return String(value??"—")}if(key==="occurredAt"||key==="lastMovement")return value?formatDateTime(String(value)):"—";if(key==="date")return value?formatDate(String(value)):"—";if(typeof value==="number")return number(reportNumber(value));if(typeof value==="boolean")return value?tr("متكرر"):tr("مرة واحدة");return String(value??"—")};
+  const display=(key:string,value:unknown,columnType:TableValueType,row?:Record<string,unknown>)=>{if(reportCostUnknown(key,row))return tr("ac.unknown");if(key==="expenseCategory")return value?String(value):tr("بدون فئة");if(key==="expenseCategoryKind")return tr(expenseCategoryKindLabel({kind:value}));if(key==="margin"&&value!=null&&value!==""&&Number.isFinite(Number(value)))return accountingPercent(Number(value));if(columnType==="number"){const numeric=Number(value);return value!=null&&value!==""&&Number.isFinite(numeric)?number(numeric):String(value??"—")}if(key==="paymentMethod")return accountName(value);if(key==="party"){const partyId=String(row?.partyId??""),partyText=String(value??"");if(!partyId&&type==="sales")return tr("بيع مباشر");if(!partyId&&type==="purchases")return tr("شراء مباشر");if(!partyId&&type==="financial"&&row?.movementType==="sale")return tr("بيع مباشر");if(!partyId&&type==="financial"&&row?.movementType==="purchase")return tr("شراء مباشر");return partyText||"—"}if(key==="accountType"){if(row?.partyType==="employee")return tr("عامل");if(row?.partyType==="customer")return tr("عميل");if(row?.partyType==="supplier")return tr("مورد");if(row?.partyType==="trader")return tr("تاجر");return String(value??"—")}if(key==="product"&&row?.productMissing===true)return tr("منتج غير متاح");if(key==="movementType"){if(type==="financial"&&value==="employee-payment")return reportNumber(row?.incoming)>0?tr("إيداع العامل"):tr("سحب العامل");if(type==="party-ledger"){const code=String(row?.movementCode??"");if(code==="employee-opening")return tr("رصيد بداية عامل");if(code==="employee-accrual")return tr("استحقاق عامل");if(code==="employee-closure")return tr("إقفال حساب عامل محذوف");if(code==="employee-withdrawal")return tr("سحب العامل");if(code==="employee-deposit")return tr("إيداع العامل");if(code==="party-opening")return tr("رصيد بداية الديون");if(code==="sale")return tr("فاتورة بيع");if(code==="purchase")return tr("فاتورة شراء");if(code==="return")return tr("حركة تاريخية");if(code==="offset")return tr("مقاصة");if(code==="settlement")return tr("تسوية");if(code==="party-receipt")return row?.partyType === "trader" ? tr("استلام من التاجر") : `${tr("استلام من")} ${tr(partyPresentation[resolvePartyType(row)].noun)}`;if(code==="party-payment")return tr(partyPresentation[resolvePartyType(row)].pay);if(code==="payment")return tr("دفعة");return String(value??"—")}const presentation=type==="stock"?stockMovementPresentationType(value,row?.change):String(value);return movementLabels[presentation]?tr(movementLabels[presentation] as MessageKey):tr("عملية غير معروفة")}if(key==="description"&&statementNote(row))return statementNote(row);if(key==="description"&&type==="party-ledger"){if(row?.descriptionCode==="employee-opening")return tr("رصيد بداية عامل")+" — "+tr(reportNumber(row?.credit)>0?"مستحق للعامل":"مستحق على العامل");if(row?.descriptionCode==="employee-closure")return tr("إقفال حساب عامل محذوف");if(row?.descriptionCode==="party-receipt")return tr("استلام من الطرف");if(row?.descriptionCode==="party-payment")return tr("دفع للطرف");return String(value??"—")}if(key==="occurredAt"||key==="lastMovement")return value?formatDateTime(String(value)):"—";if(key==="date")return value?formatDate(String(value)):"—";if(typeof value==="number")return number(reportNumber(value));if(typeof value==="boolean")return value?tr("متكرر"):tr("مرة واحدة");return String(value??"—")};
   const renderReportValue = (key: string, columnType: TableValueType, row: ReportResponse["rows"][number]) => {
     if (reportCostUnknown(key, row)) return <span className="report-cost-unknown">{tr("ac.unknown")}</span>;
     if (columnType !== "money") return display(key, row[key], columnType, row);
@@ -2247,7 +2304,7 @@ function Reports({ data, openDoc, openSource, type, sourceRequest, clearSourceRe
     <SearchableSelect key={partyTypeFilter} value={partyId}
       onChange={id => changeLedgerSelection(partyTypeFilter, id)} options={partyOptions}
       placeholder={allLedgerParties(partyTypeFilter)} disabled={printingReport} allowEmpty
-      searchPlaceholder={partyTypeFilter === "employee" ? tr("ابحث عن عامل بالاسم أو الهاتف") : partyTypeFilter === "customer" ? tr("ابحث عن عميل بالاسم أو الهاتف") : tr("ابحث عن مورد بالاسم أو الهاتف")}/>
+      searchPlaceholder={partyTypeFilter === "employee" ? tr("ابحث عن عامل بالاسم أو الهاتف") : partyTypeFilter === "customer" ? tr("ابحث عن عميل بالاسم أو الهاتف") : partyTypeFilter === "trader" ? tr("ابحث عن تاجر بالاسم أو الهاتف") : tr("ابحث عن مورد بالاسم أو الهاتف")}/>
     <small className="party-ledger-sign">{ledgerLegend}</small>
   </div>}
   {["sales","purchases","financial","expenses"].includes(type)&&<PaymentAccountSelect accounts={data.paymentAccounts} value={accountId} onChange={setAccountId} placeholder={tr("كل وسائل الدفع")}/>}

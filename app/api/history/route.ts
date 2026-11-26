@@ -49,8 +49,9 @@ export async function GET(request:Request){
    ]);
    const customerPartyIds=new Set(parties.filter(party=>resolvePartyType(party)==="customer").map(party=>String(party.id??party._id??"")));
    const supplierPartyIds=new Set(parties.filter(party=>resolvePartyType(party)==="supplier").map(party=>String(party.id??party._id??"")));
+   const traderPartyIds=new Set(parties.filter(party=>resolvePartyType(party)==="trader").map(party=>String(party.id??party._id??"")));
    const currentPartyNames=new Map(parties.map(party=>[String(party.id??party._id??""),String(party.name??"")] as const));
-   const access={...coarseAccess,customerPartyIds,supplierPartyIds};
+   const access={...coarseAccess,customerPartyIds,supplierPartyIds,traderPartyIds};
    const authorized=candidates.filter(document=>reportDocumentLookup||canReadDocument(document,access)).filter(document=>document.kind!=="employee-opening"||hasCapability(principal,"employees.view")).map(document=>resolveCurrentPartyName(document,currentPartyNames));
    const visible=search?authorized.filter(document=>[document.number,document.sequence,document.settlementSequence,document.legacyBillCode,document.partyName,document.title,document.kind,document.status].map(value=>String(value??"")).join(" ").toLocaleLowerCase().includes(search)):authorized;
    const total=visible.length,rows=visible.slice((page-1)*pageSize,page*pageSize);

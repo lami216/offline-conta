@@ -173,7 +173,7 @@ export async function runPartiesReportScenarios({ cdp, origin, command, database
 
   await setView("party-ledger");
   const roles = await evaluate('[...document.querySelector(".party-ledger-role-select").options].map(option=>option.value)');
-  assert.deepEqual([...roles].sort(), ["customer", "employee", "supplier"]);
+  assert.deepEqual([...roles].sort(), ["customer", "employee", "supplier", "trader"]);
   await click(".party-ledger-filter .combobox-trigger");
   await until(() => evaluate('Boolean(document.querySelector(".party-ledger-filter input"))'), "ledger name search");
   await fill('.party-ledger-filter input', "stale customer search");

@@ -145,7 +145,7 @@ async function main() {
       if(view==="bank-adjustment"||view==="bank-movements")return <Banks data={data} run={run} openDoc={id=>{window.__openedPayrollDocument=id;setStatementPreviewId(id)}} openSource={target=>{window.__openedReportSource=target}} tab={view==="bank-adjustment"?"adjustment":"movements"} sourceRequest={null} clearSourceRequest={()=>{}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
       if(view==="financial-report")return <Reports data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type="financial" sourceRequest={null} clearSourceRequest={()=>{}}/>;
       if(view==="sales-report")return <Reports data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type="sales" sourceRequest={null} clearSourceRequest={()=>{}}/>;
-      if(view==="customers"||view==="suppliers")return <Parties key={view} partyType={view==="customers"?"customer":"supplier"} data={data} run={run} openParty={party=>{window.__openedParty=party.id;setSelectedPartyId(party.id);setView("party-detail")}} canEdit canDelete registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
+      if(view==="customers"||view==="suppliers"||view==="traders")return <Parties key={view} partyType={view==="customers"?"customer":view==="traders"?"trader":"supplier"} data={data} run={run} openParty={party=>{window.__openedParty=party.id;setSelectedPartyId(party.id);setView("party-detail")}} canEdit canDelete registerEditorGuard={register} prepareEditorReplacement={prepare}/>;
       if(view==="party-detail"){const party=data.parties.find(row=>row.id===selectedPartyId);return party?<PartyPage key={party.id} party={party} data={data} run={run} openDoc={openDoc} editRequest={null} clearEditRequest={()=>{}} registerEditorGuard={register} prepareEditorReplacement={prepare}/>:<p>Missing synthetic party</p>}
       if(view==="records")return <Records data={data} openDoc={openDoc}/>;
       if(view==="stock-report")return <Reports data={data} openDoc={openDoc} openSource={target=>{window.__openedReportSource=target}} type="stock" sourceRequest={null} clearSourceRequest={()=>{}}/>;
@@ -399,6 +399,9 @@ async function main() {
   const {runPartyLedgerBalancesScenarios}=await import("./party-ledger-balances-ui-scenarios.mjs");
   result.partyLedgerBalances=await runPartyLedgerBalancesScenarios({cdp,origin:base,command,database,screenshot,output});
   result.checkpoints.push(...result.partyLedgerBalances.checkpoints);
+  const {runTraderScenarios}=await import("./trader-ui-scenarios.mjs");
+  result.traders=await runTraderScenarios({cdp,origin:base,command,database,screenshot});
+  result.checkpoints.push(...result.traders.checkpoints);
   assert.deepEqual(cdp.errors, []);
   result.status = "passed";
 }

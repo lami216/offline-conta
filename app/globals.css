@@ -1595,7 +1595,7 @@ body { overflow-x: hidden; background: #eef1f5; color: var(--text); }
 .section-expenses { --section-color: var(--color-expenses); --section-soft: #fbecef; }
 .section-warehouses, .section-transfers, .section-adjustments { --section-color: var(--color-warehouses); --section-soft: #efedfb; }
 .section-products { --section-color: var(--color-products); --section-soft: #fff0e4; }
-.section-parties, .section-customers, .section-suppliers { --section-color: var(--color-parties); --section-soft: #e5f5f6; }
+.section-parties, .section-customers, .section-suppliers, .section-traders { --section-color: var(--color-parties); --section-soft: #e5f5f6; }
 .section-reports { --section-color: var(--color-reports); --section-soft: #e9edf5; }
 .section-settings { --section-color: var(--color-settings); --section-soft: #fff7df; }
 .app-shell .page-bar { border-bottom: 3px solid var(--section-color); }

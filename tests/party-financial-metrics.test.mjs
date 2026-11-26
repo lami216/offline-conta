@@ -37,7 +37,7 @@ test("a legacy supplier return reduces purchase trade only and preserves cash ev
   const party = source.slice(source.indexOf("function PartyPage"), source.indexOf("export const ALL_WAREHOUSES"));
   const supplierKinds = JSON.parse(party.match(/const kinds=(\[[^\]]+\]);/)[1]);
   assert.ok(supplierKinds.includes(documents[1].kind));
-  assert.match(party, /d\.partyId===party\.id&&\(d\.kind===\(customer\?"sale":"purchase"\)\|\|kinds\.includes\(d\.kind\)\)/);
+  assert.match(party, /d\.partyId===party\.id&&\(kinds\.includes\(d\.kind\) \|\| \(d\.kind === "sale" && \(customer \|\| trader\)\) \|\| \(d\.kind === "purchase" && \(!customer \|\| trader\)\)\)/);
 });
 test("a copied legacy customer return retains its explicit represented profit instead of being recosted as a discounted full sale", () => {
   const sale={...doc("sale","customer",100),id:"sale",lines:[{quantity:2,unitPrice:50,lineTotal:100,costAtSale:30,grossProfit:40}]},returned={...doc("return","customer",25),id:"return",parentDocumentId:"sale",lines:[{...sale.lines[0],grossProfit:10}]},before=structuredClone([sale,returned]);

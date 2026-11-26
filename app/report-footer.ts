@@ -2,7 +2,7 @@ import {reportCostUnknown} from "./report-cost-status.ts";
 import { reportNumber, type ReportResponse, type ReportType, type SummaryTone } from "./report-types.ts";
 
 export type ReportFooterMetric = { key: string; label: string; value: number; tone: SummaryTone; format?: "number" | "percent"; note?: string; uncertain?: boolean };
-type FooterContext = { type: ReportType; result: ReportResponse; productFiltered?: boolean; salesByProduct?: boolean; partyType?: "employee" | "customer" | "supplier"; translate?: (label: string) => string };
+type FooterContext = { type: ReportType; result: ReportResponse; productFiltered?: boolean; salesByProduct?: boolean; partyType?: "employee" | "customer" | "supplier" | "trader"; translate?: (label: string) => string };
 const signed = (value: number): SummaryTone => value > 0 ? "positive" : value < 0 ? "negative" : "neutral";
 const metric = (summary: ReportResponse["summary"], key: string, label: string, tone: SummaryTone, format?: "number" | "percent", note?: string): ReportFooterMetric => ({ key, label, value: reportNumber(summary[key]), tone, format, note, ...(reportCostUnknown(key,summary)?{uncertain:true}:{}) });
 
@@ -17,10 +17,17 @@ export function buildReportFooterMetrics({ type, result, productFiltered = false
   if (type === "stock") return [metric(s,"incoming",t("إجمالي الوحدات الداخلة"),"neutral"),metric(s,"outgoing",t("إجمالي الوحدات الخارجة"),"neutral"),metric(s,"netChange",t("صافي تغير الكمية"),"neutral"),metric(s,"movements",t("عدد الحركات"),"neutral")];
   if (type === "debts") return [metric(s,"receivable",t("إجمالي المستحق لنا"),"positive"),metric(s,"payable",t("إجمالي المستحق علينا"),"negative"),metric(s,"net",t("صافي الذمم"),signed(reportNumber(s.net)),undefined,reportNumber(s.net)===0?t("متوازن"):undefined),metric(s,"count",t("عدد الحسابات المطابقة"),"neutral")];
   if (type === "party-ledger") {
-    const role = partyType ?? (s.partyType === "employee" ? "employee" : s.partyType === "supplier" ? "supplier" : "customer");
+    const role = partyType ?? (s.partyType === "employee" ? "employee" : s.partyType === "supplier" ? "supplier" : s.partyType === "trader" ? "trader" : "customer");
     const closing = [
       metric(s, "closingReceivable", t("مستحق لنا في نهاية الفترة"), "positive"),
       metric(s, "closingPayable", t("مستحق علينا في نهاية الفترة"), "negative"),
+    ];
+    if (role === "trader") return [
+      metric(s, "salesTotal", t("مبيعات التاجر في الفترة"), "positive"),
+      metric(s, "purchasesTotal", t("مشترياتنا من التاجر في الفترة"), "neutral"),
+      metric(s, "receivedTotal", t("المقبوض من التاجر في الفترة"), "positive"),
+      metric(s, "paidTotal", t("المدفوع للتاجر في الفترة"), "negative"),
+      ...closing,
     ];
     if (role === "employee") return [
       metric(s, "workersAccrued", t("استحقاقات العمال خلال الفترة"), "negative"),

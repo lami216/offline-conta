@@ -11,7 +11,8 @@ import type { SqliteSession as ClientSession, SqliteDatabase as Db } from "../..
 import { getDatabase } from "../../../lib/sqlite.ts";
 import { log } from "../../../lib/log.ts";
 import { getPrincipalFromRequest, hasCapability, requireCapability, validSameOrigin, type Capability } from "../../../lib/auth.ts";
-import { isProductExpired, resolvePartyType } from "../../domain.ts";
+import { isProductExpired, resolvePartyType, supportsPartyRole } from "../../domain.ts";
+import { partyCapabilities } from "../../party-access.ts";
 import { normalizePartyNet, partyNet } from "../../party-balance.ts";
 import { nextDocumentSequence, nextStockSettlementSequence, displayStockMovementDocumentNumber, type SequencedDocumentKind } from "../../../lib/document-sequences.ts";
 import { deriveOpeningStockState, planOpeningStockCorrection } from "../../../lib/opening-stock.ts";
@@ -678,10 +679,10 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     );
     return documentId;
   }
-  if (type === "party.create") {
+  if (type === "party.create" || type === "trader.create") {
     if(body.opening!==undefined&&(!body.opening||typeof body.opening!=="object"||Array.isArray(body.opening)))throw new CommandError("رصيد البداية غير صالح");
-    const name = text(body.name), phone = text(body.phone), partyType = text(body.partyType); if (!name) throw new CommandError("اسم الحساب مطلوب");
-    if (!["customer", "supplier"].includes(partyType)) throw new CommandError("نوع الحساب غير صالح");
+    const name = text(body.name), phone = text(body.phone), partyType = type === "trader.create" ? "trader" : text(body.partyType); if (!name) throw new CommandError("اسم الحساب مطلوب");
+    if (type === "trader.create" ? Object.hasOwn(body, "partyType") && body.partyType !== "trader" : !["customer", "supplier"].includes(partyType)) throw new CommandError("نوع الحساب غير صالح");
     if (phone) { const existing = await db.collection("parties").findOne({ phone, partyType }, { session }); if (existing) throw new CommandError("رقم الهاتف مستخدم لحساب آخر من النوع نفسه", 409); }
     const party = { id: id("party"), name, phone, partyType, receivable: 0, payable: 0, net: 0, createdAt: new Date() };
     await db.collection("parties").insertOne(party, { session });
@@ -829,7 +830,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
     const updateBody={...body,warehouseId:isSale?original.warehouseId:body.warehouseId};
     const { warehouse, party, warehouseId, partyId } = await invoiceUpdateRefs(db, session, updateBody, original, paymentMethod === "note");
     const preserveOriginalPartyArchive=Boolean(party&&partyId===String(original.partyId??"")&&party.isArchived===true),originalPartyArchivedAt=party?.archivedAt;
-    if (party && party.partyType !== (isSale ? "customer" : "supplier")) throw new CommandError(isSale ? "يجب اختيار عميل صالح" : "يجب اختيار مورد صالح");
+    if (party && !supportsPartyRole(party, isSale ? "customer" : "supplier")) throw new CommandError(isSale ? "يجب اختيار عميل صالح" : "يجب اختيار مورد صالح");
     const historicalPayment = paymentMethod !== "note" ? await paymentAccountForHistoricalEdit(db, session, paymentMethod, original.paymentMethod) : null;
     const oldLines = original.lines as Line[],oldProductIds=new Set(oldLines.map(line=>String(line.productId))),newProducts=await productsForUpdate(db,session,input,oldProductIds), oldByProduct = new Map(oldLines.map(line => [line.productId, line]));
     if (isSale && input.some(line => isProductExpired(newProducts.get(line.productId)!, String(original.businessDate ?? String(original.occurredAt).slice(0, 10))))) throw new CommandError("انتهت صلاحية هذا المنتج ولا يمكن بيعه.");
@@ -894,7 +895,7 @@ export async function execute(db: Db, session: ClientSession, body: Input) {
   if (type === "sale.post" || type === "purchase.post") {
     const input = lines(body), isSale = type === "sale.post", { warehouse, party, warehouseId, partyId } = await refs(db, session, body, text(body.paymentMethod) === "note"), map = await products(db, session, input), paymentMethod = text(body.paymentMethod);
     if(partyId&&!party)throw new CommandError(isSale?"يجب اختيار عميل صالح":"يجب اختيار مورد صالح",404);
-    if (party && party.partyType !== (isSale ? "customer" : "supplier")) throw new CommandError(isSale ? "يجب اختيار عميل صالح" : "يجب اختيار مورد صالح");
+    if (party && !supportsPartyRole(party, isSale ? "customer" : "supplier")) throw new CommandError(isSale ? "يجب اختيار عميل صالح" : "يجب اختيار مورد صالح");
     if (isSale && input.some(line => isProductExpired(map.get(line.productId)!, new Date().toISOString().slice(0, 10)))) throw new CommandError("انتهت صلاحية هذا المنتج ولا يمكن بيعه.");
     if (paymentMethod !== "note") await paymentAccount(db, session, paymentMethod);
     const costs = isSale ? new Map(await Promise.all(input.map(async line => [line.productId, await authoritativeCost(db, session, map.get(line.productId)!, warehouseId)] as const))) : new Map<string, number | null>();
@@ -1023,29 +1024,41 @@ async function executeAdmittedPost(request: Request, admission: CommandAdmission
   try {
     const body = await admission.readJson() as Input; type = text(body.type);
     const map:Record<string,Capability>={"product.delete":"products.delete","product.stock-zero":"products.delete","product.restore":"products.edit","product-category.create":"products.create","product-category.update":"products.edit","product-category.delete":"products.delete","product.create":"products.create","product.update":"products.edit","warehouse.create":"warehouses.create","warehouse.update":"warehouses.edit","warehouse.default":"warehouses.edit","warehouse.delete":"warehouses.delete","sale.post":"pos.create","sale.update":"pos.edit","sale.void":"pos.delete","purchase.post":"purchases.create","purchase.update":"purchases.edit","purchase.void":"purchases.delete","transfer.post":"warehouses.transfer","transfer.update":"warehouses.transfer.edit","transfer.void":"warehouses.transfer.delete","adjustment.post":"warehouses.adjust","adjustment.update":"warehouses.adjust.edit","adjustment.void":"warehouses.adjust.delete","opening-stock-correction.update":"warehouses.adjust.edit","opening-stock-correction.void":"warehouses.adjust.delete","opening-stock-initial.void":"warehouses.adjust.delete","party-cash.post":text(body.partyType)==="supplier"?"suppliers.pay":"customers.collect","party-cash.update":"customers.collect.edit","party-cash.void":"customers.collect.delete","legacy-party-document.void":"customers.collect.delete","party-opening.post":"party.opening.manage","party-opening.update":"party.opening.manage","party-opening.void":"party.opening.manage","employee.create":"employees.manage","employee.update":"employees.manage","employee.archive":"employees.manage","employee.restore":"employees.manage","employee.delete":"employees.manage","employee-opening.post":"employees.manage","employee-opening.update":"employees.manage","employee-opening.void":"employees.manage","employee-accrual.sync":"employees.manage","employee-accrual.update":"employees.manage","employee-accrual.void":"employees.manage","employee-payment.post":"employees.pay","employee-payment.update":"employees.pay","employee-payment.void":"employees.pay","expense-category.create":"expenses.create","expense-category.update":"expenses.edit","expense-category.delete":"expenses.delete","expense.post":"expenses.create","expense.update":"expenses.edit","expense.void":"expenses.delete","payment-account.create":"banks.create","payment-account.update":"banks.edit","payment-account.delete":"banks.delete","payment-account.restore":"banks.edit","account-adjustment.post":"banks.deposit_withdraw","account-adjustment.update":"banks.deposit_withdraw.edit","account-adjustment.void":"banks.deposit_withdraw.delete","account-transfer.post":"banks.transfer","account-transfer.update":"banks.transfer.edit","account-transfer.void":"banks.transfer.delete","account-opening-balance-correction.post":"banks.balance_correct","account-opening-balance-correction.update":"banks.balance_correct.edit","account-opening-balance-correction.void":"banks.balance_correct.delete","party.create":body.partyType==="customer"?"customers.create":"suppliers.create","party.update":"customers.edit","party.delete":"customers.delete","party.restore":"customers.edit"};
-    let capability=map[type];
+    let capability=map[type], requiredCapabilities: Capability[] | undefined;
+    if(type==="trader.create")requiredCapabilities=partyCapabilities("trader","create");
     if(["party-cash.post","party.update","party.delete","party.restore"].includes(type)){
-      const party=await getDatabase().collection("parties").findOne({id:text(body.partyId??body.id)});
-      if(party){const supplier=resolvePartyType(party)==="supplier";capability=type==="party-cash.post"?(supplier?"suppliers.pay":"customers.collect"):type==="party.delete"?(supplier?"suppliers.delete":"customers.delete"):(supplier?"suppliers.edit":"customers.edit");}
+      const party=await getDatabase().collection("parties").findOne({id:text(type==="party-cash.post"?body.partyId:body.id)});
+      if(party){const supplier=resolvePartyType(party)==="supplier";capability=type==="party-cash.post"?(supplier?"suppliers.pay":"customers.collect"):type==="party.delete"?(supplier?"suppliers.delete":"customers.delete"):(supplier?"suppliers.edit":"customers.edit");
+        if(resolvePartyType(party)==="trader")requiredCapabilities=partyCapabilities("trader",type==="party-cash.post"?"cash-post":type==="party.delete"?"delete":type==="party.restore"?"restore":"edit");}
     }
     if(["party-cash.update","party-cash.void"].includes(type)){
       const database=await getDatabase(),document=await database.collection("documents").findOne({id:text(body.documentId),kind:"payment"});
       const party=document?.partyId?await database.collection("parties").findOne({id:String(document.partyId)}):null;
-      if(party){const supplier=resolvePartyType(party)==="supplier",editing=type==="party-cash.update";capability=supplier?(editing?"suppliers.pay.edit":"suppliers.pay.delete"):(editing?"customers.collect.edit":"customers.collect.delete");}
+      if(party){const supplier=resolvePartyType(party)==="supplier",editing=type==="party-cash.update";capability=supplier?(editing?"suppliers.pay.edit":"suppliers.pay.delete"):(editing?"customers.collect.edit":"customers.collect.delete");
+        if(resolvePartyType(party)==="trader")requiredCapabilities=partyCapabilities("trader",editing?"cash-edit":"cash-delete");}
     }
     if(type==="legacy-party-document.void"){
       const database=await getDatabase(),document=await database.collection("documents").findOne({id:text(body.documentId),kind:{$in:["payment","settlement","offset"]}});
       const party=document?.partyId?await database.collection("parties").findOne({id:String(document.partyId)}):null;
       const historical=!party&&document?.partyId?await database.collection("documents").findOne({partyId:String(document.partyId),kind:{$in:["purchase","sale"]}}):null;
-      if(party)capability=resolvePartyType(party)==="supplier"?"suppliers.pay.delete":"customers.collect.delete";
+      if(party){capability=resolvePartyType(party)==="supplier"?"suppliers.pay.delete":"customers.collect.delete";
+        if(resolvePartyType(party)==="trader")requiredCapabilities=partyCapabilities("trader","cash-delete");}
       else if(historical)capability=historical.kind==="purchase"?"suppliers.pay.delete":"customers.collect.delete";
       else{
         const principal=await getPrincipalFromRequest(request);
         capability=hasCapability(principal,"suppliers.pay.delete")?"suppliers.pay.delete":"customers.collect.delete";
       }
     }
-    if(!capability)return Response.json({error:"العملية غير مدعومة"},{status:400});const denied=await requireCapability(request,capability);if(denied)return denied;
-    if(type==="party.create"&&body.opening!==undefined){const openingDenied=await requireCapability(request,"party.opening.manage");if(openingDenied)return openingDenied;}
+    if(["party-opening.post","party-opening.update","party-opening.void"].includes(type)){
+      const database=await getDatabase(),document=type==="party-opening.post"?null:await database.collection("documents").findOne({id:text(body.documentId),kind:"party-opening"});
+      const partyId=type==="party-opening.post"?text(body.partyId):text(document?.partyId);
+      const party=partyId?await database.collection("parties").findOne({id:partyId}):null;
+      if(party&&resolvePartyType(party)==="trader")requiredCapabilities=partyCapabilities("trader","opening");
+    }
+    const capabilities=requiredCapabilities??(capability?[capability]:[]);
+    if(!capabilities.length)return Response.json({error:"العملية غير مدعومة"},{status:400});
+    for(const required of capabilities){const denied=await requireCapability(request,required);if(denied)return denied;}
+    if((type==="party.create"||type==="trader.create")&&body.opening!==undefined){const openingDenied=await requireCapability(request,"party.opening.manage");if(openingDenied)return openingDenied;}
     if((type==="product.update"&&body.replaceOpeningStock===true)||(type==="product.create"&&Number(body.openingStock??0)>0)){const stockDenied=await requireCapability(request,"warehouses.adjust");if(stockDenied)return stockDenied;}
     if(!validSameOrigin(request))return Response.json({error:"طلب غير صالح"},{status:403});
     const idempotencyKey=text(request.headers.get("Idempotency-Key"));

@@ -106,13 +106,16 @@ test("native legacy party records expose a safe delete lifecycle without re-enab
   assert.match(source, /document\.kind === "payment" && !document\.partyCashDirection/);
   const party = source.slice(source.indexOf("function PartyPage"), source.indexOf("export const ALL_WAREHOUSES"));
   assert.match(party, /const kinds=\["return","payment","settlement","offset","party-opening"\]/);
-  assert.match(party, /d\.partyId===party\.id&&\(d\.kind===\(customer\?"sale":"purchase"\)\|\|kinds\.includes\(d\.kind\)\)/);
+  assert.match(party, /d\.partyId===party\.id&&\(kinds\.includes\(d\.kind\) \|\| \(d\.kind === "sale" && \(customer \|\| trader\)\) \|\| \(d\.kind === "purchase" && \(!customer \|\| trader\)\)\)/);
   assert.match(source, /legacy-party-document\.void/);
   assert.match(source, /legacyParty\.deleteOldTransaction/);
   assert.match(source, /onVoid=\{canVoidLegacyPartyDocument\(doc\)/);
 });
 
 test("party payment buttons use complete translated labels instead of concatenating fragments", () => {
-  assert.match(source,/customer\?tr\("دفع للعميل"\):tr\("دفع للمورد"\)/);
+  assert.match(source, /customer: \{ [^\n]*pay: "دفع للعميل"/);
+  assert.match(source, /supplier: \{ [^\n]*pay: "دفع للمورد"/);
+  assert.match(source, /trader: \{ [^\n]*pay: "دفع للتاجر"/);
+  assert.match(source, /tr\(presentation\.pay\)/);
   assert.doesNotMatch(source,/tr\("دفع لل"\)\}\{customer\?tr\("عميل"\):tr\("مورد"\)/);
 });

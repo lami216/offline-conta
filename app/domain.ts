@@ -20,7 +20,7 @@ export type DocumentKind =
   | "employee-accrual"
   | "employee-payment"
   | "employee-closure";
-export type PartyType = "customer" | "supplier";
+export type PartyType = "customer" | "supplier" | "trader";
 export interface Party {
   id: string;
   name: string;
@@ -34,7 +34,13 @@ export interface Party {
 }
 /** Single compatibility authority: pre-role parties were suppliers in Conta. */
 export function resolvePartyType(party: unknown): PartyType {
-  return (party as { partyType?: unknown } | null)?.partyType === "customer" ? "customer" : "supplier";
+  const role = (party as { partyType?: unknown } | null)?.partyType;
+  return role === "trader" ? "trader" : role === "customer" ? "customer" : "supplier";
+}
+/** A shared trader keeps one identity and supports either commercial invoice role. */
+export function supportsPartyRole(party: unknown, role: "customer" | "supplier") {
+  const actual = resolvePartyType(party);
+  return actual === "trader" || actual === role;
 }
 export interface Warehouse {
   id: string;
@@ -333,6 +339,7 @@ export function documentKindLabel(document: Pick<DocumentRecord, "kind" | "party
   if (document.kind !== "payment" || !document.partyCashDirection) return kindLabels[document.kind];
   if (partyType === "supplier") return document.partyCashDirection === "receive" ? "استلام من المورد" : "دفع للمورد";
   if (partyType === "customer") return document.partyCashDirection === "receive" ? "استلام من العميل" : "دفع للعميل";
+  if (partyType === "trader") return document.partyCashDirection === "receive" ? "استلام من التاجر" : "دفع للتاجر";
   return document.partyCashDirection === "receive" ? "استلام من الطرف" : "دفع للطرف";
 }
 /** Current document kinds offered by user-facing filters. */

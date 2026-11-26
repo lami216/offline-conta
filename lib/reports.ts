@@ -1,5 +1,6 @@
 import { payrollExpenseEntries, payrollSummary } from "./payroll.ts";
 import { buildEmployeeLedger, employeeAccountRow } from "./employee-ledger.ts";
+import { buildPartyLedger, combinePartyLedgers } from "./party-ledger.ts";
 import { expenseCategoryKind } from "./expense-categories.ts";
 import { movementStatement, statementNote } from "./movement-statement.ts";
 import { productsWithCurrentCosts } from "./product-cost.ts";
@@ -21,7 +22,7 @@ const REPORT_SORT_KEYS: Record<ReportType, Set<string>> = {
   stock:new Set(["occurredAt","product","warehouse","movementType","before","change","after","documentNumber"]),
   profit:new Set(["number","occurredAt","product","quantity","revenue","cost","profit","margin","invoiceCount"]),
   debts:new Set(["name","accountType","phone","balance","lastMovement"]),
-  "party-ledger":new Set(["occurredAt","movementType","documentNumber","description","debit","credit","runningBalance","paymentMethod"]),
+  "party-ledger":new Set(["occurredAt","party","movementType","documentNumber","description","debit","credit","runningBalance","balanceBefore","balanceChange","balanceAfter","paymentMethod"]),
   financial:new Set(["occurredAt","paymentMethod","movementType","description","incoming","outgoing","party","documentNumber"]),
   expenses:new Set(["occurredAt","title","expenseCategory","expenseCategoryKind","paymentMethod","total","number"]),
 };
@@ -301,23 +302,52 @@ export async function buildReport(db: Db, f: ReportFilters): Promise<ReportRespo
     return{report:f.type,from:null,to:null,summary:{receivable:allRows.reduce((sum,account)=>sum+n(account.receivable),0),payable:allRows.reduce((sum,account)=>sum+n(account.payable),0),net:allRows.reduce((sum,account)=>sum+n(account.receivable)-n(account.payable),0),count:total},rows,meta:pagination(total,f)};
   }
   if (f.type === "party-ledger") {
+    if (!f.partyId && !f.partyType) throw new Error("يجب اختيار الطرف");
+    const period = f.allTime ? {} : { from: f.from, to: f.to };
+    const documentsByOwner = (documents: Document[], key: string) => {
+      const grouped = new Map<string, Document[]>();
+      for (const document of documents) {
+        const owner = String(document[key]), rows = grouped.get(owner) ?? [];
+        rows.push(document); grouped.set(owner, rows);
+      }
+      return grouped;
+    };
+    let partyType: string, ledgers: Array<{ rows: ReportRow[]; summary: Record<string, string | number | boolean> }>;
     if (f.partyType === "employee") {
-      if (!f.partyId) throw new Error("يجب اختيار الطرف");
-      const employee = await db.collection("employees").findOne({ id: f.partyId });
-      if (!employee) throw new Error("العامل غير موجود");
-      const documents = await db.collection("documents").find({ employeeId: f.partyId, kind: { $in: ["employee-opening", "employee-accrual", "employee-payment", "employee-closure"] } }).toArray();
-      const ledger = buildEmployeeLedger(employee, documents, f.allTime ? {} : { from: f.from, to: f.to });
-      return { report: f.type, from: f.from ?? null, to: f.to ?? null, summary: ledger.summary,
-        rows: pageReportRows(sortReportRows(ledger.rows, f), f), meta: pagination(ledger.rows.length, f) };
+      const employees = await db.collection("employees").find(f.partyId ? { id: f.partyId } : {}).toArray();
+      if (f.partyId && !employees.length) throw new Error("العامل غير موجود");
+      const employeeIds = employees.map(employee => String(employee.id));
+      const documents = employeeIds.length ? await db.collection("documents").find({ employeeId: { $in: employeeIds },
+        kind: { $in: ["employee-opening", "employee-accrual", "employee-payment", "employee-closure"] } }).toArray() : [];
+      const byEmployee = documentsByOwner(documents, "employeeId");
+      partyType = "employee";
+      ledgers = employees.filter(employee => f.partyId || employee.isDeleted !== true || (byEmployee.get(String(employee.id))?.length ?? 0) > 0)
+        .map(employee => buildEmployeeLedger(employee, byEmployee.get(String(employee.id)) ?? [], period));
+    } else {
+      const found = await db.collection("parties").find(f.partyId ? { id: f.partyId } : {}).toArray();
+      if (f.partyId && !found.length) throw new Error("الطرف غير موجود");
+      if (f.partyId && f.partyType && resolvePartyType(found[0]) !== f.partyType) throw new Error("نوع الطرف غير مطابق للحساب المختار");
+      partyType = f.partyType ?? resolvePartyType(found[0]);
+      const parties = found.filter(party => resolvePartyType(party) === partyType), partyIds = parties.map(party => String(party.id));
+      const documents = partyIds.length ? await db.collection("documents").find({ partyId: { $in: partyIds }, status: "posted",
+        kind: { $in: [...SALE_KINDS, ...PURCHASE_KINDS, "return", "payment", "offset", "settlement", "party-opening"] } }).toArray() : [];
+      const parentIds = [...new Set(documents.filter(document => document.kind === "return" && document.parentDocumentId).map(document => String(document.parentDocumentId)))];
+      const paymentIds = documents.filter(document => document.kind === "payment").map(document => String(document.id));
+      const [parents, movements] = await Promise.all([
+        parentIds.length ? db.collection("documents").find({ id: { $in: parentIds } }).project({ id: 1, kind: 1 }).toArray() : Promise.resolve([]),
+        paymentIds.length ? db.collection("financialMovements").find({ documentId: { $in: paymentIds }, type: { $in: ["party-receipt", "party-payment"] },
+          status: { $ne: "reversed" }, isReversal: { $ne: true } }).toArray() : Promise.resolve([]),
+      ]);
+      const parentKinds = new Map<string, string>(parents.map(document => [String(document.id), String(document.kind)]));
+      const byParty = documentsByOwner(documents, "partyId"), byDocument = documentsByOwner(movements, "documentId");
+      ledgers = parties.map(party => buildPartyLedger(party, byParty.get(String(party.id)) ?? [], parentKinds, byDocument, period));
     }
-    if(!f.partyId)throw new Error("يجب اختيار الطرف");const party=await db.collection("parties").findOne({id:f.partyId});if(!party)throw new Error("الطرف غير موجود");
-    if (f.partyType && resolvePartyType(party) !== f.partyType) throw new Error("نوع الطرف غير مطابق للحساب المختار");
-    const partyType=resolvePartyType(party),query={partyId:f.partyId,status:"posted",kind:{$in:[...SALE_KINDS,...PURCHASE_KINDS,"return","payment","offset","settlement","party-opening"]},...matchDate(f)},all=await db.collection("documents").find(query).toArray(),parentIds=all.filter(document=>document.kind==="return"&&document.parentDocumentId).map(document=>document.parentDocumentId),parentKinds=new Map((await db.collection("documents").find({id:{$in:parentIds}}).project({id:1,kind:1}).toArray()).map(document=>[String(document.id),String(document.kind)]));
-    const effect=(document:Document)=>{if(Number.isFinite(Number(document.partyBalanceDelta)))return n(document.partyBalanceDelta);if(isSaleKind(document.kind))return n(document.dueTotal);if(isPurchaseKind(document.kind))return-n(document.dueTotal);if(document.kind==="return")return(isPurchaseKind(parentKinds.get(String(document.parentDocumentId)))?1:-1)*Math.max(0,n(document.total)-n(document.paidTotal));if(document.kind==="offset")return 0;if(document.kind==="payment"&&document.partyCashDirection)return document.partyCashDirection==="receive"?-n(document.total):n(document.total);if(document.kind==="payment"||document.kind==="settlement")return String(document.title).includes("دفع لنا")?-n(document.total):n(document.total);return 0};
-    const role=partyType==="customer"?"العميل":"المورد",movementCode=(document:Document)=>document.kind==="party-opening"?"party-opening":document.kind==="sale"?"sale":document.kind==="purchase"?"purchase":document.kind==="return"?"return":document.kind==="offset"?"offset":document.kind==="settlement"?"settlement":document.partyCashDirection==="receive"?"party-receipt":document.partyCashDirection==="pay"?"party-payment":"payment",movementLabel=(document:Document)=>document.kind==="party-opening"?"رصيد بداية الديون":document.kind==="sale"?"فاتورة بيع":document.kind==="purchase"?"فاتورة شراء":document.kind==="return"?"حركة تاريخية":document.kind==="offset"?"مقاصة":document.kind==="settlement"?"تسوية":document.partyCashDirection==="receive"?`استلام من ${role}`:document.partyCashDirection==="pay"?(partyType==="customer"?"دفع للعميل":"دفع للمورد"):"دفعة";
-    const allRows:ReportRow[]=[...all].sort((a,b)=>String(b.occurredAt).localeCompare(String(a.occurredAt))).map(document=>{const delta=effect(document);return{id:String(document.id),documentId:String(document.id),occurredAt:String(document.occurredAt),movementType:movementLabel(document),movementCode:movementCode(document),documentNumber:displayDocumentNumber(document),note:statementNote(document),description:movementStatement(document,String(document.title??document.partyName??"")),descriptionCode:document.kind==="payment"&&document.partyCashDirection?(document.partyCashDirection==="receive"?"party-receipt":"party-payment"):"",debit:Math.max(delta,0),credit:Math.max(-delta,0),paymentMethod:String(document.paymentMethod??"")}}),rows=pageReportRows(sortReportRows(allRows,f),f),total=allRows.length;
-    const tradeTotal=partyType==="customer"?all.reduce((sum,document)=>sum+(isSaleKind(document.kind)?n(document.total):document.kind==="return"&&!isPurchaseKind(parentKinds.get(String(document.parentDocumentId)))?-n(document.total):0),0):all.reduce((sum,document)=>sum+(isPurchaseKind(document.kind)?n(document.total):document.kind==="return"&&isPurchaseKind(parentKinds.get(String(document.parentDocumentId)))?-n(document.total):0),0),net=n(party.receivable)-n(party.payable),debitTotal=all.reduce((sum,document)=>sum+Math.max(effect(document),0),0),creditTotal=all.reduce((sum,document)=>sum+Math.max(-effect(document),0),0);
-    return{report:f.type,from:f.from??null,to:f.to??null,summary:{name:String(party.name),partyType,tradeTotal,debitTotal,creditTotal,receivable:Math.max(net,0),payable:Math.max(-net,0),net,transactionCount:total},rows,meta:pagination(total,f)};
+    const allRows = ledgers.flatMap(ledger => ledger.rows);
+    if (!f.partyId) allRows.sort((left, right) => String(right.occurredAt).localeCompare(String(left.occurredAt)) ||
+      compareReportValue(left.party, right.party) || compareReportValue(left.partyId, right.partyId));
+    return { report: f.type, from: f.from ?? null, to: f.to ?? null,
+      summary: combinePartyLedgers(ledgers, partyType, Boolean(f.partyId)),
+      rows: pageReportRows(sortReportRows(allRows, f), f), meta: pagination(allRows.length, f) };
   }
   // Read-only compatibility: legacy adjustments remain negative sale facts.
   const overviewCommercial=f.type==="overview"?[...await db.collection("documents").find({kind:{$in:[...SALE_KINDS,"return",...PURCHASE_KINDS,"expense"]},status:"posted",...matchDate(f)}).toArray(), ...salaryExpenses]:null;

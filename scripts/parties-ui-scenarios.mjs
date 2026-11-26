@@ -191,8 +191,9 @@ export async function runPartiesReportScenarios({ cdp, origin, command, database
     { role: "employee", name: worker.name, id: worker.id, absent: [customerName, supplierName], width: 1280 },
   ];
   for (const context of contexts) {
+    const previousIdentity = await evaluate('document.querySelector(".report-ledger-identity strong")?.textContent??""');
     await fill(".party-ledger-role-select", context.role);
-    await until(() => evaluate('document.querySelector(".report-ledger-identity")===null'), "stale ledger cleared for " + context.role);
+    await until(() => evaluate(`!${JSON.stringify(previousIdentity)}||document.querySelector('.report-ledger-identity strong')?.textContent!==${JSON.stringify(previousIdentity)}`), "stale individual ledger replaced by the selected role's all-accounts view");
     await click(".party-ledger-filter .combobox-trigger");
     await until(() => evaluate('Boolean(document.querySelector(".party-ledger-filter [role=listbox]"))'), "contextual names");
     const options = await evaluate('[...document.querySelectorAll(".party-ledger-filter [role=option]")].map(option=>option.textContent)');

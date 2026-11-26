@@ -396,6 +396,9 @@ async function main() {
   const {runSalesByProductScenarios}=await import("./sales-by-product-ui-scenarios.mjs");
   result.salesByProduct=await runSalesByProductScenarios({cdp,origin:base,command,database,screenshot,output});
   result.checkpoints.push(...result.salesByProduct.checkpoints);
+  const {runPartyLedgerBalancesScenarios}=await import("./party-ledger-balances-ui-scenarios.mjs");
+  result.partyLedgerBalances=await runPartyLedgerBalancesScenarios({cdp,origin:base,command,database,screenshot,output});
+  result.checkpoints.push(...result.partyLedgerBalances.checkpoints);
   assert.deepEqual(cdp.errors, []);
   result.status = "passed";
 }

@@ -36,9 +36,10 @@ test("missing historical products use an explicit system flag instead of transla
 });
 
 test("party-ledger labels carry stable semantic codes for localized presentation", () => {
-  assert.match(reports, /movementCode=\(document:Document\)=>/);
-  assert.match(reports, /movementCode:movementCode\(document\)/);
-  assert.match(reports, /descriptionCode:document\.kind==="payment"/);
+  const ledger = readFileSync(new URL("../lib/party-ledger.ts", import.meta.url), "utf8");
+  assert.match(reports, /buildPartyLedger\(party,/);
+  assert.match(ledger, /movementCode:\s*code/);
+  assert.match(ledger, /descriptionCode:\s*document\.kind === "payment"/);
   assert.match(app, /code==="party-receipt"/);
   assert.match(app, /code==="party-payment"/);
   assert.match(app, /row\?\.descriptionCode==="party-receipt"/);

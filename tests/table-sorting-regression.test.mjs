@@ -83,7 +83,12 @@ test("sorting-enabled screens keep the shared sorter while reports use global se
   assert.match(source, /purchases:productId\?\[\[\"number\",tr\(\"رقم الفاتورة\"\),\"number\"\]/);
   assert.match(source, /expenses:\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]{0,700}\[\"number\",tr\(\"المستند\"\),\"number\"\]/);
   assert.match(source, /stock:\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]{0,900}\[\"documentNumber\",tr\(\"المستند\"\),\"text\"\]/);
-  assert.match(source, /party-ledger\":\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]{0,900}\[\"documentNumber\",tr\(\"رقم المستند\"\),\"text\"\]/);
+  const ledgerColumns = source.slice(source.indexOf('"party-ledger": ['), source.indexOf(' financial:[['));
+  assert.match(ledgerColumns, /\["occurredAt",\s*tr\("التاريخ"\),\s*"date"\]/);
+  assert.match(ledgerColumns, /\["documentNumber",\s*tr\("رقم المستند"\),\s*"text"\]/);
+  for (const key of ["balanceBefore", "balanceChange", "balanceAfter"]) {
+    assert.match(ledgerColumns, new RegExp('\\["' + key + '",\\s*tr\\("[^"]+"\\),\\s*"money"\\]'));
+  }
   assert.match(source, /financial:\[\[\"occurredAt\",tr\(\"التاريخ\"\),\"date\"\][\s\S]{0,900}\[\"documentNumber\",tr\(\"المستند\"\),\"text\"\]/);
   assert.match(source, /function ProductMovementPanel[\s\S]*?movementColumns=useMemo\(\(\)=>\[[\s\S]*?key:\"number\",type:\"text\" as const[\s\S]*?useSortableRows\(movements,movementColumns\)/);
   assert.match(source, /transferColumns=useMemo\(\(\)=>\[[\s\S]*?key:\"number\",type:\"number\" as const[\s\S]*?useSortableRows\(transfers,transferColumns\)/);

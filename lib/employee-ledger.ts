@@ -53,6 +53,7 @@ export function buildEmployeeLedger(employee: Stored, documents: Stored[], perio
   for (const document of ordered) {
     const delta = -employeeDelta(document);
     const day = String(document.businessDate ?? document.occurredAt ?? "").slice(0, 10);
+    const before = running;
     running += delta;
     if (period.from && day < period.from) opening += delta;
     if (!period.to || day <= period.to) closing += delta;
@@ -71,10 +72,11 @@ export function buildEmployeeLedger(employee: Stored, documents: Stored[], perio
     else if (!isOpening) withdrawn += cents(document.total);
     const note = statementNote(document);
     rows.push({
-      id: String(document.id), documentId: String(document.id), partyId: employeeId, employeeId, partyType: "employee",
+      id: String(document.id), documentId: String(document.id), partyId: employeeId, party: String(employee.name ?? ""), employeeId, partyType: "employee",
       occurredAt: String(document.occurredAt), movementType, movementCode,
       documentNumber: displayDocumentNumber(document), note, description: movementStatement(document, movementType),
       descriptionCode: movementCode, debit: Math.max(delta, 0) / 100, credit: Math.max(-delta, 0) / 100,
+      balanceBefore: before / 100, balanceChange: delta / 100, balanceAfter: running / 100,
       balance: running / 100, runningBalance: running / 100, paymentMethod: String(document.paymentMethod ?? ""),
       ...(isOpening || isClosure ? { noncash: true } : {}),
     });

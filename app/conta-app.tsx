@@ -2097,8 +2097,13 @@ function Reports({ data, openDoc, openSource, type, sourceRequest, clearSourceRe
   };
   useEffect(() => {
     if (type !== "party-ledger") return;
-    if (!sourceRequest) void runReport(committedPeriod, 1);
-    return () => reportRequest.current?.abort();
+    const timer = sourceRequest ? null : window.setTimeout(() => void runReport(committedPeriod, 1), 0);
+    if (timer !== null) reportFilterTimer.current = timer;
+    return () => {
+      if (timer !== null) window.clearTimeout(timer);
+      if (reportFilterTimer.current === timer) reportFilterTimer.current = null;
+      reportRequest.current?.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type]);
   const appliedSalesFilters = new URLSearchParams(completedSalesQuery);

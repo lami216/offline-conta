@@ -1,0 +1,80 @@
+name: Diagnose existing Windows installer 905
+on:
+  push:
+    branches: [diagnostics/offline-installer-905-20261128]
+permissions:
+  actions: read
+jobs:
+  verify:
+    runs-on: windows-2022
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        baseline: [clean, "897", "903"]
+    env:
+      BASELINE: ${{ matrix.baseline }}
+    steps:
+      - name: Download and verify the original published installers
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'alkarna-installer-905'
+          New-Item -ItemType Directory -Path $root | Out-Null
+          $builds = @{
+            '905' = @{ Id = 15154741203; Digest = '3a13037ed087e384b0cbf8c469aff325f8c116ce9edfb2939031d47472fe80ea' }
+            '897' = @{ Id = 14865750131; Digest = 'f1b66f11cf64b9d8ce0a3868e994045ff8841c6fa1aafe3e5ac6621a0e9a2263' }
+            '903' = @{ Id = 15124270585; Digest = '808fdae527d42b79bbe7602a600287fdf1851b4cfe7f9b07fc074b3ee3b9bf0f' }
+          }
+          $versions = @('905')
+          if ($env:BASELINE -ne 'clean') { $versions += $env:BASELINE }
+          foreach ($build in $versions) {
+            $meta = $builds[$build]
+            $zip = Join-Path $root "$build.zip"
+            $endpoint = "https://api.github.com/repos/lami216/offline-conta/actions/artifacts/$($meta.Id)/zip"
+            Invoke-WebRequest -Uri $endpoint -Headers @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              Accept = "application/vnd.github+json"
+              "X-GitHub-Api-Version" = "2022-11-28"
+            } -OutFile $zip -TimeoutSec 120
+            if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ne $meta.Digest) {
+              throw "ZIP integrity check failed for build $build"
+            }
+            $folder = Join-Path $root $build
+            Expand-Archive -LiteralPath $zip -DestinationPath $folder
+            $installer = Join-Path $folder 'AlKarna-Setup-x64.exe'
+            $expected = (Get-Content -LiteralPath "$installer.sha256" -Raw).Trim().Split(' ')[0]
+            $actual = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash
+            if ($actual -ne $expected) { throw "EXE integrity check failed for build $build" }
+            if ($build -eq '905' -and $actual -ne '55dcf15b277b7ca76556b0c75b06726b438bfe6c5ff53003d9836ac389a328d8') {
+              throw 'Build 905 executable differs from the original verification log'
+            }
+            Write-Host "Verified ZIP and EXE for original build $build. EXE $actual"
+          }
+      - name: Install the verified executable under temporary Windows user data
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'alkarna-installer-905'
+          $target = Join-Path $root 'Install With Spaces'
+          function Install-Build([string]$build) {
+            $installer = Join-Path (Join-Path $root $build) 'AlKarna-Setup-x64.exe'
+            $process = Start-Process -FilePath $installer -ArgumentList "/S /currentuser /D=$target" -PassThru -WindowStyle Hidden
+            if (!$process.WaitForExit(120000)) {
+              $process.Kill()
+              throw "Installer $build timed out"
+            }
+            Write-Host "Installer $build exit code $($process.ExitCode)"
+            if ($process.ExitCode -ne 0) { throw "Installer $build exited with $($process.ExitCode)" }
+            $runtime = Join-Path $target 'resources\alkarna-runtime'
+            $app = @(Get-ChildItem -LiteralPath $target -Filter '*.exe' -File | Where-Object { $_.Name -notlike 'Uninstall*' })
+            if ($app.Count -ne 1) { throw "Expected one installed app executable, got $($app.Count)" }
+            if (!(Test-Path -LiteralPath (Join-Path $runtime 'server.js') -PathType Leaf)) { throw 'Installed runtime server is missing' }
+            $manifest = Get-Content -LiteralPath (Join-Path $runtime 'package.json') -Raw | ConvertFrom-Json
+            if ($build -eq '905' -and $manifest.version -ne '0.1.30') {
+              throw "Expected installed version 0.1.30, got $($manifest.version)"
+            }
+            Write-Host "Installed build $build, runtime version $($manifest.version), EXE $($app[0].Length) bytes"
+          }
+          if ($env:BASELINE -ne 'clean') { Install-Build $env:BASELINE }
+          Install-Build '905'

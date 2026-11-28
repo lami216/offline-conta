@@ -84,9 +84,62 @@ export async function runTraderScenarios({ cdp, origin, command, database, scree
   assert.equal(response.status, 200, JSON.stringify(report)); assert.equal(report.rows.length, 2); assert.equal(report.summary.partyCount, 1);
   for (const [key, value] of Object.entries({ salesTotal: 30, purchasesTotal: 20, receivedTotal: 0, paidTotal: 0, closingReceivable: 10, closingPayable: 0, tradeTotal: 0, reconciliationDifference: 0 })) close(report.summary[key], value, "Canonical trader report " + key);
   for (const invoice of invoices) assert(report.rows.some(row => row.documentId === invoice.id && row.partyId === trader.id));
-  layouts.push(...await captureControlLayouts({ cdp, screenshot, scope: ".report-toolbar", name: "trader-ledger-ar", widths: [1280] }));
+  const ledgerGeometry = [], geometryFailures = [];
+  const ledgerLabels = {
+    ar: ["صافي المبيعات", "صافي المشتريات", "تحصيلات الحساب", "دفعات الحساب", "لنا بنهاية الفترة", "علينا بنهاية الفترة"],
+    fr: ["Ventes nettes", "Achats nets", "Encaissements du compte", "Paiements du compte", "À recevoir en fin de période", "À payer en fin de période"],
+  };
+  try {
+    for (const locale of ["ar", "fr"]) {
+      await evaluate(`window.__smokeSetLocale(${JSON.stringify(locale)})`);
+      await until(() => evaluate(`document.documentElement.lang===${JSON.stringify(locale)}`), "ledger locale " + locale);
+      layouts.push(...await captureControlLayouts({ cdp, screenshot, scope: ".party-ledger-toolbar", name: "trader-ledger-" + locale, widths: [1280, 760, 480] }));
+      for (const width of [1280, 760, 480]) {
+        await cdp.call("Emulation.setDeviceMetricsOverride", { width, height: 900, deviceScaleFactor: 1, mobile: false });
+        await evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+        const geometry = await evaluate(`(()=>{
+          const box=e=>{if(!e)throw Error('Missing trader ledger layout element');const r=e.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,bottom:r.bottom,width:r.width,height:r.height,centerY:r.top+r.height/2}};
+          const toolbar=document.querySelector('.party-ledger-toolbar'),scope=toolbar?.querySelector(':scope>.party-ledger-toolbar-scope'),actions=toolbar?.querySelector(':scope>.party-ledger-toolbar-actions');
+          if(!scope||!actions||!scope.querySelector('.party-ledger-sign'))throw Error('Missing scoped trader toolbar sections');
+          const footer=document.querySelector('.reports-workspace .party-ledger-kpis'),cards=[...footer.querySelectorAll(':scope>.report-kpi')];
+          const contentFits=(element,card)=>{const range=document.createRange();range.selectNodeContents(element);const c=card.getBoundingClientRect();return element.scrollWidth<=element.clientWidth+1&&element.scrollHeight<=element.clientHeight+1&&[...range.getClientRects()].every(r=>r.left>=c.left-1&&r.right<=c.right+1&&r.top>=c.top-1&&r.bottom<=c.bottom+1)};
+          return{width:innerWidth,viewportHeight:innerHeight,locale:document.documentElement.lang,toolbar:box(toolbar),role:box(scope.querySelector('.party-ledger-role-select')),name:box(scope.querySelector('.combobox-trigger')),dates:box(actions.querySelector('.compact-date-range')),print:box(actions.querySelector('.report-print-button')),footer:box(footer),body:box(document.querySelector('.reports-workspace>.report-body')),cards:cards.map(card=>{const label=card.querySelector('small'),value=card.querySelector('.report-kpi-value');return{...box(card),label:label.textContent.trim(),value:value.textContent.trim(),labelFits:contentFits(label,card),valueFits:contentFits(value,card)}}),creditCells:[...document.querySelectorAll('.report-table-party-ledger tbody [data-column=paymentMethod]')].map(cell=>cell.textContent.trim()),pageOverflow:document.documentElement.scrollWidth>innerWidth+1};
+        })()`);
+        ledgerGeometry.push(geometry);
+        const caseName = locale + "/" + width;
+        try {
+          assert.deepEqual(geometry.cards.map(card => card.label), ledgerLabels[locale], caseName + " exact compact footer labels");
+          assert.deepEqual(geometry.cards.map(card => numeral(card.value)), [30, 20, 0, 0, 10, 0], caseName + " footer values never change with locale/layout");
+          assert.deepEqual(geometry.creditCells, Array(2).fill(locale === "ar" ? "آجل" : "À crédit"), caseName + " credit invoices have an honest payment label");
+          assert.equal(geometry.pageOverflow, false, caseName + " page stays within its viewport");
+          if (width === 1280) {
+            const centers = [geometry.role, geometry.name, geometry.dates, geometry.print].map(item => item.centerY);
+            assert(Math.max(...centers) - Math.min(...centers) <= 2, caseName + " role, name, date actions and print share one vertical center");
+          }
+          const rows = [];
+          for (const card of geometry.cards) {
+            let row = rows.find(item => Math.abs(item.top - card.top) <= 1);
+            if (!row) rows.push(row = { top: card.top, count: 0 });
+            row.count++;
+            assert(card.labelFits && card.valueFits, caseName + " complete label and amount remain inside their card: " + card.label);
+            assert(card.left >= geometry.footer.left - 1 && card.right <= geometry.footer.right + 1 && card.top >= 0 && card.bottom <= geometry.viewportHeight + 1, caseName + " each footer tile remains fully visible");
+          }
+          const columns = width === 1280 ? 6 : width === 760 ? 3 : 2;
+          assert.equal(rows.length, 6 / columns, caseName + " footer row count");
+          assert(rows.every(row => row.count === columns), caseName + " balanced footer columns");
+          assert(geometry.body.bottom <= geometry.footer.top + 1, caseName + " report body does not overlap footer");
+        } catch (error) { geometryFailures.push(caseName + ": " + (error instanceof Error ? error.message : String(error))); }
+      }
+    }
+  } finally {
+    await evaluate('window.__smokeSetLocale("ar")');
+    await until(() => evaluate('document.documentElement.lang==="ar"'), "restored Arabic locale");
+    await cdp.call("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+    await evaluate("new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+  }
+  assert.deepEqual(geometryFailures, [], "Trader ledger responsive semantics: " + JSON.stringify(geometryFailures));
   assert.deepEqual(await snapshot(), beforeRead, "Detail/report navigation never rewrites the trader's cash, debt, stock or source history");
   checkpoints.push("A trader created through its native form is selectable in both actual credit purchase and POS forms; purchase20 and sale30 yield one net receivable10, stock11 and unchanged cash, with both native sources visible in the shared account");
   checkpoints.push("The distinct trader ledger shows both invoice sides once and six exact sales/purchase/received/paid/receivable/payable totals30/20/0/0/10/0; account navigation and reports preserve every saved business record");
-  return { checkpoints, layouts, traderId: trader.id, productId, invoices, metricValues, footer: [30, 20, 0, 0, 10, 0], cashUnchanged: true, sourceSnapshotsUnchanged: true };
+  return { checkpoints, layouts, ledgerGeometry, traderId: trader.id, productId, invoices, metricValues, footer: [30, 20, 0, 0, 10, 0], cashUnchanged: true, sourceSnapshotsUnchanged: true };
 }

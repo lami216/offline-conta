@@ -1,4 +1,14 @@
 export const arMessages = {
+  "تحصيلات الحساب": "تحصيلات الحساب",
+  "دفعات الحساب": "دفعات الحساب",
+  "الاستحقاقات": "الاستحقاقات",
+  "المسحوبات": "المسحوبات",
+  "الإيداعات": "الإيداعات",
+  "لنا بنهاية الفترة": "لنا بنهاية الفترة",
+  "علينا بنهاية الفترة": "علينا بنهاية الفترة",
+  "+ لنا، − علينا": "+ لنا، − علينا",
+  "آجل": "آجل",
+  "التغيّر": "التغيّر",
   "التجار": "التجار",
   "تاجر": "تاجر",
   "التاجر": "التاجر",
@@ -1231,6 +1241,16 @@ export type MessageKey = keyof typeof arMessages;
 export type TranslationParams = Record<string, string | number>;
 
 export const frMessages: Record<MessageKey, string> = {
+  "تحصيلات الحساب": "Encaissements du compte",
+  "دفعات الحساب": "Paiements du compte",
+  "الاستحقاقات": "Droits acquis",
+  "المسحوبات": "Retraits",
+  "الإيداعات": "Dépôts",
+  "لنا بنهاية الفترة": "À recevoir en fin de période",
+  "علينا بنهاية الفترة": "À payer en fin de période",
+  "+ لنا، − علينا": "+ À recevoir, − À payer",
+  "آجل": "À crédit",
+  "التغيّر": "Variation",
   "التجار": "Commerçants",
   "تاجر": "Commerçant",
   "التاجر": "Commerçant",

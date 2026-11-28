@@ -19,25 +19,25 @@ export function buildReportFooterMetrics({ type, result, productFiltered = false
   if (type === "party-ledger") {
     const role = partyType ?? (s.partyType === "employee" ? "employee" : s.partyType === "supplier" ? "supplier" : s.partyType === "trader" ? "trader" : "customer");
     const closing = [
-      metric(s, "closingReceivable", t("مستحق لنا في نهاية الفترة"), "positive"),
-      metric(s, "closingPayable", t("مستحق علينا في نهاية الفترة"), "negative"),
+      metric(s, "closingReceivable", t("لنا بنهاية الفترة"), "positive"),
+      metric(s, "closingPayable", t("علينا بنهاية الفترة"), "negative"),
     ];
     if (role === "trader") return [
-      metric(s, "salesTotal", t("مبيعات التاجر في الفترة"), "positive"),
-      metric(s, "purchasesTotal", t("مشترياتنا من التاجر في الفترة"), "neutral"),
-      metric(s, "receivedTotal", t("المقبوض من التاجر في الفترة"), "positive"),
-      metric(s, "paidTotal", t("المدفوع للتاجر في الفترة"), "negative"),
+      metric(s, "salesTotal", t("صافي المبيعات"), "positive"),
+      metric(s, "purchasesTotal", t("صافي المشتريات"), "neutral"),
+      metric(s, "receivedTotal", t("تحصيلات الحساب"), "positive"),
+      metric(s, "paidTotal", t("دفعات الحساب"), "negative"),
       ...closing,
     ];
     if (role === "employee") return [
-      metric(s, "workersAccrued", t("استحقاقات العمال خلال الفترة"), "negative"),
-      metric(s, "workersPaid", t("المسحوب خلال الفترة"), "neutral"),
-      metric(s, "workersDeposited", t("المودع خلال الفترة"), "neutral"),
+      metric(s, "workersAccrued", t("الاستحقاقات"), "negative"),
+      metric(s, "workersPaid", t("المسحوبات"), "neutral"),
+      metric(s, "workersDeposited", t("الإيداعات"), "neutral"),
       ...closing,
     ];
     return [
-      metric(s, "tradeTotal", t(role === "customer" ? "مبيعات العملاء في الفترة" : "مشتريات الموردين في الفترة"), role === "customer" ? "positive" : "neutral"),
-      metric(s, role === "customer" ? "receivedTotal" : "paidTotal", t(role === "customer" ? "تحصيلات حسابات العملاء في الفترة" : "دفعات حسابات الموردين في الفترة"), role === "customer" ? "positive" : "negative"),
+      metric(s, "tradeTotal", t(role === "customer" ? "صافي المبيعات" : "صافي المشتريات"), role === "customer" ? "positive" : "neutral"),
+      metric(s, role === "customer" ? "receivedTotal" : "paidTotal", t(role === "customer" ? "تحصيلات الحساب" : "دفعات الحساب"), role === "customer" ? "positive" : "negative"),
       ...closing,
     ];
   }

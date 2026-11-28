@@ -6,6 +6,7 @@ import { execute } from '../app/api/command/route.ts';
 import { buildReport, parseReportFilters } from '../lib/reports.ts';
 import { buildPartyLedger } from '../lib/party-ledger.ts';
 import { buildReportFooterMetrics } from '../app/report-footer.ts';
+import { translate } from '../app/i18n/messages.ts';
 
 const document = (id, partyId, kind, day, values = {}) => ({ id, number: `SYN-${id}`, partyId, kind,
   status: 'posted', occurredAt: `${day}T12:00:00.000Z`, revision: 0, total: 0, paidTotal: 0, dueTotal: 0, lines: [], ...values });
@@ -53,6 +54,10 @@ test('trader is a distinct report role and its footer never substitutes trade vo
   const before = structuredClone(result), footer = buildReportFooterMetrics({ type: 'party-ledger', result });
   assert.deepEqual(footer.map(item => [item.key, item.value]), [['salesTotal', 120], ['purchasesTotal', 80], ['receivedTotal', 25], ['paidTotal', 10], ['closingReceivable', 40], ['closingPayable', 12]]);
   assert.deepEqual(footer.map(item => item.tone), ['positive', 'neutral', 'positive', 'negative', 'positive', 'negative']);
+  assert.deepEqual(footer.map(item => item.label), ['صافي المبيعات', 'صافي المشتريات', 'تحصيلات الحساب', 'دفعات الحساب', 'لنا بنهاية الفترة', 'علينا بنهاية الفترة']);
+  const french = buildReportFooterMetrics({ type: 'party-ledger', result, translate: key => translate('fr', key) });
+  assert.deepEqual(french.map(item => item.label), ['Ventes nettes', 'Achats nets', 'Encaissements du compte', 'Paiements du compte', 'À recevoir en fin de période', 'À payer en fin de période']);
+  assert.deepEqual(french.map(item => [item.key, item.value, item.tone]), footer.map(item => [item.key, item.value, item.tone]));
   assert.deepEqual(result, before);
 });
 

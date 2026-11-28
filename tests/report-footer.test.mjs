@@ -40,10 +40,10 @@ test("party ledger footers keep separate period-end claims and debts instead of 
   const customer=buildReportFooterMetrics({type:"party-ledger",result:input});
   assert.deepEqual(customer.map(item=>[item.key,item.value]),[["tradeTotal",700],["receivedTotal",60],["closingReceivable",450],["closingPayable",120]]);
   assert.deepEqual(customer.slice(-2).map(item=>item.tone),["positive","negative"]);
-  assert.equal(customer[1].label,"تحصيلات حسابات العملاء في الفترة");
+  assert.deepEqual(customer.map(item=>item.label),["صافي المبيعات","تحصيلات الحساب","لنا بنهاية الفترة","علينا بنهاية الفترة"]);
   const supplier=buildReportFooterMetrics({type:"party-ledger",result:input,partyType:"supplier"});
   assert.deepEqual(supplier.map(item=>item.value),[700,900,450,120]);
-  assert.equal(supplier[1].label,"دفعات حسابات الموردين في الفترة");
+  assert.deepEqual(supplier.map(item=>item.label),["صافي المشتريات","دفعات الحساب","لنا بنهاية الفترة","علينا بنهاية الفترة"]);
   assert.equal(supplier[1].tone,"negative");
   assert.deepEqual(input,before,"Formatting never rewrites the period totals or saved current balance");
 });
@@ -53,32 +53,39 @@ test("worker ledger footer distinguishes entitlement and cash movements without 
     workersAccrued:1000,workersPaid:1200,workersDeposited:0,workersExpense:300,
     closingReceivable:200,closingPayable:70,currentBalance:999,net:999})});
   assert.deepEqual(metrics.map(item=>[item.key,item.value]),[["workersAccrued",1000],["workersPaid",1200],["workersDeposited",0],["closingReceivable",200],["closingPayable",70]]);
-  assert.equal(metrics[1].label,"المسحوب خلال الفترة");
+  assert.deepEqual(metrics.map(item=>item.label),["الاستحقاقات","المسحوبات","الإيداعات","لنا بنهاية الفترة","علينا بنهاية الفترة"]);
   assert.equal(metrics[1].tone,"neutral","A cash withdrawal can include advances, so its label is not a wage expense");
-  assert.equal(metrics[2].label,"المودع خلال الفترة");
   assert.equal(metrics.some(item=>["workersExpense","net","currentBalance"].includes(item.key)),false);
 });
 
-test("party ledger labels cover all three account roles, signed movement balances and reconciliation in Arabic and French",()=>{
+test("party ledger labels cover account roles, compact controls, signed balances and reconciliation in Arabic and French",()=>{
   for(const key of ["الرصيد قبل الحركة","تغيّر الرصيد","الرصيد بعد الحركة","كل العملاء","كل الموردين","كل العمال",
-    "+ مستحق لنا، − مستحق علينا","بعض الأرصدة المحسوبة من الحركات تختلف عن الأرصدة المسجلة."]){
+    "+ مستحق لنا، − مستحق علينا","+ لنا، − علينا","آجل","الرصيد قبل","التغيّر","الرصيد بعد",
+    "تحصيلات الحساب","دفعات الحساب","الاستحقاقات","المسحوبات","الإيداعات","لنا بنهاية الفترة","علينا بنهاية الفترة",
+    "بعض الأرصدة المحسوبة من الحركات تختلف عن الأرصدة المسجلة."]){
     assert.equal(translate("ar",key),key);
     assert.equal(typeof translate("fr",key),"string");
     assert.notEqual(translate("fr",key),key);
   }
   assert.equal(translate("fr","كشف حسابات الأطراف"),"Relevé des comptes des tiers");
   const metrics=buildReportFooterMetrics({type:"party-ledger",result:result({partyType:"supplier"}),translate:key=>translate("fr",key)});
-  assert.deepEqual(metrics.map(item=>item.label),["Achats auprès des fournisseurs sur la période","Règlements des comptes fournisseurs sur la période","À recevoir en fin de période","À payer en fin de période"]);
+  assert.deepEqual(metrics.map(item=>item.label),["Achats nets","Paiements du compte","À recevoir en fin de période","À payer en fin de période"]);
+  assert.deepEqual(["آجل","الرصيد قبل","التغيّر","الرصيد بعد","+ لنا، − علينا"].map(key=>translate("fr",key)),["À crédit","Solde avant","Variation","Solde après","+ À recevoir, − À payer"]);
 });
 test("product purchase footer never presents invoice payment allocation",()=>{ const metrics=buildReportFooterMetrics({type:"purchases",result:result({total:100,quantity:4,paid:80,due:20,count:1}),productFiltered:true}); assert.equal(metrics[2].value,25); assert.ok(!metrics.some(x=>["paid","due"].includes(x.key))); });
 test("financial operating classification excludes balance administration and transfers",()=>{ for(const type of ["transfer-in","transfer-out","opening-balance","manual-deposit","manual-withdrawal","balance-correction"]) assert.equal(isOperatingFinancialMovement(type),false); for(const type of ["sale","purchase","expense","party-receipt","party-payment"]) assert.equal(isOperatingFinancialMovement(type),true); });
-test("party ledger composite filter has compact geometry and a separate sign legend on narrow screens",async()=>{
-  const [css,ui]=await Promise.all([readFile(new URL("../app/globals.css",import.meta.url),"utf8"),readFile(new URL("../app/conta-app.tsx",import.meta.url),"utf8")]);
-  assert.match(css,/\.report-filters>\.party-ledger-filter\{max-width:none/);
-  assert.match(css,/\.party-ledger-filter\s*\{\s*grid-template-columns:\s*148px minmax\(185px,\s*230px\) auto;\s*min-width:\s*0;/);
-  assert.match(css,/\.party-ledger-filter \.combobox\s*\{\s*min-width:\s*0;/);
-  assert.match(css,/@media\s*\(max-width:\s*700px\)\s*\{\s*\.party-ledger-filter\s*\{\s*grid-template-columns:\s*minmax\(100px,\s*148px\) minmax\(0,\s*1fr\);\s*\}\s*\.party-ledger-sign\s*\{\s*grid-column:\s*1\s*\/\s*-1;/);
-  assert.match(ui,/العملاء/);assert.match(ui,/الموردون/);
+test("party ledger lays out account filters separately from the sign legend and wraps the six totals in even rows", async () => {
+  const [css, ui] = await Promise.all([
+    readFile(new URL("../app/party-compact.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/conta-app.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(css, /\.report-toolbar\.party-ledger-toolbar\s*{[^}]*align-items:\s*center/);
+  assert.match(css, /\.party-ledger-filter\s*{[^}]*grid-template-columns:\s*112px minmax\(0, 198px\)/);
+  assert.match(css, /\.report-kpis\.party-ledger-kpis\s*{[^}]*grid-auto-flow:\s*column/);
+  assert.match(css, /@media screen and \(max-width: 850px\)\s*{[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /@media screen and \(max-width: 560px\)\s*{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(ui, /className="party-ledger-toolbar-scope"[\s\S]*?className="party-ledger-filter"[\s\S]*?<\/div>\s*<small className="party-ledger-sign" title=\{ledgerLegend\}/);
+  assert.match(ui, /className="party-ledger-toolbar-actions">\{reportDates\}\{reportOutputButton\}/);
 });
 
 test("expense screen, printable output and export share columns without the retired schedule type", async () => {

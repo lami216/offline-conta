@@ -302,6 +302,11 @@
   min-width: 0;
 }
 
+.party-ledger-toolbar:lang(fr) .party-ledger-filter {
+  grid-template-columns: 140px minmax(0, 198px);
+  width: min(344px, 100%);
+}
+
 .party-ledger-filter :is(.party-ledger-role-select, .combobox-trigger) {
   width: 100%;
   min-width: 0;
@@ -332,6 +337,16 @@
 .party-ledger-toolbar-actions .compact-date-range label {
   width: 118px;
   min-width: 118px;
+}
+
+.party-ledger-toolbar:lang(fr) .compact-date-range label {
+  width: 140px;
+  min-width: 140px;
+}
+
+.party-ledger-toolbar:lang(fr) .compact-date-range label span {
+  width: 46px;
+  min-width: 46px;
 }
 
 .party-ledger-toolbar-actions > .report-print-button {

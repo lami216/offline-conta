@@ -9,9 +9,12 @@ const reports = app.slice(app.indexOf("function Reports"), app.indexOf("function
 
 test("dated reports keep apply inside the shared compact date control", () => {
   const normalToolbar = reports.slice(reports.lastIndexOf('<section className="reports-workspace"'));
-  assert.match(normalToolbar, /showDates&&<CompactDateRange[^>]*onApply=\{\(\)=>void applyDraftPeriod\(\)\}[^>]*onAllTime=\{\(\)=>void applyAllTime\(\)\}/);
-  assert.match(normalToolbar, /!showDates&&<button className="primary"[^>]*>عرض<\/button>/);
-  assert.doesNotMatch(normalToolbar, /showDates&&<CompactDateRange[^>]*\/>\}<button className="primary"[^>]*>عرض<\/button>/);
+  const dateControl = reports.slice(reports.indexOf("const reportDates ="), reports.indexOf("const reportOutputButton ="));
+  assert.match(dateControl, /showDates\s*\?\s*<CompactDateRange[^>]*onApply=\{\(\)=>void applyDraftPeriod\(\)\}[^>]*onAllTime=\{\(\)=>void applyAllTime\(\)\}/);
+  assert.match(dateControl, /\/>\s*:\s*<button className="primary"[^>]*>عرض<\/button>/);
+  assert.match(normalToolbar, /className="party-ledger-toolbar-actions">\{reportDates\}\{reportOutputButton\}/);
+  assert.equal((normalToolbar.match(/\{reportDates\}/g) ?? []).length, 2);
+  assert.doesNotMatch(normalToolbar, /<button className="primary"[^>]*>عرض<\/button>/);
 });
 
 test("report toolbars cannot override compact date internals", () => {
